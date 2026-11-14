@@ -1,0 +1,47 @@
+# Normalize line endings for every text file.
+# The agent analyzes diffs: mixed line endings would create false changes.
+* text=auto eol=lf
+
+# Source and configuration
+*.py    text diff=python
+*.toml  text
+*.yaml  text
+*.yml   text
+*.json  text
+*.xml   text
+*.csv   text
+*.sql   text
+*.ini   text
+*.cfg   text
+
+# Documentation and agent resources
+*.md    text diff=markdown
+*.txt   text
+
+# Scripts keep the line ending their platform requires
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Vector images are text
+*.svg   text
+
+# Binary files: never diff, merge or normalize
+*.pdf    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.db     binary
+*.sqlite binary
+*.sqlite3 binary
+*.zip    binary
+*.gz     binary
+
+# GitHub language statistics
+docs/**            linguist-documentation
+examples/**        linguist-vendored
+tests/fixtures/**  linguist-vendored

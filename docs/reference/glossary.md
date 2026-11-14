@@ -43,9 +43,10 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Regression suite | Test cases that protect existing behavior. |
 | Traceability | Links between requirements and test cases. |
 | Run | One execution of a test suite against one version, with stored evidence. |
+| Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
 | Worktree | Temporary git checkout of a version under `.retro/worktrees/`. The user's working copy is never modified. |
-| Triage | Classification of a failed test case. |
+| Triage | Classification of a failed test execution. |
 | Defect | Confirmed deviation from expected behavior, registered with a severity. |
 | Risk | Possible negative outcome for the product that testing did not fully rule out. |
 | Exit criteria | Conditions that must hold to finish testing. Evaluated by code. |
@@ -69,17 +70,26 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 
 ### Test case `status`
 
+Life cycle of a test case, independent of any run.
+
 | Value | Meaning |
 |---|---|
 | `designed` | Specified; no executable code yet. |
 | `implemented` | Executable test code exists. |
-| `executed` | Ran in a run with evidence. Requires a `run_id`. |
+
+### Test execution `status`
+
+Outcome of a test case in one run.
+
+| Value | Meaning |
+|---|---|
+| `executed` | Ran, with its outcome in the run evidence. |
 | `blocked` | Could not run because of the environment or a missing dependency. |
-| `skipped` | Deliberately not run. |
+| `skipped` | Reported as skipped by the test framework, or deliberately excluded. |
 
-### Test case `result`
+### Test execution `result`
 
-Only exists when `status = executed`.
+Only exists when the execution `status` is `executed`.
 
 | Value | Meaning |
 |---|---|

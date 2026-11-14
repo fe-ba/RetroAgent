@@ -88,7 +88,7 @@ For projects whose tests need a running service (e.g. a REST API).
 | `service.start` | string | none | project | Command that starts the service, using `{port}`. |
 | `service.url` | string | `http://127.0.0.1:{port}` | project | Base URL of the running service. |
 | `service.ready_path` | string | `/` | project | Path polled until it answers, to know the service is ready. |
-| `service.ready_timeout` | integer | `30` | user, project | Seconds to wait for readiness before test cases are marked `blocked`. |
+| `service.ready_timeout` | integer | `30` | user, project | Seconds to wait for readiness before the test executions of the run are marked `blocked`. |
 
 ### Exit criteria
 

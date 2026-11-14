@@ -1,6 +1,6 @@
 # ADR-0007: Separate test status and result
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0016
 - **Date:** 2026-11-14
 
 ## Context

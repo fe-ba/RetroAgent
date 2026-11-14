@@ -66,7 +66,7 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 
 | Command | Description |
 |---|---|
-| `/status` | Session versions, test cases by status and result, last run and current mode. |
+| `/status` | Session versions, test cases by status, test executions of the last run by status and result, and current mode. |
 | `/history [n]` | Last `n` runs. Default: 10. |
 | `/defects [--all]` | Open defects. With `--all`, include closed ones. |
 

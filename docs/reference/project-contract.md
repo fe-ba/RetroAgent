@@ -9,8 +9,8 @@ What a target project must provide for RetroAgent to analyze, test and report on
 | Git repository | Required | RetroAgent cannot compare versions and exits with code `2`. |
 | Two identifiable versions (tags, branches or commits) | Required for comparison | Only single-version runs are possible; no baseline comparison. |
 | Test command that produces JUnit XML | Required for execution | Test cases can be designed but never executed. |
-| Setup that works non-interactively in a fresh checkout | Required for execution | Test cases are marked `blocked`. |
-| Service start command | Required when tests need a running service | Test cases are marked `blocked`. |
+| Setup that works non-interactively in a fresh checkout | Required for execution | Test executions are marked `blocked`. |
+| Service start command | Required when tests need a running service | Test executions are marked `blocked`. |
 | Requirements document | Recommended | Impact analysis and traceability reach modules only; reports state it as a limitation. |
 | `RETRO.md` | Recommended | The agent infers the project context in every session. |
 | Requirement IDs in test names | Recommended | Existing tests are not traced to requirements. |
@@ -106,7 +106,7 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 6. Results are read only from the JUnit XML at `tests.junit`.
 7. The service is stopped and the worktree is removed, including its metadata in `.git/worktrees/`.
 
-The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test cases are marked `blocked`.
+The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`.
 
 Commands must not require interactive input. Setup must install dependencies locally to the worktree (for example, in a virtual environment), never globally.
 

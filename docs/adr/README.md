@@ -14,7 +14,7 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0004](0004-mcp-for-tool-access.md) | MCP for tool access | Accepted |
 | [ADR-0005](0005-steering-always-skills-on-demand.md) | Steering always loaded, skills on demand | Accepted |
 | [ADR-0006](0006-deterministic-statuses-metrics-and-release.md) | Deterministic statuses, metrics and release decision | Accepted |
-| [ADR-0007](0007-separate-test-status-and-result.md) | Separate test status and result | Accepted |
+| [ADR-0007](0007-separate-test-status-and-result.md) | Separate test status and result | Superseded by ADR-0016 |
 | [ADR-0008](0008-project-local-sqlite-memory.md) | Project-local SQLite memory | Accepted |
 | [ADR-0009](0009-git-worktrees-for-version-checkout.md) | Git worktrees for version checkout | Accepted |
 | [ADR-0010](0010-junit-xml-as-results-contract.md) | JUnit XML as results contract | Accepted |
@@ -23,3 +23,4 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0013](0013-diataxis-documentation-and-spec-split.md) | Diataxis documentation and spec split | Accepted |
 | [ADR-0014](0014-untrusted-project-configuration.md) | Untrusted project configuration | Accepted |
 | [ADR-0015](0015-generated-tests-stored-in-retro.md) | Generated tests stored in .retro | Accepted |
+| [ADR-0016](0016-test-executions-per-run.md) | Test executions per run | Accepted |

@@ -57,23 +57,23 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 |---|---|---|---|
 | FR-15 | The agent shall execute test suites against the baseline and the candidate in isolated worktrees. | Must | B3, ADR-0009 |
 | FR-16 | The agent shall record for each run: `run_id`, version, commit, command, start and end time, duration, exit code, JUnit XML and logs. | Must | B3 |
-| FR-17 | The agent shall update test case status and result only from parsed run evidence. | Must | B5, ADR-0006, ADR-0010 |
+| FR-17 | The agent shall record test executions, with their status and result, only from parsed run evidence. | Must | B5, ADR-0006, ADR-0010, ADR-0016 |
 | FR-18 | The agent shall rerun failed test cases a configurable number of times to detect flaky tests. | Should | B3 |
-| FR-19 | The agent shall mark test cases as `blocked` when the environment prevents their execution. | Must | B5 |
+| FR-19 | The agent shall record test executions as `blocked` when the environment prevents them from running. | Must | B5, ADR-0016 |
 
 ### Interpretation
 
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
 | FR-20 | The agent shall compare a candidate run with the baseline run and identify new failures, fixed tests and persistent failures. | Must | B4 |
-| FR-21 | The agent shall classify each failed test case as `regression`, `expected_change`, `flaky`, `environment` or `test_defect`, with a justification. | Must | B4 |
+| FR-21 | The agent shall classify each failed test execution as `regression`, `expected_change`, `flaky`, `environment` or `test_defect`, with a justification. | Must | B4 |
 | FR-22 | The agent shall register defects with severity and link them to test cases and runs. | Must | B4 |
 
 ### Memory
 
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
-| FR-23 | The agent shall persist requirements, test cases, runs, results, triage, defects and risks across sessions. | Must | ADR-0008 |
+| FR-23 | The agent shall persist requirements, test cases, runs, test executions, triage, defects and risks across sessions. | Must | ADR-0008 |
 | FR-24 | The agent shall answer queries about project history: previous runs, flaky history and open defects. | Should | ADR-0008 |
 
 ### Reporting
@@ -100,7 +100,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | ID | Category | Requirement | Priority | Source |
 |---|---|---|---|---|
 | NFR-01 | Model independence | The agent shall work with local and hosted model providers; switching providers shall require only configuration. | Must | ADR-0002, ADR-0003 |
-| NFR-02 | Result integrity | A test case result shall be impossible to store unless its status is `executed` and a run with evidence exists. Enforced in the data layer. | Must | B5, ADR-0007 |
+| NFR-02 | Result integrity | A test execution result shall be impossible to store unless the execution status is `executed` and it belongs to a run with stored evidence. Enforced in the data layer. | Must | B5, ADR-0016 |
 | NFR-03 | Determinism | The same stored data shall always produce the same metrics, exit criteria evaluation and release decision. | Must | ADR-0006 |
 | NFR-04 | Auditability | Every figure in a report shall be traceable to stored runs and evidence. Every tool call shall be recorded with its inputs, outcome and timestamp. | Must | B3, ADR-0006 |
 | NFR-05 | Safety | The agent shall never modify the user's working copy. Outside `.retro/`, the agent only writes `RETRO.md` when the user runs `retro init`, and the worktree metadata git keeps in `.git/worktrees/`, which is removed after each run. Tests run only inside worktrees. | Must | ADR-0009, ADR-0015 |

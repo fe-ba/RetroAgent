@@ -25,5 +25,5 @@ RetroAgent follows the same conventions:
 ## Consequences
 
 - Minimal learning curve for users of other terminal agents.
-- Plan mode maps to designed tests and approved execution maps to executed tests, reinforcing ADR-0007.
+- Plan mode maps to designed tests and approved execution maps to executed tests, reinforcing ADR-0016.
 - Final command names and arguments are defined in `docs/reference/cli.md`.

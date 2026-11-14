@@ -1,0 +1,123 @@
+# Requirements
+
+Functional (FR) and non-functional (NFR) requirements of RetroAgent.
+
+- **Priority** follows MoSCoW: `Must` is required for the project to be valid, `Should` is expected, `Could` is optional if time allows.
+- **Source** links each requirement to the project brief or to an ADR.
+
+## Brief references
+
+| ID | Brief item |
+|---|---|
+| B1 | Analyze: receive source code, API, requirements or documentation; identify what can be tested and what information is missing. |
+| B2 | Design: generate test cases with objective, preconditions, input data, steps, expected result, priority and traceability. |
+| B3 | Execute: use real tools through MCP; record results, times, errors and evidence. |
+| B4 | Visualize and interpret: tables, charts and reports; explain findings, limitations and recommended actions. |
+| B5 | Distinguish a designed test, an executed test and a passed test. |
+
+## Functional requirements
+
+### Session and interaction
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-01 | The agent shall start an interactive session on the current directory or on a directory given as an argument. | Must | ADR-0001, ADR-0011 |
+| FR-02 | The agent shall run a single task non-interactively and exit with a code that reflects the outcome. | Should | ADR-0011 |
+| FR-03 | The agent shall initialize a project: detect its type, create `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`. | Must | ADR-0011 |
+| FR-04 | The agent shall let the user select the model for a session and set a default model at user level. | Must | ADR-0002 |
+| FR-05 | The agent shall provide a plan mode in which it analyzes and designs but cannot execute tests. | Must | B5, ADR-0011 |
+| FR-06 | The agent shall ask for permission before running code or writing files, unless the configuration allows the action. | Must | ADR-0011 |
+
+### Analysis
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-07 | The agent shall resolve the baseline and the candidate from tags, branches or commits. | Must | B1 |
+| FR-08 | The agent shall compute the change set between baseline and candidate. | Must | B1 |
+| FR-09 | The agent shall map the change set to modules, requirements and existing test cases, and assign a risk level to each impacted area. | Must | B1 |
+| FR-10 | The agent shall read the requirements of the target project when they are documented, report which information is missing and ask for it. | Must | B1 |
+
+### Design
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-11 | The agent shall design test cases with objective, preconditions, input data, steps, expected result, priority and traceability. | Must | B2 |
+| FR-12 | The agent shall implement designed test cases as executable code only inside the configured test directory. | Must | B2, ADR-0009 |
+| FR-13 | The agent shall maintain traceability between requirements and test cases. | Must | B2 |
+
+### Selection
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-14 | The agent shall select and prioritize the regression suite for a change and justify the inclusion of each test case. | Must | B1, B2 |
+
+### Execution
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-15 | The agent shall execute test suites against the baseline and the candidate in isolated worktrees. | Must | B3, ADR-0009 |
+| FR-16 | The agent shall record for each run: `run_id`, version, commit, command, start and end time, duration, exit code, JUnit XML and logs. | Must | B3 |
+| FR-17 | The agent shall update test case status and result only from parsed run evidence. | Must | B5, ADR-0006, ADR-0010 |
+| FR-18 | The agent shall rerun failed test cases a configurable number of times to detect flaky tests. | Should | B3 |
+| FR-19 | The agent shall mark test cases as `blocked` when the environment prevents their execution. | Must | B5 |
+
+### Interpretation
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-20 | The agent shall compare a candidate run with the baseline run and identify new failures, fixed tests and persistent failures. | Must | B4 |
+| FR-21 | The agent shall classify each failed test case as `regression`, `expected_change`, `flaky`, `environment` or `test_defect`, with a justification. | Must | B4 |
+| FR-22 | The agent shall register defects with severity and link them to test cases and runs. | Must | B4 |
+
+### Memory
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-23 | The agent shall persist requirements, test cases, runs, results, triage, defects and risks across sessions. | Must | ADR-0008 |
+| FR-24 | The agent shall answer queries about project history: previous runs, flaky history and open defects. | Should | ADR-0008 |
+
+### Reporting
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-25 | The agent shall generate the test plan, test case specification, test status report, defect report and test completion report. | Must | B4 |
+| FR-26 | The agent shall compute metrics, evaluate exit criteria and produce the release decision deterministically. | Must | B4, ADR-0006 |
+| FR-27 | Reports shall separate computed sections from sections written by the model, and mark the latter. | Must | B5, ADR-0006 |
+| FR-28 | Reports shall include charts of results: outcome distribution and comparison against the baseline. | Must | B4 |
+| FR-29 | The agent shall export reports to Markdown and PDF. | Must | B4 |
+| FR-30 | The agent shall display summaries of runs and results as tables in the terminal. | Must | B4 |
+
+### Extensibility
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| FR-31 | The agent shall load project-level and user-level steering and skills in addition to the bundled ones. | Could | ADR-0005 |
+| FR-32 | The agent shall connect to additional MCP servers declared in `.retro/mcp.json`. | Could | ADR-0004 |
+| FR-33 | The agent shall create bundled example projects in a given directory, with their git history and version tags. | Must | ADR-0001 |
+
+## Non-functional requirements
+
+| ID | Category | Requirement | Priority | Source |
+|---|---|---|---|---|
+| NFR-01 | Model independence | The agent shall work with local and hosted model providers; switching providers shall require only configuration. | Must | ADR-0002, ADR-0003 |
+| NFR-02 | Result integrity | A test case result shall be impossible to store unless its status is `executed` and a run with evidence exists. Enforced in the data layer. | Must | B5, ADR-0007 |
+| NFR-03 | Determinism | The same stored data shall always produce the same metrics, exit criteria evaluation and release decision. | Must | ADR-0006 |
+| NFR-04 | Auditability | Every figure in a report shall be traceable to stored runs and evidence. Every tool call shall be recorded with its inputs, outcome and timestamp. | Must | B3, ADR-0006 |
+| NFR-05 | Safety | The agent shall never modify the user's working copy. Writes are limited to `.retro/` and the configured test directory. Tests run only inside worktrees. | Must | ADR-0009 |
+| NFR-06 | Secrets | API keys shall be read only from environment variables and never written to files, logs or reports. | Must | — |
+| NFR-07 | Robustness | Model errors, tool failures and interruptions shall not corrupt stored data. The agent loop shall stop after a configurable maximum number of iterations. | Must | ADR-0002 |
+| NFR-08 | Usability | The CLI shall follow the conventions of terminal agents and provide help for every command. | Must | ADR-0011 |
+| NFR-09 | Extensibility | New providers, MCP servers, steering files and skills shall be addable without modifying the runtime core. | Should | ADR-0003, ADR-0004, ADR-0005 |
+| NFR-10 | Offline operation | The agent shall run without internet access when using a local model. | Should | ADR-0002 |
+| NFR-11 | Portability | The agent shall run on Linux, macOS and Windows with Python 3.11 or later. | Should | — |
+| NFR-12 | Testability | Metrics, exit criteria evaluation and the release decision shall be fully covered by unit tests. | Must | ADR-0006 |
+| NFR-13 | Language | All project content shall be in English. The language of responses and reports shall be configurable. | Must | ADR-0012 |
+
+## Out of scope
+
+- User interface and browser testing.
+- Performance, load and security testing.
+- Projects that are not git repositories or cannot produce JUnit XML.
+- Modifying or fixing the code of the target project.
+- Concurrent sessions on the same target project.
+- Graphical user interface for RetroAgent.

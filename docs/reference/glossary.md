@@ -111,6 +111,14 @@ Only exists when `status = executed`.
 | `release_with_conditions` | Only non-blocking criteria failed; conditions are listed. |
 | `do_not_release` | At least one blocking criterion failed. |
 
+### Permission `mode`
+
+| Value | Meaning |
+|---|---|
+| `default` | Ask before running code or writing files. |
+| `plan` | Analyze and design only; no execution. |
+| `auto` | Perform allowed actions without asking; refuse the rest. |
+
 ## Reports
 
 Names follow ISO/IEC/IEEE 29119-3.

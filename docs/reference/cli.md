@@ -40,7 +40,7 @@ Without a command, `retro` starts an interactive session on the target project. 
 
 | Mode | Behavior |
 |---|---|
-| `default` | Asks for permission before running code or writing files. |
+| `default` | Asks for permission before running tests, starting services or writing test code. |
 | `plan` | Analyzes and designs. Cannot run tests or write test code. Test cases can only reach status `designed`. |
 | `auto` | Performs actions allowed by the configuration without asking. Actions not allowed are refused. Intended for CI. |
 
@@ -56,10 +56,11 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 |---|---|
 | `/analyze [base] [candidate]` | Compute the change set and the impact analysis. Sets the session versions when given. |
 | `/design [scope]` | Design test cases for the impacted areas, or for `scope` (requirement IDs, modules or free text). |
+| `/implement [ids]` | Write executable test code for designed test cases (all designed ones by default). Code is stored in `.retro/tests/`. Requires `permissions.write_tests`. |
 | `/select` | Select and prioritize the regression suite for the current change. |
-| `/run [target] [--on <version>]` | Execute tests. `target`: `suite` (default), or test case IDs. `--on`: `base`, `candidate` (default) or `both`. |
+| `/run [target] [--on <version>]` | Execute tests. `target`: `suite` (default), or test case IDs. `--on`: `base`, `candidate` (default) or `both`. Test cases with status `designed` are not run; implement them first. |
 | `/triage [run_id]` | Classify the failures of a run. Default: last run. |
-| `/report <type> [--run <run_id>] [--format <format>]` | Generate a report. `type`: `test-plan`, `test-cases`, `status`, `defects`, `completion`. `format`: `md` (default) or `pdf`. |
+| `/report <type> [--run <run_id>] [--format <format>]` | Generate a report. `type`: `test-plan`, `test-cases`, `status`, `defects`, `completion`. `format`: `md` or `pdf`; default from `reports.default_format`. |
 
 ### Project state
 

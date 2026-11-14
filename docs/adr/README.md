@@ -2,7 +2,7 @@
 
 Records of significant architecture decisions: the context, the decision, the alternatives considered and the consequences accepted.
 
-ADRs are immutable once accepted. To change a decision, write a new ADR that supersedes the old one and update the status of both.
+ADRs are immutable once accepted. To change a decision, write a new ADR that supersedes the old one and update the status of both. Editorial corrections that do not change a decision (wording, typos, links) are made in place.
 
 Only decisions that would be costly to reverse deserve an ADR.
 
@@ -21,3 +21,5 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0011](0011-terminal-agent-conventions.md) | Terminal agent conventions | Accepted |
 | [ADR-0012](0012-english-as-project-language.md) | English as project language | Accepted |
 | [ADR-0013](0013-diataxis-documentation-and-spec-split.md) | Diataxis documentation and spec split | Accepted |
+| [ADR-0014](0014-untrusted-project-configuration.md) | Untrusted project configuration | Accepted |
+| [ADR-0015](0015-generated-tests-stored-in-retro.md) | Generated tests stored in .retro | Accepted |

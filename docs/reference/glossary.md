@@ -9,7 +9,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | RetroAgent | The product. Repository and Python package `retroagent`. |
 | `retro` | The CLI command. |
 | `RETRO.md` | Project context file at the root of a target project. Created by `/init`. |
-| `.retro/` | Project-level folder: configuration, extensions, memory, runs, reports, worktrees. |
+| `.retro/` | Project-level folder: configuration, extensions, generated tests, memory, runs, reports, worktrees. |
 | `~/.retro/` | User-level folder: model configuration and global extensions. |
 
 ## Agent architecture
@@ -18,13 +18,14 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 |---|---|
 | Runtime | The agent loop: builds the context, calls the model, dispatches tools and repeats until the task is done. |
 | LLM provider | Adapter that connects the runtime to one model vendor through the common `LLMProvider` interface. |
+| Model profile | Named model configuration at user level: provider, model name, endpoint and API key variable. |
 | Steering | Markdown rules always injected into the context, in file-name order. |
 | Skill | Markdown procedure (`SKILL.md`) loaded on demand. Only its name and description are always visible. |
 | MCP server | Process that exposes tools through the Model Context Protocol. |
 | Tool | A single callable operation exposed by an MCP server or by the runtime. |
 | Session | One interactive or non-interactive execution of `retro`. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
-| Permission | User approval required before an action that runs code or writes files. |
+| Permission | User approval required before running tests, starting a service or writing test code. |
 
 ## Testing domain
 
@@ -37,6 +38,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Impact analysis | Mapping the change set to modules, requirements and risk. |
 | Requirement | Documented, testable statement of expected behavior of the target project. |
 | Test case | Specification of one test: objective, preconditions, input data, steps, expected result, priority and traceability. |
+| Generated test | Test code written by RetroAgent, stored in `.retro/tests/` and copied into each worktree before a run. |
 | Test suite | Set of test cases selected for a run. |
 | Regression suite | Test cases that protect existing behavior. |
 | Traceability | Links between requirements and test cases. |
@@ -115,7 +117,7 @@ Only exists when `status = executed`.
 
 | Value | Meaning |
 |---|---|
-| `default` | Ask before running code or writing files. |
+| `default` | Ask before running tests, starting services or writing test code. |
 | `plan` | Analyze and design only; no execution. |
 | `auto` | Perform allowed actions without asking; refuse the rest. |
 

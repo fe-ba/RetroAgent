@@ -26,7 +26,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-03 | The agent shall initialize a project: detect its type, create `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`. | Must | ADR-0011 |
 | FR-04 | The agent shall let the user select the model for a session and set a default model at user level. | Must | ADR-0002 |
 | FR-05 | The agent shall provide a plan mode in which it analyzes and designs but cannot execute tests. | Must | B5, ADR-0011 |
-| FR-06 | The agent shall ask for permission before running code or writing files, unless the configuration allows the action. | Must | ADR-0011 |
+| FR-06 | The agent shall ask for permission before running tests, starting services or writing test code, unless the configuration allows the action. | Must | ADR-0011 |
 
 ### Analysis
 
@@ -42,7 +42,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
 | FR-11 | The agent shall design test cases with objective, preconditions, input data, steps, expected result, priority and traceability. | Must | B2 |
-| FR-12 | The agent shall implement designed test cases as executable code only inside the configured test directory. | Must | B2, ADR-0009 |
+| FR-12 | The agent shall implement designed test cases as executable code stored in `.retro/tests/` and copied into each worktree before a run. | Must | B2, ADR-0015 |
 | FR-13 | The agent shall maintain traceability between requirements and test cases. | Must | B2 |
 
 ### Selection
@@ -103,7 +103,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | NFR-02 | Result integrity | A test case result shall be impossible to store unless its status is `executed` and a run with evidence exists. Enforced in the data layer. | Must | B5, ADR-0007 |
 | NFR-03 | Determinism | The same stored data shall always produce the same metrics, exit criteria evaluation and release decision. | Must | ADR-0006 |
 | NFR-04 | Auditability | Every figure in a report shall be traceable to stored runs and evidence. Every tool call shall be recorded with its inputs, outcome and timestamp. | Must | B3, ADR-0006 |
-| NFR-05 | Safety | The agent shall never modify the user's working copy. Writes are limited to `.retro/` and the configured test directory. Tests run only inside worktrees. | Must | ADR-0009 |
+| NFR-05 | Safety | The agent shall never modify the user's working copy. Outside `.retro/`, the agent only writes `RETRO.md` when the user runs `retro init`, and the worktree metadata git keeps in `.git/worktrees/`, which is removed after each run. Tests run only inside worktrees. | Must | ADR-0009, ADR-0015 |
 | NFR-06 | Secrets | API keys shall be read only from environment variables and never written to files, logs or reports. | Must | — |
 | NFR-07 | Robustness | Model errors, tool failures and interruptions shall not corrupt stored data. The agent loop shall stop after a configurable maximum number of iterations. | Must | ADR-0002 |
 | NFR-08 | Usability | The CLI shall follow the conventions of terminal agents and provide help for every command. | Must | ADR-0011 |
@@ -112,6 +112,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | NFR-11 | Portability | The agent shall run on Linux, macOS and Windows with Python 3.11 or later. | Should | — |
 | NFR-12 | Testability | Metrics, exit criteria evaluation and the release decision shall be fully covered by unit tests. | Must | ADR-0006 |
 | NFR-13 | Language | All project content shall be in English. The language of responses and reports shall be configurable. | Must | ADR-0012 |
+| NFR-14 | Untrusted configuration | The configuration of a target project shall not define model providers, loosen permissions or enable MCP servers without user approval. | Must | ADR-0014 |
 
 ## Out of scope
 

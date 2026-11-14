@@ -16,7 +16,7 @@ RetroAgent follows the same conventions:
 - `.retro/` at project level and `~/.retro/` at user level.
 - Slash commands inside the session.
 - Plan mode, in which tests can be designed but not executed.
-- Permission prompts before running code or writing files.
+- Permission prompts before running tests, starting services or writing test code.
 
 ## Alternatives considered
 

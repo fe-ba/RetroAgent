@@ -32,6 +32,7 @@ my-project/
     ├── steering/               # optional
     ├── tests/                  # generated tests
     ├── retro.db
+    ├── retro.lock
     ├── runs/
     ├── reports/
     └── worktrees/
@@ -136,6 +137,7 @@ For versions, `retro init` proposes the two most recent tags as `versions.base` 
 | `tests/` | Yes | Generated tests. |
 | `reports/` | Yes | Generated reports. |
 | `retro.db` | No | Project memory. |
+| `retro.lock` | No | Session lock; one session per project at a time. |
 | `runs/` | No | Run evidence. |
 | `worktrees/` | No | Temporary checkouts. |
 
@@ -144,6 +146,7 @@ For versions, `retro init` proposes the two most recent tags as `versions.base` 
 ```
 retro.db
 retro.db-*
+retro.lock
 runs/
 worktrees/
 ```

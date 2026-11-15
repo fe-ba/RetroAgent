@@ -25,6 +25,8 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Tool | A single callable operation exposed by an MCP server or by the runtime. |
 | Session | One interactive or non-interactive execution of `retro`. |
 | System context | Instructions and information sent to the model on every call: steering, session block, project context and skills index. |
+| Turn | One user message and every model call and tool call that follows, until the model answers without tool calls. |
+| Slash command | Command typed in a session, such as `/run`. Direct commands run without the model; model commands become a message to the model. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
 | JSON fallback mode | Mode for models without tool calling: tools are described in the system context and the model answers with JSON that the runtime validates. |
 | Permission | User approval required before running tests, starting a service or writing test code. |

@@ -11,7 +11,7 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Identifiers | Tools that create records return their new identifiers. No tool accepts an identifier for a record it creates. |
 | References | Every identifier, path or ref given by the model must exist; otherwise the call fails with `not_found` and nothing is written (INV-13). |
 | Execution results | No tool accepts an execution status or result as input (INV-03). |
-| Large output | Tools that return file content, diffs or evidence return at most 20,000 characters and set `truncated` to `true` when they cut. |
+| Large output | Tools that return file content, diffs or evidence return at most 20,000 characters, cut at a line boundary. When they cut, they set `truncated` to `true` and return `next_line`; calling the tool again with `start_line` set to that value returns what follows. |
 | Models | No MCP tool calls a model (ADR-0020). Text written by the model reaches the servers only as tool arguments. |
 | Mode and permissions | Enforced by the runtime before dispatch. A refused call is recorded with outcome `denied`. |
 | User-only tools | A tool marked user only is called only by the runtime, for a direct command of the user. It is not in the tool definitions, and a call from the model is refused with `denied`. |
@@ -50,6 +50,7 @@ Every error returns a code and a message.
 | `memory.get_suite` | read | — | allowed | — |
 | `memory.design_test_case` | write | — | allowed | `test_case`, `test_case_requirement`, `suite_test_case` |
 | `memory.update_test_case` | write | — | allowed | `test_case`, `test_case_requirement` |
+| `memory.retire_test_case` | write | — | allowed | `test_case` |
 | `memory.get_test_cases` | read | — | allowed | — |
 | `memory.get_runs` | read | — | allowed | — |
 | `memory.get_executions` | read | — | allowed | — |
@@ -59,7 +60,7 @@ Every error returns a code and a message.
 | `memory.link_defect` | write | — | allowed | `defect_execution` |
 | `memory.close_defect` | write, user only | — | allowed | `defect` |
 | `memory.get_defects` | read | — | allowed | — |
-| `test_runner.write_test` | write | `write_tests` | refused | `test_case` |
+| `test_runner.write_test` | write | `write_tests` | refused | `test_case`, `test_case_requirement` |
 | `test_runner.run_tests` | write | `run_tests`, and `start_service` when a service is configured | refused | `run`, `test_execution`, `attempt`, `test_case`, `test_case_requirement`, `defect` |
 | `test_runner.get_evidence` | read | — | allowed | — |
 | `reports.evaluate` | write | — | allowed | `evaluation` |
@@ -118,6 +119,7 @@ No inputs. Returns the analysis ID and every changed file with its change and li
 |---|---|---|---|
 | `path` | string | yes | A file of the change set. |
 | `analysis_id` | integer | no | Default: the latest analysis of the session versions. |
+| `start_line` | integer | no | First line to return. Default: 1. See Large output. |
 
 Returns the unified diff of the file. Errors: `not_found` when the file is not in the change set.
 
@@ -127,6 +129,7 @@ Returns the unified diff of the file. Errors: `not_found` when the file is not i
 |---|---|---|---|
 | `path` | string | yes | Path in the repository. |
 | `version` | string | yes | `base` or `candidate`. |
+| `start_line` | integer | no | First line to return. Default: 1. See Large output. |
 
 Returns the content of the file at that version. Errors: `not_found`.
 
@@ -175,7 +178,7 @@ Records the impact analysis proposed by the model for an analysis.
 | `modules` | list | yes | Each: `module`, `files` (from the change set), `risk_level`, `reason`. |
 | `requirements` | list | yes | Each: `requirement_id`, `reason`. May be empty. |
 
-Returns the number of modules and requirements recorded. Replaces a previous impact of the same analysis. Errors: `not_found` for an unknown file or requirement.
+Returns the number of modules and requirements recorded. The impact of an analysis is recorded once. Errors: `not_found` for an unknown file or requirement; `invalid_state` when the analysis already has an impact: a corrected impact needs a new analysis from `git.analyze_changes`.
 
 ### `memory.add_risk`
 
@@ -200,7 +203,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 | `analysis_id` | integer | yes | — |
 | `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
 
-Returns the suite ID. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions.
+Returns the suite ID. `position` orders the presentation of the suite; the test framework decides the execution order. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions, or for a retired test case.
 
 ### `memory.get_suite`
 
@@ -230,14 +233,31 @@ Returns the new `TC` ID. Errors: `invalid_state` when there is no current suite.
 
 ### `memory.update_test_case`
 
-Updates the design of a test case that is still `designed`.
+Updates the description of a test case.
 
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `test_case_id` | string | yes | — |
-| `fields` | object | yes | Any of the design fields of `design_test_case`, except `selection_reason`. |
+| `fields` | object | yes | Any of the design fields of `design_test_case`, except `selection_reason`, within the limits below. |
 
-Errors: `invalid_state` when the test case is `implemented`.
+| Test case | Fields that can change |
+|---|---|
+| `designed` | Every design field. |
+| `implemented`, origin `designed` | `title`, `objective` and `priority`. The other fields describe what the code does; they change only together with the code, through `test_runner.write_test`. |
+| Origin `project_suite` | Every design field. The code belongs to the project; the description documents it. |
+
+Errors: `invalid_state` for a field that cannot change, or for a retired test case.
+
+### `memory.retire_test_case`
+
+Takes a test case out of use: an obsolete test, a generated test that cannot be repaired, or one whose requirement was removed. Its records and history are kept (INV-11).
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `test_case_id` | string | yes | An active test case. |
+| `reason` | string | yes | — |
+
+A retired test case cannot be added to a suite, and its generated test is no longer copied into worktrees. A project test that the test command still runs keeps producing executions. Retiring is permanent. Errors: `invalid_state` when it is already retired.
 
 ### `memory.get_test_cases`
 
@@ -246,6 +266,8 @@ Errors: `invalid_state` when the test case is `implemented`.
 | `ids` | list of strings | no | Default: all. |
 | `status` | string | no | `designed` or `implemented`. |
 | `requirement_id` | string | no | Only test cases traced to it. |
+| `include_code` | boolean | no | Also return the code of generated tests, from `.retro/tests/`. Default: false. |
+| `include_retired` | boolean | no | Also return retired test cases. Default: false. |
 
 Returns each test case with its fields and requirements.
 
@@ -283,6 +305,9 @@ Returns every execution of the test case, oldest first, with run, version, statu
 | `execution_id` | integer | yes | An execution with result `failed` or `error`. |
 | `classification` | string | yes | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing`. |
 | `justification` | string | yes | — |
+| `replace` | boolean | no | Triage again an execution that already has a triage. Default: false. |
+
+With `replace`, a new triage is added and becomes the current one; the earlier ones are kept and the execution is listed for review.
 
 Three classifications are accepted only when code finds their evidence (INV-15):
 
@@ -290,11 +315,11 @@ Three classifications are accepted only when code finds their evidence (INV-15):
 |---|---|
 | `expected_change` | The execution belongs to a run against the candidate, and a requirement traced to the test case has a `Changed` or `Removed` entry that applies to the change between the session versions (`project-contract.md`). |
 | `flaky` | The attempts of the execution have different results, or an earlier execution of the same test case against the same commit has a different verdict. |
-| `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run against the baseline that executed the test case has it with result `failed` or `error`. |
+| `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run on the baseline commit of the session versions that executed the test case has it with result `failed` or `error`. |
 
 `regression`, `environment` and `test_defect` are judgments of the model and are not validated.
 
-Errors: `invalid_state` when the execution did not fail, is already triaged, or lacks the evidence its classification requires; the message names the missing evidence.
+Errors: `invalid_state` when the execution did not fail, is already triaged and `replace` is not `true`, or lacks the evidence its classification requires; the message names the missing evidence.
 
 ### `memory.register_defect`
 
@@ -343,16 +368,17 @@ Writes test code and executes tests (ADR-0009, ADR-0010, ADR-0015).
 
 ### `test_runner.write_test`
 
-Writes the test code of a `designed` test case to `.retro/tests/` and sets it to `implemented`.
+Writes the code of a generated test to `.retro/tests/`. For a `designed` test case, it sets it to `implemented` with revision `1`. For a test case of origin `designed` that is already `implemented`, it rewrites the code and increments the revision.
 
 | Input | Type | Required | Description |
 |---|---|---|---|
-| `test_case_id` | string | yes | A `designed` test case. |
+| `test_case_id` | string | yes | An active test case of origin `designed`. |
 | `file` | string | yes | Path relative to `.retro/tests/`. |
 | `test_name` | string | yes | Name of the test function; must follow `test_req_<NNN>_<description>` when the test case traces a requirement. |
 | `code` | string | yes | Full content of the file. |
+| `fields` | object | no | Only in a rewrite: design fields that change with the code (`preconditions`, `input_data`, `steps`, `expected_result`, `requirement_ids`). |
 
-Returns the implementation reference `<file>::<test name>`. The `test_id` is set when a run first reports the test. Errors: `invalid_state` when the test case is not `designed`; `invalid_argument` when the path leaves `.retro/tests/`.
+Returns the implementation reference `<file>::<test name>` and the revision. The `test_id` is set when a run first reports the test. A rewrite keeps `file` and `test_name`, and writes the code and the design fields in one transaction. Errors: `invalid_state` for a `project_suite` or retired test case; `invalid_argument` when the path leaves `.retro/tests/`, when the file or the test name is used by another generated test, or when a rewrite changes them (INV-17).
 
 ### `test_runner.run_tests`
 
@@ -362,13 +388,20 @@ Creates a run against one session version and executes it, following `project-co
 |---|---|---|---|
 | `version` | string | yes | `base` or `candidate`. |
 | `scope` | string | yes | `suite`, `all` or `selected`. |
-| `test_case_ids` | list of strings | when `selected` | Implemented test cases. |
+| `test_case_ids` | list of strings | when `selected` | Implemented, active test cases. |
+
+| Scope | What runs | Executions created |
+|---|---|---|
+| `all` | `tests.command` as configured: every test of the project and every generated test of an active test case. It needs no known test case, so it is also how the project suite is discovered. | One for each test the JUnit XML reports. A generated test it does not report gets `blocked` with reason `not_reported`. |
+| `suite`, `selected` | The implemented, active test cases of the scope, through `tests.select` when it is configured. | One for each of them, `blocked` with reason `not_reported` when the JUnit XML has no result for it. Results of tests outside the scope are ignored. |
 
 Returns the run ID, its status, the counts of execution statuses and results, and the defects closed by the run. Tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names.
 
-**Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times, always all of them. The result of the execution is the result of the first attempt (INV-04).
+**Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times, always all of them. The result of the execution is the result of the first attempt (INV-04). Reruns use `tests.select` with the test cases to rerun when it is configured; otherwise the test command runs again in full. Each attempt keeps its own JUnit XML in the run directory.
 
-**Closing defects.** When a run against the candidate completes, each open defect is closed if every test case linked to it has an execution in this run with result `passed`. The defect records `closed_by` `run`, the run and a generated reason. A flaky execution never closes a defect, because its result is not `passed`. Errors: `invalid_state` when the scope has no implemented test cases; a failed setup or service produces a run with status `error`, not a tool error.
+**Identity.** Tests are matched to test cases as described in `project-contract.md`, under Test identity.
+
+**Closing defects.** When a run against the candidate completes, each open defect is closed if every test case linked to it has an execution in this run with result `passed`. The defect records `closed_by` `run`, the run and a generated reason. A flaky execution never closes a defect, because its result is not `passed`. Errors: `invalid_state` when the scope is `suite` or `selected` and has no implemented test cases, or when `tests.command` is not configured; a failed setup or service produces a run with status `error`, not a tool error.
 
 ### `test_runner.get_evidence`
 
@@ -376,6 +409,7 @@ Returns the run ID, its status, the counts of execution statuses and results, an
 |---|---|---|---|
 | `run_id` | string | yes | — |
 | `test_case_id` | string | no | Only the evidence of this test case. |
+| `start_line` | integer | no | First line to return. Default: 1. See Large output. |
 
 Returns the failure messages of each attempt and the relevant part of the run log.
 
@@ -389,9 +423,9 @@ Computes metrics, exit criteria and the release decision, following `metrics.md`
 
 | Input | Type | Required | Description |
 |---|---|---|---|
-| `run_id` | string | no | Evaluated run. Default: the latest completed run against the candidate. |
+| `run_id` | string | no | Evaluated run. Default: as defined in `metrics.md`. |
 
-Returns the metrics, the state of each criterion and the decision. Errors: `invalid_state` when the run is not a completed run against the candidate.
+Returns the metrics, the state of each criterion and the decision. Errors: `invalid_state` when the run is not a completed run with scope `suite` against the candidate.
 
 ### `reports.prepare_report`
 

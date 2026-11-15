@@ -142,7 +142,7 @@ Writer: git server.
 | `risk_level` | text | `high`, `medium` or `low` | model | — |
 | `reason` | text | not null | model | Why the module has that risk level. |
 
-Writer: memory server, from the impact analysis proposed by the model.
+Writer: memory server, from the impact analysis proposed by the model. The impact of an analysis is written once; a corrected impact needs a new analysis (INV-10, INV-11).
 
 ### `analysis_requirement`
 
@@ -191,14 +191,20 @@ Writer of both tables: memory server.
 | `steps` | text | not null, default `[]` | model | Ordered list of steps. |
 | `expected_result` | text | | model | — |
 | `test_id` | text | unique | code | Identity in JUnit XML: `<classname>::<name>`. Set the first time a run reports the test, or at discovery. Null while `designed`. |
-| `implementation` | text | | code | `<file>::<test name>`. Null while `designed`. |
+| `implementation` | text | | code | For generated tests, `<file>::<test name>`. For `project_suite` tests, the `file` attribute of the JUnit XML when it has one, otherwise the `classname`, followed by `::<name>`. Null while `designed`. |
+| `revision` | integer | | code | Version of the generated test code: `1` when first written, incremented by each rewrite. Null while `designed` and for `project_suite`. |
+| `retired_at` | text | | code | Null while the test case is active. |
+| `retire_reason` | text | | model | Why it was retired. |
+| `retired_by` | text | | code | Model in use when it was retired. |
 | `created_at` | text | not null | code | — |
 | `updated_at` | text | not null | code | — |
 
 Writers:
 
-- Memory server: creates `designed` test cases and updates their design fields while they are `designed`.
-- Test runner server: sets `implemented` and `implementation` when it writes test code, sets `test_id` the first time a run reports the test, and creates `project_suite` test cases when a run finds a test it does not know.
+- Memory server: creates `designed` test cases, updates design fields within the limits of `memory.update_test_case`, and retires test cases.
+- Test runner server: sets `implemented`, `implementation` and `revision` when it writes test code, increments `revision` and updates the design fields given with a rewrite, sets `test_id` the first time a run reports the test, and creates `project_suite` test cases when a run finds a test it does not know.
+
+A retired test case keeps every record. It cannot be added to a suite, and its generated test is no longer copied into worktrees. Retiring is permanent: a replacement is a new test case.
 
 ### `test_case_requirement`
 
@@ -219,7 +225,7 @@ Writers: memory server (`design`) and test runner server (`name`).
 | `session_id` | integer | not null, references `session` | code | — |
 | `created_at` | text | not null | code | — |
 
-The **current suite** is the latest suite of the latest analysis of the session versions.
+The **current suite** is the latest suite of the latest analysis of the session versions. An analysis belongs to the session versions when its `base_commit` and `candidate_commit` equal their commits. A new analysis starts a new cycle: there is no current suite until a suite is saved for it.
 
 ### `suite_test_case`
 
@@ -227,7 +233,7 @@ The **current suite** is the latest suite of the latest analysis of the session 
 |---|---|---|---|---|
 | `suite_id` | integer | references `suite` | code | — |
 | `test_case_id` | text | references `test_case` | model | Must exist. |
-| `position` | integer | not null | model | Execution and presentation order, from highest priority. |
+| `position` | integer | not null | model | Priority order of the selection, from highest priority. Used for presentation; the test framework decides the execution order (ADR-0017). |
 | `selection_reason` | text | not null | model | Justification of the inclusion (FR-14). |
 
 Writer of both tables: memory server. Test cases designed for the change are added to the current suite when they are designed.
@@ -265,10 +271,23 @@ Writer: test runner server.
 | `test_case_id` | text | not null, references `test_case` | code | Unique together with `run_id`. |
 | `status` | text | `executed`, `blocked` or `skipped` | code | — |
 | `result` | text | `passed`, `failed` or `error` | code | Only when `status` is `executed`. |
-| `reason` | text | | code | Why it was `blocked` or `skipped`. |
+| `reason` | text | | code | Why it was `blocked` or `skipped`. See the reasons below. |
 | `duration` | real | | code | Seconds, from the first attempt. |
+| `test_revision` | integer | | code | `revision` of the generated test code that ran. Null for `project_suite`. |
 
 Writer: test runner server, only from parsed run evidence.
+
+| Status | `reason` | When |
+|---|---|---|
+| `blocked` | `setup_failed` | `tests.setup` failed. |
+| `blocked` | `service_not_ready` | The service did not answer within `service.ready_timeout`. |
+| `blocked` | `no_junit` | The test command produced no valid JUnit XML. |
+| `blocked` | `not_reported` | The run was asked to execute the test case and the JUnit XML has no result for it: the test does not exist in that version, or its file could not be loaded. |
+| `blocked` | `timeout` | `tests.timeout` stopped the test command. |
+| `blocked` | `interrupted` | The user interrupted the run. |
+| `skipped` | Message of the test framework | The JUnit XML reports the test as skipped. |
+
+Which test cases get an execution in a run depends on its scope (`mcp-tools.md`, `test_runner.run_tests`).
 
 ### `attempt`
 
@@ -288,13 +307,16 @@ Writer: test runner server. Attempt `1` is the original execution and gives the 
 
 | Column | Type | Constraints | Source | Description |
 |---|---|---|---|---|
-| `execution_id` | integer | primary key, references `test_execution` | code | One classification per execution. |
+| `id` | integer | primary key | code | — |
+| `execution_id` | integer | not null, references `test_execution` | code | An execution can be triaged again; every triage is kept. |
 | `classification` | text | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing` | model | `expected_change`, `flaky` and `pre_existing` are accepted only with the evidence that `mcp-tools.md` requires. |
 | `justification` | text | not null | model | — |
 | `triaged_by` | text | not null | code | Model that classified it. |
 | `created_at` | text | not null | code | — |
 
 Writer: memory server.
+
+The **current triage** of an execution is its latest row. Metrics, exit criteria and reports use the current triage; an execution with more than one row is listed for review (`reports.md`).
 
 ### `defect`
 
@@ -306,7 +328,7 @@ Writer: memory server.
 | `status` | text | `open` or `closed` | code | Created `open`. |
 | `detected_run_id` | text | not null, references `run` | code | Run of the first linked execution. |
 | `detected_at` | text | not null | code | — |
-| `expected` | text | not null | code | Expected result of the linked test case. |
+| `expected` | text | | code | Expected result of the linked test case. Null when the test case has none. |
 | `actual` | text | not null | code | First line of the failure message of the linked execution. |
 | `steps` | text | not null, default `[]` | model | Steps to reproduce. |
 | `closed_at` | text | | code | — |
@@ -371,17 +393,19 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-02 | A test execution with status `executed` belongs to a run whose `junit_path` is not null. | Trigger |
 | INV-03 | Test executions and attempts are created only by the test runner server; no MCP tool accepts an execution status or result as input. | Tool contracts |
 | INV-04 | The `result` of a test execution equals the result of its first attempt. Later attempts exist only when that result is not `passed`. | Trigger |
-| INV-05 | A test case with status `implemented` has an `implementation`; a `designed` one has neither an `implementation` nor a `test_id`. | `CHECK` constraint |
+| INV-05 | A test case with status `implemented` has an `implementation`; a `designed` one has neither an `implementation`, a `test_id` nor a `revision`. | `CHECK` constraint |
 | INV-06 | A test case with status `designed` has no test executions. | Trigger |
 | INV-07 | Identifiers are assigned by the data layer in sequence and never reused. | Data layer API |
 | INV-08 | A triage, and a link from a defect, refer only to executions with result `failed` or `error`. | Trigger |
 | INV-09 | A run with `scope` `suite` has a `suite_id`, and its executions are only for test cases of that suite. | `CHECK` constraint and trigger |
-| INV-10 | Runs that are not `running`, their executions and attempts, evaluations and rendered reports are never updated. | Triggers |
+| INV-10 | Runs that are not `running`, their executions and attempts, triage rows, the impact of an analysis, evaluations and rendered reports are never updated. | Triggers |
 | INV-11 | Records are never deleted. | Triggers |
 | INV-12 | A defect with status `closed` has a `closed_at`, a `closed_by` and a `close_reason`; an `open` one has none. A defect closed by a run has a `closed_run_id`. | `CHECK` constraint |
 | INV-13 | Every reference made by the model (requirement, test case, file, execution) must exist; otherwise the tool call fails and nothing is written. | Data layer API |
 | INV-14 | A defect is closed only by a run that verifies the fix or by the user. No tool exposed to the model closes a defect. | Tool contracts |
 | INV-15 | A triage with classification `expected_change`, `flaky` or `pre_existing` is stored only when the data layer finds the evidence that `mcp-tools.md` requires. | Data layer API |
+| INV-16 | A retired test case is never added to a suite. | Data layer API |
+| INV-17 | The function name and the file of a generated test are unique among generated tests, and a rewrite keeps both. | Data layer API |
 
 ## Migrations
 

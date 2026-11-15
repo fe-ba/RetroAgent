@@ -1,11 +1,11 @@
 ---
 name: test-design
-description: Design test cases (objective, preconditions, input data, steps, expected result, priority and traceability) for impacted areas, and implement designed test cases as executable test code. Use for /design, /implement, or when asked to write tests.
+description: Design test cases (objective, preconditions, input data, steps, expected result, priority and traceability) for impacted areas, and implement or rewrite them as executable test code. Use for /design, /implement, or when asked to write or fix tests.
 ---
 
 # Test design
 
-Two tasks: **design** creates test case specifications with status `designed`; **implement** writes their test code and sets them to `implemented`. Do only the task that was asked.
+Three tasks: **design** creates test case specifications with status `designed`; **implement** writes their test code and sets them to `implemented`; **rewrite** corrects the code of a generated test that is already `implemented`. Do only the task that was asked.
 
 ## Design
 
@@ -43,11 +43,22 @@ Two tasks: **design** creates test case specifications with status `designed`; *
 3. **Write the code**, one file per test case, with one test function:
    - Name the function `test_req_<NNN>_<description>`, with the number of the first traced requirement and a short description in lowercase with underscores. Without requirements, `test_<description>`. Name the file as the framework requires to discover it.
    - Mention the test case ID in a comment or docstring.
+   - One test function per test case, never parametrized. Its name and its file must not be used by another generated test.
    - Implement the steps and assert the expected result exactly. An assertion that would hold even if the behavior broke is not acceptable.
    - Import the project the way its own tests do. The same file must run unchanged against both versions.
    - When the tests need the running service, read its base URL from `RETRO_BASE_URL`. Never hard-code a host or port.
    - Follow the limits for generated test code in the steering.
 4. **Record.** Call `test_runner.write_test` with the test case ID, the file path relative to `.retro/tests/`, the function name and the full content of the file. If the call is refused, stop: the remaining test cases stay `designed`.
 5. **Answer** with a table (test case, implementation), stating that they are implemented, not executed. Next step: `/run --on both`.
+
+## Rewrite
+
+For a generated test that is wrong (triage `test_defect`) or that verifies a requirement that changed (triage `expected_change`), and when the user asks to fix a test. A test case that is already `implemented` is rewritten, not designed again.
+
+1. **Read.** Call `memory.get_test_cases` with the ID and `include_code` `true`: the design, the current code and the origin. Read the triage and the evidence of the failure (`memory.get_executions`, `test_runner.get_evidence`).
+2. **Origin.** A `project_suite` test belongs to the project: do not rewrite it. Say what must change in it and why.
+3. **Write.** Call `test_runner.write_test` with the same test case ID, the same file and the same test name, and the full corrected code. When the steps, the input data, the expected result or the traced requirements change, pass them in `fields` in the same call, so that the design and the code never disagree.
+4. **Retire.** When the test cannot be repaired, or its requirement was removed, call `memory.retire_test_case` with the reason and tell the user. A replacement is designed as a new test case.
+5. **Answer** with a table (test case, revision or retired, what changed), stating that rewritten test cases are implemented, not executed. Next step: `/run --on both`.
 
 A test for a new or changed requirement is expected to fail against the baseline. That is not a regression; the comparison shows it as fixed in the candidate.

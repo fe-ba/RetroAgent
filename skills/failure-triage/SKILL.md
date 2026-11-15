@@ -48,11 +48,12 @@ Explain every failed or error execution of a run, so that the release decision c
 7. **Answer** with:
    - a table: test case, classification, short justification;
    - the defects registered and linked, and the defects that the run closed (`memory.get_defects` with status `closed`, those closed by this run);
-   - the follow-up: `expected_change` and `test_defect` test cases must be updated (the decision is at most `release_with_conditions`); `pre_existing` failures were already in the baseline (the decision is at most `release_with_conditions`); `flaky` tests need review and a new run; `environment` failures need the environment fixed and a new run.
+   - the follow-up: `expected_change` and `test_defect` test cases must be updated, generated tests with `/implement <id>` and project tests by the user (the decision is at most `release_with_conditions`); `pre_existing` failures were already in the baseline (the decision is at most `release_with_conditions`); `flaky` tests need review and a new run; `environment` failures need the environment fixed and a new run.
 
 ## Rules
 
 - Classify from evidence, never from the test name alone.
 - Never change a result: triage explains a failure, it does not turn it into a pass.
+- Triage an execution again (`replace` `true`) only when the user asks, or when new evidence exists, such as a baseline run made after the first triage. State the previous classification in the justification.
 - You cannot close a defect. A run closes it when every linked test case passes; the user can close it with `/defects close`.
 - The probable cause of a regression is a hypothesis; say so.

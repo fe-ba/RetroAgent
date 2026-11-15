@@ -73,7 +73,7 @@ Defined only at user level, under `models.<profile>`.
 |---|---|---|---|---|
 | `tests.command` | string | none | project | Command that runs the test suite. Required for execution. |
 | `tests.junit` | string | `{junit}` | project | Where the JUnit XML is read from: `{junit}`, a path or a glob, relative to the worktree. |
-| `tests.select` | string | none | project | Command that runs only selected tests, using `{names}`. If absent, the full suite runs and only selected test cases are counted. |
+| `tests.select` | string | none | project | Command that runs only selected tests, using `{names}`. If absent, the full suite runs and only selected test cases are counted. Also used for reruns. |
 | `tests.select_separator` | string | `" or "` | project | Separator used to join test names in `{names}`. |
 | `tests.setup` | string | none | project | Command run once in each new worktree before tests. Must install dependencies locally to the worktree, never globally. |
 | `tests.env` | map | `{}` | project | Extra environment variables for setup and test commands. |
@@ -134,7 +134,7 @@ Available in `tests.*` and `service.*` commands.
 | Placeholder | Value |
 |---|---|
 | `{junit}` | Absolute path where the JUnit XML must be written, inside the run directory. |
-| `{names}` | Selected test names joined with `tests.select_separator`. |
+| `{names}` | Selected test names joined with `tests.select_separator`, as defined under Test identity in `project-contract.md`. |
 | `{port}` | Free port assigned to the service of this version. |
 | `{worktree}` | Absolute path of the worktree being tested. |
 | `{run_dir}` | Absolute path of the run directory (`.retro/runs/<run_id>/`). |

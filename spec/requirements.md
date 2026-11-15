@@ -44,6 +44,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-11 | The agent shall design test cases with objective, preconditions, input data, steps, expected result, priority and traceability. | Must | B2 |
 | FR-12 | The agent shall implement designed test cases as executable code stored in `.retro/tests/` and copied into each worktree before a run. | Must | B2, ADR-0015 |
 | FR-13 | The agent shall maintain traceability between requirements and test cases. | Must | B2 |
+| FR-36 | The agent shall rewrite the code of a generated test and retire a test case, keeping their history. | Should | ADR-0023 |
 
 ### Selection
 

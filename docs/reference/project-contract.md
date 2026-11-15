@@ -95,6 +95,18 @@ Existing tests are linked to requirements through their names, which appear in J
 - A test can reference several requirements.
 - Tests written by RetroAgent follow the form `test_req_004_<description>`.
 
+## Test identity
+
+A test is identified by its entry in the JUnit XML: `<classname>::<name>`. Each entry is one test case, so each case of a parametrized test is a test case of its own.
+
+A generated test is bound to its test case the first time a run reports it: the entry whose `name` equals the function name written by RetroAgent, and whose `classname` ends with the name of its file or is the only entry of the run with that name. To keep this reliable, the function name and the file of a generated test are unique among generated tests, and generated tests are never parametrized.
+
+`{names}` in `tests.select` is the `name` of each selected test, without its parameter suffix (`[...]`) and without duplicates, joined with `tests.select_separator`. A selection command may run more tests than asked, for example when one name is contained in another; results of tests outside the scope are ignored.
+
+## Discovery
+
+RetroAgent learns the tests of the project from the JUnit XML of a full run (`/run all`); there is no separate listing step. The first full run against the baseline discovers the project suite. Tests added by the change are discovered by a full run against the candidate. In plan mode nothing runs, so only test cases already known can be selected.
+
 ## Generated tests
 
 Test code written by RetroAgent is stored in `.retro/tests/`, never in the project tree (ADR-0015). Before each run it is copied into the worktree at `tests.generated_dir`, so it runs with the project's own test setup against both versions. The files in `.retro/tests/` can be versioned and reviewed like any other code; adopting them into the project's own test suite is a manual decision of the user.
@@ -107,9 +119,10 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 4. If `service.start` is set, the service starts on a free port and RetroAgent waits for `service.ready_path` to answer.
 5. `tests.command` (or `tests.select` for a subset) runs in the worktree with the variables listed in `configuration.md`.
 6. Results are read only from the JUnit XML at `tests.junit`.
-7. The service is stopped and the worktree is removed, including its metadata in `.git/worktrees/`.
+7. Each test case whose first attempt did not pass is rerun `tests.reruns` times: with `tests.select` when it is set, otherwise with the full command. Each attempt writes its own JUnit XML.
+8. The service is stopped and the worktree is removed, including its metadata in `.git/worktrees/`.
 
-The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`.
+The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`. When `tests.timeout` stops the command, the run is `interrupted` and its test executions are `blocked`. A test case that the run was asked to execute and that the JUnit XML does not report is `blocked` with reason `not_reported`.
 
 Commands must not require interactive input. Setup must install dependencies locally to the worktree (for example, in a virtual environment), never globally.
 

@@ -11,7 +11,7 @@ Choose the test cases that can reveal whether the change broke something, order 
 
 1. **Analysis.** Call `memory.get_analysis`. If there is none for the session versions, the impact analysis comes first: load the skill `impact-analysis`.
 2. **Candidates.** Call `memory.get_test_cases`.
-   - If no test case has origin `project_suite` and the project has tests of its own (see `RETRO.md` or `git.list_files`), the project suite has not been discovered yet. Call `test_runner.run_tests` with `version` `base` and `scope` `all`, then read the test cases again. If the call is refused, continue with the known test cases and state that the project suite is missing from the selection.
+   - If no test case has origin `project_suite` and the project has tests of its own (see `RETRO.md` or `git.list_files`), the project suite has not been discovered yet. Call `test_runner.run_tests` with `version` `base` and `scope` `all`. When the change set adds or modifies test files (`memory.get_analysis`), also run `version` `candidate` with `scope` `all`, so that the tests added by the change are known. Then read the test cases again. If the call is refused, continue with the known test cases and state that the project suite is missing from the selection.
 3. **Context.** Call `memory.get_risks`, and `memory.get_requirements` for the impacted requirements. For candidates with doubtful relevance, check their implementation file and their history (`memory.get_test_case_history`).
 4. **Select.** Include a test case when at least one applies:
    - it is traced to an impacted requirement;
@@ -19,10 +19,10 @@ Choose the test cases that can reveal whether the change broke something, order 
    - it verifies a high-priority requirement close to a `high` risk module;
    - it failed or was flaky in a recent run, in an impacted area.
 
-   Leave out test cases unrelated to the change set. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
+   Leave out test cases unrelated to the change set. Retired test cases cannot be selected. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
 
    Test cases traced to a requirement with a documented change are included: they may fail as `expected_change` and must be reviewed. Test cases still `designed` from earlier cycles are included only if they are relevant; they count as designed only until implemented.
-5. **Order.** Assign positions from 1:
+5. **Order.** Assign positions from 1. Positions order the presentation of the suite; the test framework decides the execution order:
    1. test cases of `high` risk modules and `high` priority requirements;
    2. test cases of requirements with a documented change;
    3. the rest by risk level, then by priority;

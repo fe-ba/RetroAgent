@@ -30,3 +30,4 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0020](0020-mcp-servers-never-call-the-model.md) | MCP servers never call the model | Accepted |
 | [ADR-0021](0021-context-layers-and-trust.md) | Context layers and trust | Accepted |
 | [ADR-0022](0022-release-decision-guards.md) | Release decision guards | Accepted |
+| [ADR-0023](0023-test-case-identity-and-maintenance.md) | Test case identity and maintenance | Accepted |

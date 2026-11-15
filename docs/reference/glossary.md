@@ -48,15 +48,18 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Regression suite | Test cases that protect existing behavior. |
 | Traceability | Links between requirements and test cases. |
 | Run | One execution of a test suite against one version, with stored evidence. |
-| Full run | Run of every implemented test case against one version (`/run all`). |
+| Full run | Run of the whole test command against one version (`/run all`): every test of the project and every generated test. It is also how the project suite is discovered. |
 | Revealing test case | Test case whose verdict differs between full runs of the baseline and the candidate. |
-| Evaluated run | Run against the candidate for which metrics, exit criteria and the release decision are computed. |
+| Evaluated run | Completed run of a suite against the candidate for which metrics, exit criteria and the release decision are computed. |
 | Evaluation | Stored computation of the metrics, exit criteria and release decision of an evaluated run, with its inputs. |
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
 | Attempt | One try of a test execution. The first attempt gives the result. When it does not pass, the test case is rerun to detect flaky tests; reruns never change the result. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
 | Worktree | Temporary git checkout of a version under `.retro/worktrees/`. The user's working copy is never modified. |
 | Triage | Classification of a failed test execution. |
+| Current triage | The latest triage of a test execution. Earlier ones are kept. |
+| Rewrite | New version of the code of a generated test. The test case keeps its ID and gets a new revision. |
+| Retired test case | Test case taken out of use. It keeps its history, cannot be selected, and its generated test is no longer run. |
 | Defect | Confirmed deviation from expected behavior, registered with a severity. |
 | Risk | Possible negative outcome for the product that testing did not fully rule out. |
 | Exit criteria | Conditions that must hold to finish testing. Evaluated by code. |
@@ -113,7 +116,7 @@ Outcome of a test case in one run.
 | Value | Meaning |
 |---|---|
 | `executed` | Ran, with its outcome in the run evidence. |
-| `blocked` | Could not run because of the environment or a missing dependency. |
+| `blocked` | Could not run because of the environment or a missing dependency, or was not reported by the test command. |
 | `skipped` | Reported as skipped by the test framework, or deliberately excluded. |
 
 ### Test execution `result`
@@ -140,7 +143,7 @@ Only exists when the execution `status` is `executed`.
 | Value | Meaning |
 |---|---|
 | `suite` | The test cases of a suite. |
-| `all` | Every implemented test case: a full run. |
+| `all` | The whole test command: a full run. |
 | `selected` | Test cases chosen by ID. |
 
 ### Triage `classification`

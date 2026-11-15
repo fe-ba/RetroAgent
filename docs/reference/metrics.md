@@ -10,13 +10,15 @@ Metrics are computed for one **evaluated run** (ADR-0016).
 
 | Input | Definition | Default |
 |---|---|---|
-| Evaluated run `R` | A completed run against the candidate version. | Latest completed run against the candidate. |
+| Evaluated run `R` | A completed run with scope `suite` against the candidate version. | Latest such run on the candidate commit of the session versions. |
 | Planned suite `S` | The test cases selected for `R`. | The suite of `R`. |
-| Baseline run `R0` | A completed run against the baseline version, used for comparison. | Latest completed run against the baseline. Needed by EC-09: without it the decision is `do_not_release`. |
-| Full runs `F0`, `F` | Runs of every implemented test case (`/run all`) against the baseline and the candidate. Used only for selection quality. | Latest full run against each version. Optional. |
-| Impact analysis `A` | Impacted requirements for the baseline and candidate of `R`. | The latest analysis for that version pair. |
+| Baseline run `R0` | A completed run against the baseline version, used for comparison. | Latest completed run against the baseline on the baseline commit of `A`. Needed by EC-09: without it the decision is `do_not_release`. |
+| Full runs `F0`, `F` | Runs of every implemented test case (`/run all`) against the baseline and the candidate. Used only for selection quality. | Latest completed full run on the baseline commit and on the candidate commit of `A`. Optional. |
+| Impact analysis `A` | The analysis that `S` was selected for. It fixes the two commits that are compared. | — |
 | Defects | Defects stored in project memory at evaluation time. | — |
 | Thresholds | `exit_criteria.*` from the effective configuration. | See `configuration.md`. |
+
+Runs on other commits are never used: every comparison is between the two commits of `A`. A run with scope `all` or `selected` has no planned suite and cannot be the evaluated run.
 
 The evaluation records its timestamp and the values of every input, so the same report can always be reproduced from stored data.
 
@@ -25,6 +27,7 @@ The evaluation records its timestamp and the values of every input, so the same 
 - Counts refer to test executions of `R`, unless stated otherwise.
 - The result of a test execution is the result of its **first attempt**. An execution whose first attempt did not pass is rerun `tests.reruns` times, always all of them; reruns never change the result (ADR-0022).
 - An execution is **flaky** when its attempts produced different results. A flaky execution therefore always has the result `failed` or `error`, and goes through triage like any other failure.
+- The triage of an execution is its **current triage**: the latest one (`data-model.md`).
 - The **verdict** of an executed execution is `passed` or `not passed` (`failed` or `error`).
 - Ratios are stored and compared as exact values. They are displayed as percentages with one decimal. A criterion is evaluated on the exact value, never on the displayed one.
 - When a denominator is zero, the metric is **not evaluable**, unless the metric states a vacuous value.

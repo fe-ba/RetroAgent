@@ -7,8 +7,8 @@
 | 1. Initialize the project, once | `/init` | — |
 | 2. Set the versions | `/analyze <base> <candidate>` | `impact-analysis` |
 | 3. Read the requirements | `/analyze` | `impact-analysis` |
-| 4. Discover the project suite, the first time | `/run all --on base` | — |
-| 5. Analyze the impact | `/analyze` | `impact-analysis` |
+| 4. Analyze the impact | `/analyze` | `impact-analysis` |
+| 5. Discover the project suite, the first time | `/run all --on base` | `test-selection` |
 | 6. Select the regression suite | `/select` | `test-selection` |
 | 7. Design missing test cases | `/design` | `test-design` |
 | 8. Implement them | `/implement` | `test-design` |

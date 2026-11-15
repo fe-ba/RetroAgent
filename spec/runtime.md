@@ -105,7 +105,7 @@ Slash commands are of two kinds. **Direct** commands are executed by the runtime
 | `/analyze [base] [candidate]` | When refs are given, the runtime first calls `runtime.set_versions`. Then: "Load the skill `impact-analysis` and analyze the impact of the change between the session versions." |
 | `/select` | "Load the skill `test-selection` and select and prioritize the regression suite for the latest impact analysis." |
 | `/design [scope]` | "Load the skill `test-design` and design test cases for `<scope>`." Without scope: "for the impacted areas not covered by the current suite." |
-| `/implement [ids]` | "Load the skill `test-design` and implement the designed test cases `<ids>`." Without IDs: "all designed test cases of the current suite." |
+| `/implement [ids]` | "Load the skill `test-design` and implement the test cases `<ids>`; rewrite those that are already `implemented`." Without IDs: "all designed test cases of the current suite." |
 | `/triage [run_id]` | "Load the skill `failure-triage` and triage the failed executions of run `<run_id>`." Default: the latest run. |
 | `/report <type> [--run <run_id>] [--format <format>]` | "Load the skill `test-reporting` and generate the `<type>` report" followed by the run and format when given. |
 
@@ -120,8 +120,8 @@ The full cycle, as the steering describes it to the model:
 | 1. Initialize the project, once | `/init` | — |
 | 2. Set the versions | `/analyze <base> <candidate>` or flags | `runtime.set_versions` |
 | 3. Read the requirements | part of `/analyze` | `memory.sync_requirements` |
-| 4. Discover the project suite, the first time | `/run all --on base` | `test_runner.run_tests` |
-| 5. Analyze the impact | `/analyze` | `git.analyze_changes`, `git.get_diff`, `memory.save_impact`, `memory.add_risk` |
+| 4. Analyze the impact | part of `/analyze` | `git.analyze_changes`, `git.get_diff`, `memory.save_impact`, `memory.add_risk` |
+| 5. Discover the project suite, the first time | `/run all --on base`, and `--on candidate` when the change adds or modifies tests | `test_runner.run_tests` |
 | 6. Select the regression suite | `/select` | `memory.get_test_cases`, `memory.save_suite` |
 | 7. Design missing test cases | `/design` | `memory.design_test_case` |
 | 8. Implement them | `/implement` | `test_runner.write_test` |

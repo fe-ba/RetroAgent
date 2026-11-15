@@ -89,7 +89,7 @@ A block is replaced by a table or a list, or by its empty message when there is 
 | `table:criteria_thresholds` | ID, Criterion, Threshold, Blocking | Each exit criterion with its effective threshold. | — |
 | `table:criteria` | ID, Criterion, Threshold, Value, State, Blocking | Each exit criterion with its evaluation. | — |
 | `table:deviations` | Test case, Deviation, Reason | Test cases of the suite that were `designed` only, and executions that were `blocked` or `skipped`, with their recorded reason. | No deviations: every planned test case was implemented and executed. |
-| `table:review_items` | Test case, Reason for review, Detail | Excused executions (classification and justification), flaky executions (attempt results) and pre-existing failures (baseline run and result). | Nothing requires review. |
+| `table:review_items` | Test case, Reason for review, Detail | Excused executions (classification and justification), flaky executions (attempt results) pre-existing failures (baseline run and result), and executions triaged more than once (previous and current classification). | Nothing requires review. |
 | `table:open_defects` | ID, Severity, Title, Test cases | Each open defect, highest severity first. | No open defects. |
 | `table:defects` | ID, Title, Severity, Status, Detected in, Test cases | Each defect in the scope of the defect report. | No defects. |
 | `table:deliverables` | Deliverable, Location | Evidence of every run used, generated tests and the folder of this report. | — |

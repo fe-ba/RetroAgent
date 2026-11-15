@@ -14,7 +14,7 @@ Find what the change between the session versions can break, and record it so th
    - `invalid_state`: the project has no requirements configured. Continue; the analysis reaches modules only. Say so and suggest setting `project.requirements`.
    - Files that could not be parsed: name them in the answer.
 3. **Change set.** Call `git.analyze_changes`. Keep the analysis ID. If the change set is empty, say so and stop.
-4. **Read the changes.** Call `git.get_diff` for each changed file that can affect behavior: source code, configuration, schemas, dependency manifests. Files that cannot affect behavior (documentation, formatting only) can be judged from their path, and must be named as such. When a diff lacks context, read the file with `git.read_file`. When a result is `truncated`, say which part was not read.
+4. **Read the changes.** Call `git.get_diff` for each changed file that can affect behavior: source code, configuration, schemas, dependency manifests. Files that cannot affect behavior (documentation, formatting only) can be judged from their path, and must be named as such. When a diff lacks context, read the file with `git.read_file`. When a result is `truncated`, call the tool again with `start_line` set to the `next_line` it returned, until everything that can affect behavior is read. Say which part was not read, if any.
 5. **Modules.** Group the changed files into modules, using the modules described in `RETRO.md` or the directory structure (`git.list_files`). Assign each module a risk level:
 
    | Level | When |

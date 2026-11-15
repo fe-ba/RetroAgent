@@ -83,6 +83,7 @@ Reasons for the decision:
 |---|---|
 | Pass rate | {{ metrics.pass_rate }} |
 | Excused failures | {{ metrics.excused }} |
+| Pre-existing failures | {{ metrics.pre_existing }} |
 | Product pass rate | {{ metrics.product_pass_rate }} |
 | Flaky executions | {{ metrics.flaky }} |
 | Flaky rate | {{ metrics.flaky_rate }} |
@@ -102,6 +103,7 @@ Reasons for the decision:
 | Metric | Value |
 |---|---|
 | New failures | {{ metrics.new_failures }} |
+| New failures not excused | {{ metrics.unexcused_new_failures }} |
 | Fixed | {{ metrics.fixed }} |
 | Persistent failures | {{ metrics.persistent_failures }} |
 | Stable passes | {{ metrics.stable_passes }} |
@@ -136,7 +138,7 @@ Informative only; not part of the exit criteria.
 
 {{ table:review_items }}
 
-Excused failures are excluded from the product pass rate, and flaky failures can reveal real faults. Both are listed so that they can be reviewed.
+Excused failures are excluded from the product pass rate, flaky failures can reveal real faults, and pre-existing failures show that the baseline was already failing. All of them are listed so that they can be reviewed.
 
 ## 9. Residual risks
 

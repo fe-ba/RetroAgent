@@ -8,7 +8,7 @@ Long-term memory of a target project, stored in `.retro/retro.db` (SQLite, ADR-0
 - **Code assigns identifiers.** `REQ`, `TC`, `RUN`, `DEF`, `RSK` and `RPT` identifiers are assigned by the data layer in sequence and never reused. The model never provides an identifier for a new record.
 - **Code reads requirements.** Requirements are parsed from the documents listed in `project.requirements`, in the format of `project-contract.md`, from the candidate version.
 - **History is kept.** Records are never deleted. Runs, test executions, evaluations and reports are immutable once complete.
-- **Model input is marked.** Columns whose content comes from the model are marked *model* in the Source column; everything else is *code*.
+- **Model input is marked.** Columns whose content comes from the model are marked *model* in the Source column, and text typed by the user is marked *user*; everything else is *code*.
 
 ## Conventions
 
@@ -266,7 +266,7 @@ Writer: test runner server.
 | `status` | text | `executed`, `blocked` or `skipped` | code | — |
 | `result` | text | `passed`, `failed` or `error` | code | Only when `status` is `executed`. |
 | `reason` | text | | code | Why it was `blocked` or `skipped`. |
-| `duration` | real | | code | Seconds, from the last attempt. |
+| `duration` | real | | code | Seconds, from the first attempt. |
 
 Writer: test runner server, only from parsed run evidence.
 
@@ -280,7 +280,7 @@ Writer: test runner server, only from parsed run evidence.
 | `duration` | real | | code | Seconds. |
 | `failure_message` | text | | code | From the JUnit XML. |
 
-Writer: test runner server. A test execution is **flaky** when its attempts have different results; this is computed, not stored.
+Writer: test runner server. Attempt `1` is the original execution and gives the result; attempts `2` and later are reruns, created only when attempt `1` did not pass. A test execution is **flaky** when its attempts have different results; this is computed, not stored.
 
 ## Interpretation
 
@@ -289,7 +289,7 @@ Writer: test runner server. A test execution is **flaky** when its attempts have
 | Column | Type | Constraints | Source | Description |
 |---|---|---|---|---|
 | `execution_id` | integer | primary key, references `test_execution` | code | One classification per execution. |
-| `classification` | text | `regression`, `expected_change`, `flaky`, `environment` or `test_defect` | model | — |
+| `classification` | text | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing` | model | `expected_change`, `flaky` and `pre_existing` are accepted only with the evidence that `mcp-tools.md` requires. |
 | `justification` | text | not null | model | — |
 | `triaged_by` | text | not null | code | Model that classified it. |
 | `created_at` | text | not null | code | — |
@@ -310,7 +310,9 @@ Writer: memory server.
 | `actual` | text | not null | code | First line of the failure message of the linked execution. |
 | `steps` | text | not null, default `[]` | model | Steps to reproduce. |
 | `closed_at` | text | | code | — |
-| `close_reason` | text | | model | — |
+| `closed_by` | text | `run` or `user` | code | Null while `open`. |
+| `closed_run_id` | text | references `run` | code | Run that verified the fix, when `closed_by` is `run`. |
+| `close_reason` | text | | code or user | Generated when closed by a run; typed by the user otherwise. |
 
 ### `defect_execution`
 
@@ -319,7 +321,7 @@ Writer: memory server.
 | `defect_id` | text | references `defect` | code | — |
 | `execution_id` | integer | references `test_execution` | model | Must have result `failed` or `error`. |
 
-Writer of both tables: memory server.
+Writers: memory server, for registration and links proposed by the model and for closing by the user; test runner server, for closing by a run. The model cannot close a defect (INV-14).
 
 ## Reporting
 
@@ -368,7 +370,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-01 | A test execution has a `result` if and only if its `status` is `executed`. | `CHECK` constraint |
 | INV-02 | A test execution with status `executed` belongs to a run whose `junit_path` is not null. | Trigger |
 | INV-03 | Test executions and attempts are created only by the test runner server; no MCP tool accepts an execution status or result as input. | Tool contracts |
-| INV-04 | The `result` of a test execution equals the result of its last attempt. | Trigger |
+| INV-04 | The `result` of a test execution equals the result of its first attempt. Later attempts exist only when that result is not `passed`. | Trigger |
 | INV-05 | A test case with status `implemented` has an `implementation`; a `designed` one has neither an `implementation` nor a `test_id`. | `CHECK` constraint |
 | INV-06 | A test case with status `designed` has no test executions. | Trigger |
 | INV-07 | Identifiers are assigned by the data layer in sequence and never reused. | Data layer API |
@@ -376,8 +378,10 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-09 | A run with `scope` `suite` has a `suite_id`, and its executions are only for test cases of that suite. | `CHECK` constraint and trigger |
 | INV-10 | Runs that are not `running`, their executions and attempts, evaluations and rendered reports are never updated. | Triggers |
 | INV-11 | Records are never deleted. | Triggers |
-| INV-12 | A defect with status `closed` has a `closed_at`; an `open` one has none. | `CHECK` constraint |
+| INV-12 | A defect with status `closed` has a `closed_at`, a `closed_by` and a `close_reason`; an `open` one has none. A defect closed by a run has a `closed_run_id`. | `CHECK` constraint |
 | INV-13 | Every reference made by the model (requirement, test case, file, execution) must exist; otherwise the tool call fails and nothing is written. | Data layer API |
+| INV-14 | A defect is closed only by a run that verifies the fix or by the user. No tool exposed to the model closes a defect. | Tool contracts |
+| INV-15 | A triage with classification `expected_change`, `flaky` or `pre_existing` is stored only when the data layer finds the evidence that `mcp-tools.md` requires. | Data layer API |
 
 ## Migrations
 

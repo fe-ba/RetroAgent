@@ -63,6 +63,7 @@ Reasons for the decision:
 | Requirement coverage | {{ metrics.requirement_coverage }} |
 | High-priority execution rate | {{ metrics.high_priority_executed_rate }} |
 | New failures | {{ metrics.new_failures }} |
+| New failures not excused | {{ metrics.unexcused_new_failures }} |
 | Fixed | {{ metrics.fixed }} |
 
 ![Comparison with the baseline](charts/comparison.svg)
@@ -73,7 +74,7 @@ Reasons for the decision:
 
 {{ table:review_items }}
 
-Excused failures are excluded from the product pass rate, and flaky failures can reveal real faults. Both are listed so that they can be reviewed.
+Excused failures are excluded from the product pass rate, flaky failures can reveal real faults, and pre-existing failures show that the baseline was already failing. All of them are listed so that they can be reviewed.
 
 ## 6. New and changed risks
 

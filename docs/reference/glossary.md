@@ -53,7 +53,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Evaluated run | Run against the candidate for which metrics, exit criteria and the release decision are computed. |
 | Evaluation | Stored computation of the metrics, exit criteria and release decision of an evaluated run, with its inputs. |
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
-| Attempt | One try of a test execution. Failed executions are retried to detect flaky tests; the result is the one of the last attempt. |
+| Attempt | One try of a test execution. The first attempt gives the result. When it does not pass, the test case is rerun to detect flaky tests; reruns never change the result. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
 | Worktree | Temporary git checkout of a version under `.retro/worktrees/`. The user's working copy is never modified. |
 | Triage | Classification of a failed test execution. |
@@ -147,7 +147,8 @@ Only exists when the execution `status` is `executed`.
 
 | Value | Meaning |
 |---|---|
-| `regression` | The product does not behave as required. Usually behavior broken by the change; a failure already present in the baseline is also classified here and shows as a persistent failure in the comparison. |
+| `regression` | The product does not behave as required, and the failure is not explained by any other classification. Requires a defect. |
+| `pre_existing` | The test is correct and already failed against the baseline: the failure predates the change. Shows as a persistent failure in the comparison. |
 | `expected_change` | Behavior changed because a requirement changed; the test must be updated. |
 | `flaky` | Non-deterministic result across reruns. |
 | `environment` | Failure caused by infrastructure, not by the product. |
@@ -162,7 +163,7 @@ Only exists when the execution `status` is `executed`.
 | Value | Meaning |
 |---|---|
 | `open` | The defect is present and counts against the exit criteria. |
-| `closed` | The defect is fixed or no longer applies. |
+| `closed` | The defect is fixed or no longer applies. Closed by a run that verifies the fix or by the user, never by the model. |
 
 ### Test case `priority`
 
@@ -178,8 +179,8 @@ Computed by the rule in `metrics.md`.
 
 | Value | Meaning |
 |---|---|
-| `release` | All exit criteria are met, no failure is excused and no planned test case is left designed only. |
-| `release_with_conditions` | No blocking criterion fails, but there are conditions: a non-blocking criterion not met or not evaluable, excused failures, or test cases designed only. |
+| `release` | All exit criteria are met, no failure is excused or pre-existing, and no planned test case is left designed only. |
+| `release_with_conditions` | No blocking criterion fails, but there are conditions: a non-blocking criterion not met or not evaluable, excused failures, pre-existing failures, or test cases designed only. |
 | `do_not_release` | At least one blocking criterion is not met or not evaluable. |
 
 ### Exit criterion `state`

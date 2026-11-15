@@ -58,7 +58,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-15 | The agent shall execute test suites against the baseline and the candidate in isolated worktrees. | Must | B3, ADR-0009 |
 | FR-16 | The agent shall record for each run: `run_id`, version, commit, command, start and end time, duration, exit code, JUnit XML and logs. | Must | B3 |
 | FR-17 | The agent shall record test executions, with their status and result, only from parsed run evidence. | Must | B5, ADR-0006, ADR-0010, ADR-0016 |
-| FR-18 | The agent shall rerun failed test cases a configurable number of times to detect flaky tests. | Should | B3 |
+| FR-18 | The agent shall rerun failed test cases a configurable number of times to detect flaky tests. Reruns shall never change the result of the execution. | Should | B3, ADR-0022 |
 | FR-19 | The agent shall record test executions as `blocked` when the environment prevents them from running. | Must | B5, ADR-0016 |
 
 ### Interpretation
@@ -66,8 +66,8 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
 | FR-20 | The agent shall compare a candidate run with the baseline run and identify new failures, fixed tests and persistent failures. | Must | B4 |
-| FR-21 | The agent shall classify each failed test execution as `regression`, `expected_change`, `flaky`, `environment` or `test_defect`, with a justification. | Must | B4 |
-| FR-22 | The agent shall register defects with severity and link them to test cases and runs. | Must | B4 |
+| FR-21 | The agent shall classify each failed test execution as `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing`, with a justification. Classifications that depend on recorded facts shall be validated by code. | Must | B4, ADR-0022 |
+| FR-22 | The agent shall register defects with severity and link them to test cases and runs. Defects shall be closed only by a run that verifies the fix or by the user. | Must | B4, ADR-0022 |
 | FR-34 | The agent shall measure the quality of its test selection (inclusiveness and precision) when full runs of both versions exist. | Should | B4, ADR-0017 |
 
 ### Memory
@@ -83,6 +83,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 |---|---|---|---|
 | FR-25 | The agent shall generate the test plan, test case specification, test status report, defect report and test completion report. | Must | B4 |
 | FR-26 | The agent shall compute metrics, evaluate exit criteria and produce the release decision deterministically. | Must | B4, ADR-0006 |
+| FR-35 | The release decision shall be `do_not_release` when test cases that passed against the baseline fail against the candidate without a documented reason, or when no baseline run exists to compare with. | Must | B4, ADR-0022 |
 | FR-27 | Reports shall separate computed sections from sections written by the model, and mark the latter. | Must | B5, ADR-0006 |
 | FR-28 | Reports shall include charts of results: outcome distribution and comparison against the baseline. | Must | B4 |
 | FR-29 | The agent shall export reports to Markdown, and to PDF when the PDF dependencies are installed. | Must | B4, ADR-0018 |

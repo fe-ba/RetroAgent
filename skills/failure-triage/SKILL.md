@@ -1,11 +1,11 @@
 ---
 name: failure-triage
-description: Classify each failed or error execution of a run as regression, expected_change, flaky, environment or test_defect with a justification, and register, link or close defects. Use for /triage, or when asked why tests failed.
+description: Classify each failed or error execution of a run as flaky, environment, expected_change, test_defect, pre_existing or regression with a justification, and register or link defects. Use for /triage, or when asked why tests failed.
 ---
 
 # Failure triage
 
-Explain every failed or error execution of a run, so that the release decision can be trusted. Exit criterion EC-08 requires every failure of the evaluated run to be triaged, and every `regression` to be linked to a defect.
+Explain every failed or error execution of a run, so that the release decision can be trusted. Exit criterion EC-08 requires every failure of the evaluated run to be triaged, and every `regression` to be linked to a defect. EC-09 blocks release when a test case that passed against the baseline fails against the candidate, unless the failure is `expected_change` or `test_defect`.
 
 ## Procedure
 
@@ -20,19 +20,23 @@ Explain every failed or error execution of a run, so that the release decision c
 
    | Order | Classification | When |
    |---|---|---|
-   | 1 | `flaky` | The attempts of the execution produced different results, or the history shows the test alternating without a related change. |
+   | 1 | `flaky` | The attempts of the execution produced different results, or an earlier execution of the test case against the same commit had a different verdict. |
    | 2 | `environment` | The failure comes from infrastructure: service not reachable, timeout of an external resource, missing third-party dependency, port or file permission problem. |
-   | 3 | `expected_change` | A traced requirement has a `Changed` or `Removed` entry for the candidate, and the failure matches that documented change. |
+   | 3 | `expected_change` | A traced requirement has a `Changed` or `Removed` entry that applies to the change between the session versions, and the failure matches that documented change. |
    | 4 | `test_defect` | The test itself is wrong: its assertion contradicts the requirement, its data is invalid, or it has an error of its own. |
-   | 5 | `regression` | The product does not behave as required. |
+   | 5 | `pre_existing` | The test is correct and it also failed against the baseline: the failure predates the change. |
+   | 6 | `regression` | The product does not behave as required, and no rule above applies. |
 
    - `expected_change` and `test_defect` remove the failure from the product pass rate. Use them only with concrete evidence: a documented requirement change, or a specific error in the test. When in doubt, classify as `regression` and state the doubt.
    - A failure of a project module that was renamed or removed in the candidate is not `environment`.
-   - When the test also fails against the baseline and the test is correct, the product already failed before the change: classify as `regression`, and say in the justification that the failure predates the change.
+   - Code checks the evidence of `flaky`, `expected_change` and `pre_existing`. When `memory.save_triage` answers `invalid_state` because the evidence is missing, do not insist and do not reword the call: read the message, and classify with the next rule that matches.
+   - A flaky execution has the result of its first attempt, so it is always a failure to classify. `flaky` and `environment` do not excuse it: when the test case passed against the baseline, it still blocks release until a new run passes.
+   - `pre_existing` needs a baseline run that executed the test case. Without one, say that the baseline must be run, and classify as `regression`.
 5. **Record.** Call `memory.save_triage` with the execution, the classification and a justification of one to three sentences that cites the evidence: the failure message, the baseline result with its run, the requirement change, the line of the diff.
 6. **Defects** for each execution classified `regression`:
    - If an open defect (`memory.get_defects` with status `open`) already describes the same failure of the same test case, call `memory.link_defect`.
    - Otherwise call `memory.register_defect`, grouping the executions with the same cause. Steps come from the steps of the test case.
+   - A `pre_existing` failure needs no defect. Register one only when the user asks for it.
 
    | Severity | When |
    |---|---|
@@ -41,14 +45,14 @@ Explain every failed or error execution of a run, so that the release decision c
    | `medium` | A secondary function is wrong, or a workaround exists. |
    | `low` | Cosmetic or minor deviation. |
 
-7. **Close.** When the run is against the candidate, compare the open defects with the passed executions of this run (`memory.get_executions` with `result` `passed`). If every test case linked to a defect passed in this run, call `memory.close_defect` with a reason that names the run.
-8. **Answer** with:
+7. **Answer** with:
    - a table: test case, classification, short justification;
-   - the defects registered, linked and closed;
-   - the follow-up: `expected_change` and `test_defect` test cases must be updated (the decision is at most `release_with_conditions`); `flaky` tests need review; `environment` failures need the environment fixed and a new run.
+   - the defects registered and linked, and the defects that the run closed (`memory.get_defects` with status `closed`, those closed by this run);
+   - the follow-up: `expected_change` and `test_defect` test cases must be updated (the decision is at most `release_with_conditions`); `pre_existing` failures were already in the baseline (the decision is at most `release_with_conditions`); `flaky` tests need review and a new run; `environment` failures need the environment fixed and a new run.
 
 ## Rules
 
 - Classify from evidence, never from the test name alone.
 - Never change a result: triage explains a failure, it does not turn it into a pass.
+- You cannot close a defect. A run closes it when every linked test case passes; the user can close it with `/defects close`.
 - The probable cause of a regression is a hypothesis; say so.

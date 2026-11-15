@@ -12,7 +12,7 @@ Metrics are computed for one **evaluated run** (ADR-0016).
 |---|---|---|
 | Evaluated run `R` | A completed run against the candidate version. | Latest completed run against the candidate. |
 | Planned suite `S` | The test cases selected for `R`. | The suite of `R`. |
-| Baseline run `R0` | A completed run against the baseline version, used for comparison. | Latest completed run against the baseline. Optional. |
+| Baseline run `R0` | A completed run against the baseline version, used for comparison. | Latest completed run against the baseline. Needed by EC-09: without it the decision is `do_not_release`. |
 | Full runs `F0`, `F` | Runs of every implemented test case (`/run all`) against the baseline and the candidate. Used only for selection quality. | Latest full run against each version. Optional. |
 | Impact analysis `A` | Impacted requirements for the baseline and candidate of `R`. | The latest analysis for that version pair. |
 | Defects | Defects stored in project memory at evaluation time. | — |
@@ -23,7 +23,8 @@ The evaluation records its timestamp and the values of every input, so the same 
 ## Conventions
 
 - Counts refer to test executions of `R`, unless stated otherwise.
-- The result of a test execution is the result of its **last attempt**. An execution is **flaky** when its attempts produced different results.
+- The result of a test execution is the result of its **first attempt**. An execution whose first attempt did not pass is rerun `tests.reruns` times, always all of them; reruns never change the result (ADR-0022).
+- An execution is **flaky** when its attempts produced different results. A flaky execution therefore always has the result `failed` or `error`, and goes through triage like any other failure.
 - The **verdict** of an executed execution is `passed` or `not passed` (`failed` or `error`).
 - Ratios are stored and compared as exact values. They are displayed as percentages with one decimal. A criterion is evaluated on the exact value, never on the displayed one.
 - When a denominator is zero, the metric is **not evaluable**, unless the metric states a vacuous value.
@@ -55,6 +56,7 @@ Names are the identifiers used in code, storage and templates.
 | `pass_rate` | `passed / executed` | Raw pass rate. | [ISTQB-FL] |
 | `excused` | `failed` or `error` executions triaged as `expected_change` or `test_defect` | Failures that do not indicate a product problem; the tests must be updated. | Project (ADR-0017) |
 | `product_pass_rate` | `passed / (executed - excused)` | Pass rate of the product. Used by the exit criteria. | Project (ADR-0017) |
+| `pre_existing` | `failed` or `error` executions triaged as `pre_existing` | Failures that the baseline already had. They are not excused: they count against `product_pass_rate` and add a condition to the decision. | Project (ADR-0022) |
 | `flaky` | Executed executions whose attempts produced different results | Detected flaky executions. A lower bound, see below. | [LUO14], [GRU21] |
 | `flaky_rate` | `flaky / executed` | — | [LUO14], [GRU21] |
 
@@ -80,7 +82,11 @@ Requires `R0`. Only test cases executed in both runs are compared. A test case w
 | `stable_passes` | `passed` | `passed` | [RH96] |
 | `not_comparable` | Executed in only one of the two runs | — | Project (ADR-0016) |
 
-Without `R0`, these metrics are not evaluable and the report states it as a limitation.
+| Metric | Formula | Meaning | Basis |
+|---|---|---|---|
+| `unexcused_new_failures` | `new_failures` whose execution in `R` is not `excused` | Behavior that the baseline had and the candidate lost without a documented reason. Untriaged, `flaky` and `environment` failures count. Used by EC-09. Not evaluable when no test case was executed in both runs. | Project (ADR-0022) |
+
+Without `R0`, these metrics are not evaluable and the report states it as a limitation. EC-09 is then `not_evaluable`, which blocks release.
 
 ### Selection quality
 
@@ -123,6 +129,7 @@ A test case is **revealing** when it was executed in both `F0` and `F`, its verd
 | EC-06 | Medium defects | `open_defects.medium <= max_open_defects.medium`; always met when the limit is `null` | No | [ISTQB-FL] |
 | EC-07 | Flaky tests | `flaky_rate <= max_flaky_rate` | No | [LUO14] |
 | EC-08 | Failures triaged | Every `failed` or `error` execution of `R` has a triage classification, and every execution classified `regression` is linked to a defect | Yes | [ISO29119-3] |
+| EC-09 | New failures | `unexcused_new_failures <= max_new_failures` | Yes | [RH96], Project (ADR-0022) |
 
 Thresholds come from `exit_criteria.*` in the configuration. Their default values are common conventions, not values required by any standard. EC-08 has no threshold and is always applied.
 
@@ -139,10 +146,10 @@ Each criterion is evaluated to one state:
 Applied in order. The first rule that matches decides.
 
 1. If any blocking criterion is `not_met` or `not_evaluable`: **`do_not_release`**.
-2. If any non-blocking criterion is `not_met` or `not_evaluable`, or `excused > 0`, or `designed_only > 0`: **`release_with_conditions`**.
+2. If any non-blocking criterion is `not_met` or `not_evaluable`, or `excused > 0`, or `pre_existing > 0`, or `designed_only > 0`: **`release_with_conditions`**.
 3. Otherwise: **`release`**.
 
-A blocking criterion that cannot be evaluated counts against release: when nothing was executed, nothing is released.
+A blocking criterion that cannot be evaluated counts against release: when nothing was executed, or nothing was compared with the baseline, nothing is released.
 
 ### Conditions
 
@@ -153,6 +160,7 @@ When the decision is `release_with_conditions`, the report lists one condition f
 | Non-blocking criterion `not_met` | The criterion, its threshold and its value. |
 | Non-blocking criterion `not_evaluable` | The criterion and why it could not be evaluated. |
 | `excused > 0` | The test cases that must be updated, with their classification. |
+| `pre_existing > 0` | The test cases that already failed against the baseline, with the baseline run. |
 | `designed_only > 0` | The planned test cases that were never implemented. |
 
 ### Exit codes
@@ -162,10 +170,11 @@ The release decision maps to the exit codes in `cli.md`: `release` and `release_
 ## What the metrics do not say
 
 - **A high pass rate only means the executed tests passed.** It says nothing about what was not tested; read it together with `execution_rate` and `requirement_coverage`.
-- **`excused` depends on triage.** A wrong classification moves a real failure out of `product_pass_rate`. Reports list every excused execution so that the classification can be reviewed.
+- **`excused` depends on triage.** A wrong classification moves a real failure out of `product_pass_rate` and out of EC-09. `expected_change` is accepted only when code finds a documented requirement change (`mcp-tools.md`); `test_defect` remains a judgment of the model. Reports list every excused execution so that the classification can be reviewed.
 - **`flaky` is a lower bound.** Reruns detect only part of the flakiness: [GRU21] estimates that 95% confidence that a passing test is not flaky needs on average 170 reruns. RetroAgent runs `tests.reruns` (default 2).
-- **A flaky failure is not noise.** Flaky tests can reveal real faults [FLAKY-CI]. Reports list every flaky execution for review instead of treating its last passing attempt as conclusive.
-- **Defect counts depend on defects being registered.** EC-08 forces every regression to have one, but severity is a judgment.
+- **A flaky failure is not noise.** Flaky tests can reveal real faults [FLAKY-CI]. A flaky execution keeps the result of its first attempt, is triaged like any other failure, and blocks release through EC-09 when the test case passed against the baseline. A later run in which it passes at the first attempt does not erase it: the history keeps the flaky execution.
+- **Defect counts depend on defects being registered.** EC-08 forces every regression to have one, but severity is a judgment. EC-09 does not depend on severity.
+- **The model still shapes the inputs.** The suite, the impacted requirements, priorities, defect severities and the classifications `regression`, `environment` and `test_defect` are judgments of the model. Code computes the decision from them; it cannot make them right. ADR-0022 lists what code validates.
 - **No code coverage.** Measuring it requires language-specific instrumentation, outside the language-agnostic design of ADR-0010.
 
 ## Sources

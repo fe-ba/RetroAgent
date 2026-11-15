@@ -85,6 +85,8 @@ A valid coupon reduces the cart total by its percentage. Only one coupon applies
 
 `Changed` and `Removed` let the agent tell a regression from an expected change: when a requirement changed in the candidate version, a behavior change in that area is classified as `expected_change`, not `regression`.
 
+The version of a `Changed` or `Removed` entry must be a git ref. The entry **applies to the change** between a baseline and a candidate when the commit of that ref is reachable from the candidate and not from the baseline: the requirement changed after the baseline, up to the candidate. An entry whose version does not resolve to a ref never applies; `memory.sync_requirements` reports it. Code checks this before it accepts the classification `expected_change` (`mcp-tools.md`).
+
 ## Traceability
 
 Existing tests are linked to requirements through their names, which appear in JUnit XML for every framework.

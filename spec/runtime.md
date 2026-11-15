@@ -91,6 +91,7 @@ Slash commands are of two kinds. **Direct** commands are executed by the runtime
 | `/status` | Shows the session state and the counts from `memory.get_suite` and `memory.get_runs`. |
 | `/history [n]` | Shows `memory.get_runs` as a table. |
 | `/defects [--all]` | Shows `memory.get_defects` as a table. |
+| `/defects close <id> <reason>` | Calls the user-only tool `memory.close_defect`. The model has no way to close a defect. |
 | `/init` | Same as `retro init`. |
 | `/model`, `/mode` | Show or change the session state. |
 | `/skills`, `/mcp` | List skills and MCP servers with their tools. |

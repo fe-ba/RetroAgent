@@ -14,6 +14,7 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Large output | Tools that return file content, diffs or evidence return at most 20,000 characters and set `truncated` to `true` when they cut. |
 | Models | No MCP tool calls a model (ADR-0020). Text written by the model reaches the servers only as tool arguments. |
 | Mode and permissions | Enforced by the runtime before dispatch. A refused call is recorded with outcome `denied`. |
+| User-only tools | A tool marked user only is called only by the runtime, for a direct command of the user. It is not in the tool definitions, and a call from the model is refused with `denied`. |
 
 ### Errors
 
@@ -56,10 +57,10 @@ Every error returns a code and a message.
 | `memory.save_triage` | write | — | allowed | `triage` |
 | `memory.register_defect` | write | — | allowed | `defect`, `defect_execution` |
 | `memory.link_defect` | write | — | allowed | `defect_execution` |
-| `memory.close_defect` | write | — | allowed | `defect` |
+| `memory.close_defect` | write, user only | — | allowed | `defect` |
 | `memory.get_defects` | read | — | allowed | — |
 | `test_runner.write_test` | write | `write_tests` | refused | `test_case` |
-| `test_runner.run_tests` | write | `run_tests`, and `start_service` when a service is configured | refused | `run`, `test_execution`, `attempt`, `test_case`, `test_case_requirement` |
+| `test_runner.run_tests` | write | `run_tests`, and `start_service` when a service is configured | refused | `run`, `test_execution`, `attempt`, `test_case`, `test_case_requirement`, `defect` |
 | `test_runner.get_evidence` | read | — | allowed | — |
 | `reports.evaluate` | write | — | allowed | `evaluation` |
 | `reports.prepare_report` | write | — | allowed | `evaluation`, `report` |
@@ -146,7 +147,7 @@ Long-term memory of the target project (ADR-0008).
 
 Reads the requirement documents of the candidate version, in the format of `project-contract.md`.
 
-No inputs. Returns the number of requirements read, added and changed, and the files that could not be parsed. Errors: `invalid_state` when `project.requirements` is not configured.
+No inputs. Returns the number of requirements read, added and changed, the files that could not be parsed, and the `Changed` or `Removed` entries whose version does not resolve to a git ref. Errors: `invalid_state` when `project.requirements` is not configured.
 
 ### `memory.get_requirements`
 
@@ -280,10 +281,20 @@ Returns every execution of the test case, oldest first, with run, version, statu
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `execution_id` | integer | yes | An execution with result `failed` or `error`. |
-| `classification` | string | yes | `regression`, `expected_change`, `flaky`, `environment` or `test_defect`. |
+| `classification` | string | yes | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing`. |
 | `justification` | string | yes | — |
 
-Errors: `invalid_state` when the execution did not fail or is already triaged.
+Three classifications are accepted only when code finds their evidence (INV-15):
+
+| Classification | Evidence required |
+|---|---|
+| `expected_change` | The execution belongs to a run against the candidate, and a requirement traced to the test case has a `Changed` or `Removed` entry that applies to the change between the session versions (`project-contract.md`). |
+| `flaky` | The attempts of the execution have different results, or an earlier execution of the same test case against the same commit has a different verdict. |
+| `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run against the baseline that executed the test case has it with result `failed` or `error`. |
+
+`regression`, `environment` and `test_defect` are judgments of the model and are not validated.
+
+Errors: `invalid_state` when the execution did not fail, is already triaged, or lacks the evidence its classification requires; the message names the missing evidence.
 
 ### `memory.register_defect`
 
@@ -309,12 +320,14 @@ Errors: `invalid_state` when the defect is closed or an execution is already lin
 
 ### `memory.close_defect`
 
+User only. Closes a defect by decision of the user: `/defects close` and `retro defects close` (`cli.md`). The model cannot call it (INV-14); defects are otherwise closed by `test_runner.run_tests`.
+
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `defect_id` | string | yes | An open defect. |
-| `reason` | string | yes | — |
+| `reason` | string | yes | Typed by the user. |
 
-Errors: `invalid_state` when the defect is already closed.
+Records `closed_by` `user`. Errors: `invalid_state` when the defect is already closed.
 
 ### `memory.get_defects`
 
@@ -351,7 +364,11 @@ Creates a run against one session version and executes it, following `project-co
 | `scope` | string | yes | `suite`, `all` or `selected`. |
 | `test_case_ids` | list of strings | when `selected` | Implemented test cases. |
 
-Returns the run ID, its status and the counts of execution statuses and results. Tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names. Errors: `invalid_state` when the scope has no implemented test cases; a failed setup or service produces a run with status `error`, not a tool error.
+Returns the run ID, its status, the counts of execution statuses and results, and the defects closed by the run. Tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names.
+
+**Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times, always all of them. The result of the execution is the result of the first attempt (INV-04).
+
+**Closing defects.** When a run against the candidate completes, each open defect is closed if every test case linked to it has an execution in this run with result `passed`. The defect records `closed_by` `run`, the run and a generated reason. A flaky execution never closes a defect, because its result is not `passed`. Errors: `invalid_state` when the scope has no implemented test cases; a failed setup or service produces a run with status `error`, not a tool error.
 
 ### `test_runner.get_evidence`
 

@@ -35,6 +35,7 @@ Without a command, `retro` starts an interactive session on the target project. 
 | `retro config list` | Show the effective configuration and the level each value comes from. |
 | `retro config get <key>` | Show the effective value of `<key>`. |
 | `retro config set <key> <value>` | Set `<key>` at user level. With `--project`, set it in the target project. |
+| `retro defects close <id> --reason <text>` | Close a defect without starting a session, for scripts and CI. Takes the session lock while it writes. |
 
 ## Permission modes
 
@@ -69,6 +70,7 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 | `/status` | Session versions, test cases by status, test executions of the last run by status and result, and current mode. |
 | `/history [n]` | Last `n` runs. Default: 10. |
 | `/defects [--all]` | Open defects. With `--all`, include closed ones. |
+| `/defects close <id> <reason>` | Close a defect by decision of the user, for example when it was fixed outside the tested scope or no longer applies. Otherwise defects are closed only by a run against the candidate in which every linked test case passes. |
 
 ### Session
 

@@ -190,7 +190,7 @@ Writer of both tables: memory server.
 | `input_data` | text | not null, default `[]` | model | List of `{"name", "value"}` objects. |
 | `steps` | text | not null, default `[]` | model | Ordered list of steps. |
 | `expected_result` | text | | model | — |
-| `test_id` | text | unique | code | Identity in JUnit XML: `<classname>::<name>`. Null while `designed`. |
+| `test_id` | text | unique | code | Identity in JUnit XML: `<classname>::<name>`. Set the first time a run reports the test, or at discovery. Null while `designed`. |
 | `implementation` | text | | code | `<file>::<test name>`. Null while `designed`. |
 | `created_at` | text | not null | code | — |
 | `updated_at` | text | not null | code | — |
@@ -198,7 +198,7 @@ Writer of both tables: memory server.
 Writers:
 
 - Memory server: creates `designed` test cases and updates their design fields while they are `designed`.
-- Test runner server: sets `implemented`, `test_id` and `implementation` when it writes test code, and creates `project_suite` test cases when a run finds a test it does not know.
+- Test runner server: sets `implemented` and `implementation` when it writes test code, sets `test_id` the first time a run reports the test, and creates `project_suite` test cases when a run finds a test it does not know.
 
 ### `test_case_requirement`
 
@@ -369,7 +369,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-02 | A test execution with status `executed` belongs to a run whose `junit_path` is not null. | Trigger |
 | INV-03 | Test executions and attempts are created only by the test runner server; no MCP tool accepts an execution status or result as input. | Tool contracts |
 | INV-04 | The `result` of a test execution equals the result of its last attempt. | Trigger |
-| INV-05 | A test case with status `implemented` has a `test_id` and an `implementation`; a `designed` one has neither. | `CHECK` constraint |
+| INV-05 | A test case with status `implemented` has an `implementation`; a `designed` one has neither an `implementation` nor a `test_id`. | `CHECK` constraint |
 | INV-06 | A test case with status `designed` has no test executions. | Trigger |
 | INV-07 | Identifiers are assigned by the data layer in sequence and never reused. | Data layer API |
 | INV-08 | A triage, and a link from a defect, refer only to executions with result `failed` or `error`. | Trigger |

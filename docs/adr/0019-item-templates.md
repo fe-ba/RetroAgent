@@ -29,5 +29,5 @@ A fourth marker extends ADR-0018:
 ## Consequences
 
 - The layout of test cases and defects is editable Markdown.
-- An agent section inside an item template costs one model call per element; item templates should contain few of them.
+- An agent section inside an item template adds one text for the model to write per element; item templates should contain few of them.
 - Report generation validates that every `items` marker has its item template.

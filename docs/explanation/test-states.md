@@ -79,7 +79,7 @@ The same test case accumulates test executions over time and across versions. Th
 | State | Set by | Based on |
 |---|---|---|
 | `designed` | The memory tool, when the agent registers a test case design | The stored specification |
-| `implemented` | The runtime, after writing test code with permission; or test discovery in the project suite | A file in `.retro/tests/`, or a test name in the suite |
+| `implemented` | The test runner, after writing test code with permission, or when a run finds a test of the project suite | A file in `.retro/tests/`, or a test name in the suite |
 | `executed` and its `result` | The test runner only | Parsed JUnit XML of a run with a `run_id` |
 | `blocked` | The test runner | The run record, its logs and the failed step |
 | `skipped` | The test runner | JUnit XML or the run selection |

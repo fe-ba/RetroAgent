@@ -147,7 +147,7 @@ Only exists when the execution `status` is `executed`.
 
 | Value | Meaning |
 |---|---|
-| `regression` | Previously working behavior broken by the change. |
+| `regression` | The product does not behave as required. Usually behavior broken by the change; a failure already present in the baseline is also classified here and shows as a persistent failure in the comparison. |
 | `expected_change` | Behavior changed because a requirement changed; the test must be updated. |
 | `flaky` | Non-deterministic result across reruns. |
 | `environment` | Failure caused by infrastructure, not by the product. |

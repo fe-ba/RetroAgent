@@ -182,6 +182,8 @@ If the model is not available or returns nothing, the text is `Not provided.` an
 | `agent:next_steps` | Status | Testing planned next, and what it depends on. |
 | `agent:analysis` | Defect item | Impact of the defect and its probable cause, stated as a hypothesis. |
 
+Agent sections are named without the `agent:` prefix, for example `conclusions`. Inside items, the name ends with the element: `analysis.DEF-001`. `reports.prepare_report` lists every section to write by that name.
+
 ## Charts
 
 | Chart | File | Data | Used in |

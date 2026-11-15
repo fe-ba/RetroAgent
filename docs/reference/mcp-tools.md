@@ -55,6 +55,7 @@ Every error returns a code and a message.
 | `memory.get_test_case_history` | read | — | allowed | — |
 | `memory.save_triage` | write | — | allowed | `triage` |
 | `memory.register_defect` | write | — | allowed | `defect`, `defect_execution` |
+| `memory.link_defect` | write | — | allowed | `defect_execution` |
 | `memory.close_defect` | write | — | allowed | `defect` |
 | `memory.get_defects` | read | — | allowed | — |
 | `test_runner.write_test` | write | `write_tests` | refused | `test_case` |
@@ -196,7 +197,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `analysis_id` | integer | yes | — |
-| `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. |
+| `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
 
 Returns the suite ID. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions.
 
@@ -295,6 +296,17 @@ Errors: `invalid_state` when the execution did not fail or is already triaged.
 
 Returns the new `DEF` ID. The expected and actual results are taken by code from the first execution.
 
+### `memory.link_defect`
+
+Links more executions to an open defect, when the same failure appears in a later run.
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `defect_id` | string | yes | An open defect. |
+| `execution_ids` | list of integers | yes | Failed or error executions; at least one. |
+
+Errors: `invalid_state` when the defect is closed or an execution is already linked to it.
+
 ### `memory.close_defect`
 
 | Input | Type | Required | Description |
@@ -383,7 +395,7 @@ Second step: writes the report files and sets the report to `rendered`.
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `report_id` | string | yes | A `draft` report. |
-| `sections` | object | yes | Text of each agent section, by name. Missing sections are rendered as `Not provided.`. |
+| `sections` | object | yes | Text of each agent section, by the names listed by `reports.prepare_report`. Missing sections are rendered as `Not provided.`. |
 
 Returns the paths of the produced files. Errors: `invalid_argument` for a section the report does not have; `invalid_state` when the report is already rendered; `unavailable` when PDF was requested and its libraries are missing (the Markdown is still produced).
 

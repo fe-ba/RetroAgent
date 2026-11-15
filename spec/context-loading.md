@@ -59,6 +59,7 @@ Headings of empty levels are omitted.
 ## Steering
 
 - Steering files are named `NN-<name>.md`, are plain Markdown without frontmatter, and are loaded in ascending order of `NN` within each level.
+- Steering files start with a level-2 heading, because they are placed under `# Steering`.
 - Levels are loaded in this order: bundled, user (`~/.retro/steering/`), project (`.retro/steering/`).
 - Bundled steering is always loaded in full. Additional steering never replaces or removes it: a file with the same name as a bundled one is loaded as an additional file.
 - Project steering is loaded only after the user approves it (ADR-0021).

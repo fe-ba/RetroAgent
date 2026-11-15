@@ -26,3 +26,4 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0016](0016-test-executions-per-run.md) | Test executions per run | Accepted |
 | [ADR-0017](0017-test-metrics-basis.md) | Test metrics basis | Accepted |
 | [ADR-0018](0018-report-templates-and-rendering.md) | Report templates and rendering | Accepted |
+| [ADR-0019](0019-item-templates.md) | Item templates | Accepted |

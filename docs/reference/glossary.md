@@ -55,6 +55,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Exit criteria | Conditions that must hold to finish testing. Evaluated by code. |
 | Release decision | Recommendation computed from the exit criteria. Explained, never decided, by the model. |
 | Agent section | Part of a report written by the model, always marked with the model that wrote it. |
+| Item template | Template rendered once per element of a report, such as a test case or a defect. |
 
 ## Identifiers
 

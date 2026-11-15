@@ -28,9 +28,9 @@ Metric and exit criterion definitions are in docs/reference/metrics.md.
 | Not met | {{ criteria.not_met }} |
 | Not evaluable | {{ criteria.not_evaluable }} |
 
-Conditions for release:
+Reasons for the decision:
 
-{{ list:conditions }}
+{{ list:decision_reasons }}
 
 <!-- agent:conclusions -->
 

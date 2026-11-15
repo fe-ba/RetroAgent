@@ -19,7 +19,7 @@ Reports are the main output of RetroAgent: the test completion report answers ho
 
 Charts are referenced with plain Markdown and fixed relative paths (`charts/outcomes.svg`). An unknown marker stops report generation with an error that names it.
 
-**Values** are formatted by code: ratios as percentages with one decimal, counts as integers, durations in seconds, and missing values as `not evaluable`. This removes the need for conditions in templates.
+**Values** are formatted by code: ratios as percentages with one decimal, counts as integers, durations in seconds, timestamps in ISO 8601 with their UTC offset, and lists joined with commas. A missing metric is shown as `not evaluable`; any other missing value is shown as `none`. This removes the need for conditions in templates.
 
 **Output.** Each report is written to `.retro/reports/<report-id>-<type>/` (for example `RPT-0003-completion/`) with `report.md`, `report.pdf` and `charts/`. The Markdown file is the source of truth; the PDF is always produced from it.
 

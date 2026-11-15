@@ -47,6 +47,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Full run | Run of every implemented test case against one version (`/run all`). |
 | Revealing test case | Test case whose verdict differs between full runs of the baseline and the candidate. |
 | Evaluated run | Run against the candidate for which metrics, exit criteria and the release decision are computed. |
+| Evaluation | Stored computation of the metrics, exit criteria and release decision of an evaluated run, with its inputs. |
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
 | Attempt | One try of a test execution. Failed executions are retried to detect flaky tests; the result is the one of the last attempt. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
@@ -73,6 +74,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Non-functional requirement | `NFR-01` | RetroAgent |
 | Acceptance scenario | `SC-01` | RetroAgent |
 | Exit criterion | `EC-01` | RetroAgent |
+| Data invariant | `INV-01` | RetroAgent |
 | Architecture decision record | `ADR-0001` | RetroAgent |
 
 ## Enumerations
@@ -85,6 +87,20 @@ Life cycle of a test case, independent of any run.
 |---|---|
 | `designed` | Specified; no executable code yet. |
 | `implemented` | Executable test code exists. |
+
+### Test case `origin`
+
+| Value | Meaning |
+|---|---|
+| `designed` | Designed by the agent. |
+| `project_suite` | Found in the test suite of the target project. |
+
+### Version `role`
+
+| Value | Meaning |
+|---|---|
+| `base` | The baseline version. |
+| `candidate` | The candidate version. |
 
 ### Test execution `status`
 
@@ -105,6 +121,23 @@ Only exists when the execution `status` is `executed`.
 | `passed` | All assertions held. |
 | `failed` | At least one assertion did not hold. |
 | `error` | The test could not complete (exception, setup failure). |
+
+### Run `status`
+
+| Value | Meaning |
+|---|---|
+| `running` | The run has started and has not finished. |
+| `completed` | The test command finished and its results were recorded. |
+| `error` | A step failed before results could be recorded; its executions are `blocked`. |
+| `interrupted` | The run was stopped by the user or by a timeout. |
+
+### Run `scope`
+
+| Value | Meaning |
+|---|---|
+| `suite` | The test cases of a suite. |
+| `all` | Every implemented test case: a full run. |
+| `selected` | Test cases chosen by ID. |
 
 ### Triage `classification`
 

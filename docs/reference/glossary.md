@@ -43,7 +43,10 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Regression suite | Test cases that protect existing behavior. |
 | Traceability | Links between requirements and test cases. |
 | Run | One execution of a test suite against one version, with stored evidence. |
+| Full run | Run of every implemented test case against one version (`/run all`). |
+| Revealing test case | Test case whose verdict differs between full runs of the baseline and the candidate. |
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
+| Attempt | One try of a test execution. Failed executions are retried to detect flaky tests; the result is the one of the last attempt. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
 | Worktree | Temporary git checkout of a version under `.retro/worktrees/`. The user's working copy is never modified. |
 | Triage | Classification of a failed test execution. |
@@ -64,6 +67,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Functional requirement | `FR-01` | RetroAgent |
 | Non-functional requirement | `NFR-01` | RetroAgent |
 | Acceptance scenario | `SC-01` | RetroAgent |
+| Exit criterion | `EC-01` | RetroAgent |
 | Architecture decision record | `ADR-0001` | RetroAgent |
 
 ## Enumerations
@@ -111,6 +115,13 @@ Only exists when the execution `status` is `executed`.
 
 `critical`, `high`, `medium`, `low`.
 
+### Defect `status`
+
+| Value | Meaning |
+|---|---|
+| `open` | The defect is present and counts against the exit criteria. |
+| `closed` | The defect is fixed or no longer applies. |
+
 ### Test case `priority`
 
 `high`, `medium`, `low`.
@@ -122,6 +133,14 @@ Only exists when the execution `status` is `executed`.
 | `release` | All exit criteria met. |
 | `release_with_conditions` | Only non-blocking criteria failed; conditions are listed. |
 | `do_not_release` | At least one blocking criterion failed. |
+
+### Exit criterion `state`
+
+| Value | Meaning |
+|---|---|
+| `met` | The condition holds. |
+| `not_met` | The condition does not hold. |
+| `not_evaluable` | A metric the criterion depends on cannot be computed. |
 
 ### Permission `mode`
 

@@ -1,6 +1,7 @@
 # ADR-NNNN: Title
 
 - **Status:** Proposed | Accepted | Superseded by ADR-NNNN
+- **Supersedes:** ADR-NNNN (only when it replaces another ADR)
 - **Date:** YYYY-MM-DD
 
 ## Context

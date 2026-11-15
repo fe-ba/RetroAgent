@@ -54,6 +54,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Risk | Possible negative outcome for the product that testing did not fully rule out. |
 | Exit criteria | Conditions that must hold to finish testing. Evaluated by code. |
 | Release decision | Recommendation computed from the exit criteria. Explained, never decided, by the model. |
+| Agent section | Part of a report written by the model, always marked with the model that wrote it. |
 
 ## Identifiers
 
@@ -64,6 +65,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Run | `RUN-0001` | Target project |
 | Defect | `DEF-001` | Target project |
 | Risk | `RSK-001` | Target project |
+| Report | `RPT-0001` | Target project |
 | Functional requirement | `FR-01` | RetroAgent |
 | Non-functional requirement | `NFR-01` | RetroAgent |
 | Acceptance scenario | `SC-01` | RetroAgent |

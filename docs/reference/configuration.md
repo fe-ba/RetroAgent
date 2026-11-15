@@ -49,6 +49,7 @@ Defined only at user level, under `models.<profile>`.
 | `api_key_env` | string | none | Name of the environment variable that holds the API key. The key itself is never stored in configuration. |
 | `tool_calling` | enum | `auto` | `auto` detects support, `native` forces tool calling, `json` forces the JSON fallback mode. |
 | `temperature` | number | `0` | Sampling temperature. Low values favor reproducible behavior. |
+| `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). |
 
 ### Agent
 

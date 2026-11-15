@@ -40,11 +40,13 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Test case | Specification of one test: objective, preconditions, input data, steps, expected result, priority and traceability. |
 | Generated test | Test code written by RetroAgent, stored in `.retro/tests/` and copied into each worktree before a run. |
 | Test suite | Set of test cases selected for a run. |
+| Current suite | The test suite selected for the latest impact analysis of the session versions. |
 | Regression suite | Test cases that protect existing behavior. |
 | Traceability | Links between requirements and test cases. |
 | Run | One execution of a test suite against one version, with stored evidence. |
 | Full run | Run of every implemented test case against one version (`/run all`). |
 | Revealing test case | Test case whose verdict differs between full runs of the baseline and the candidate. |
+| Evaluated run | Run against the candidate for which metrics, exit criteria and the release decision are computed. |
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
 | Attempt | One try of a test execution. Failed executions are retried to detect flaky tests; the result is the one of the last attempt. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
@@ -129,13 +131,19 @@ Only exists when the execution `status` is `executed`.
 
 `high`, `medium`, `low`.
 
+### Risk `level`
+
+`high`, `medium`, `low`. Assigned to impacted areas and to registered risks.
+
 ### Release `decision`
+
+Computed by the rule in `metrics.md`.
 
 | Value | Meaning |
 |---|---|
-| `release` | All exit criteria met. |
-| `release_with_conditions` | Only non-blocking criteria failed; conditions are listed. |
-| `do_not_release` | At least one blocking criterion failed. |
+| `release` | All exit criteria are met, no failure is excused and no planned test case is left designed only. |
+| `release_with_conditions` | No blocking criterion fails, but there are conditions: a non-blocking criterion not met or not evaluable, excused failures, or test cases designed only. |
+| `do_not_release` | At least one blocking criterion is not met or not evaluable. |
 
 ### Exit criterion `state`
 

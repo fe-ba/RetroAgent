@@ -68,6 +68,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-20 | The agent shall compare a candidate run with the baseline run and identify new failures, fixed tests and persistent failures. | Must | B4 |
 | FR-21 | The agent shall classify each failed test execution as `regression`, `expected_change`, `flaky`, `environment` or `test_defect`, with a justification. | Must | B4 |
 | FR-22 | The agent shall register defects with severity and link them to test cases and runs. | Must | B4 |
+| FR-34 | The agent shall measure the quality of its test selection (inclusiveness and precision) when full runs of both versions exist. | Should | B4, ADR-0017 |
 
 ### Memory
 
@@ -84,7 +85,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-26 | The agent shall compute metrics, evaluate exit criteria and produce the release decision deterministically. | Must | B4, ADR-0006 |
 | FR-27 | Reports shall separate computed sections from sections written by the model, and mark the latter. | Must | B5, ADR-0006 |
 | FR-28 | Reports shall include charts of results: outcome distribution and comparison against the baseline. | Must | B4 |
-| FR-29 | The agent shall export reports to Markdown and PDF. | Must | B4 |
+| FR-29 | The agent shall export reports to Markdown, and to PDF when the PDF dependencies are installed. | Must | B4, ADR-0018 |
 | FR-30 | The agent shall display summaries of runs and results as tables in the terminal. | Must | B4 |
 
 ### Extensibility

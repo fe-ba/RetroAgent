@@ -55,9 +55,9 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 | Command | Description |
 |---|---|
 | `/analyze [base] [candidate]` | Compute the change set and the impact analysis. Sets the session versions when given. |
+| `/select` | Select and prioritize the regression suite for the current change. |
 | `/design [scope]` | Design test cases for the impacted areas, or for `scope` (requirement IDs, modules or free text). |
 | `/implement [ids]` | Write executable test code for designed test cases (all designed ones by default). Code is stored in `.retro/tests/`. Requires `permissions.write_tests`. |
-| `/select` | Select and prioritize the regression suite for the current change. |
 | `/run [target] [--on <version>]` | Execute tests. `target`: `suite` (default), `all` (every implemented test case; needed for selection quality metrics), or test case IDs. `--on`: `base`, `candidate` (default) or `both`. Test cases with status `designed` are not run; implement them first. |
 | `/triage [run_id]` | Classify the failures of a run. Default: last run. |
 | `/report <type> [--run <run_id>] [--format <format>]` | Generate a report. `type`: `test-plan`, `test-cases`, `status`, `defects`, `completion`. `format`: `md` or `pdf`; default from `reports.default_format`. |

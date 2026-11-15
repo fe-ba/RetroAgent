@@ -28,3 +28,4 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0018](0018-report-templates-and-rendering.md) | Report templates and rendering | Accepted |
 | [ADR-0019](0019-item-templates.md) | Item templates | Accepted |
 | [ADR-0020](0020-mcp-servers-never-call-the-model.md) | MCP servers never call the model | Accepted |
+| [ADR-0021](0021-context-layers-and-trust.md) | Context layers and trust | Accepted |

@@ -21,6 +21,7 @@ The project configuration belongs to the target project, which may come from an 
 - `models` can only be defined at user level. A project can only select a profile by name with `model`.
 - `permissions` at project level can only make actions stricter (`allow` to `ask` or `deny`, `ask` to `deny`), never looser.
 - MCP servers declared by a project require user approval the first time they are used. Approvals are stored in `~/.retro/approvals.json`.
+- Steering and skills of a project are loaded only after user approval, and never replace bundled or user ones (ADR-0021).
 - The permission mode is not a configuration key. It is set only with `--mode` or `/mode`.
 
 ## Validation
@@ -161,7 +162,7 @@ Available in `tests.*` and `service.*` commands.
 ~/.retro/
 ├── config.yaml          # User configuration and model profiles
 ├── mcp.json             # Optional: user MCP servers
-├── approvals.json       # Approved project MCP servers (managed by RetroAgent)
+├── approvals.json       # Approved project MCP servers, steering and skills (managed by RetroAgent)
 ├── skills/              # Optional: user skills
 └── steering/            # Optional: user steering
 ```

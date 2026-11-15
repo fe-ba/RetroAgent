@@ -24,6 +24,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | MCP server | Process that exposes tools through the Model Context Protocol. |
 | Tool | A single callable operation exposed by an MCP server or by the runtime. |
 | Session | One interactive or non-interactive execution of `retro`. |
+| System context | Instructions and information sent to the model on every call: steering, session block, project context and skills index. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
 | Permission | User approval required before running tests, starting a service or writing test code. |
 

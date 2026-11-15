@@ -113,7 +113,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | NFR-11 | Portability | The agent shall run on Linux, macOS and Windows with Python 3.11 or later. | Should | — |
 | NFR-12 | Testability | Metrics, exit criteria evaluation and the release decision shall be fully covered by unit tests. | Must | ADR-0006 |
 | NFR-13 | Language | All project content shall be in English. The language of responses and reports shall be configurable. | Must | ADR-0012 |
-| NFR-14 | Untrusted configuration | The configuration of a target project shall not define model providers, loosen permissions or enable MCP servers without user approval. | Must | ADR-0014 |
+| NFR-14 | Untrusted configuration | The configuration of a target project shall not define model providers, loosen permissions, or enable MCP servers, steering or skills without user approval. | Must | ADR-0014, ADR-0021 |
 
 ## Out of scope
 

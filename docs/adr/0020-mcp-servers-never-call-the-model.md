@@ -1,6 +1,6 @@
 # ADR-0020: MCP servers never call the model
 
-- **Status:** Accepted
+- **Status:** Accepted. Channel of the session context defined by ADR-0026
 - **Date:** 2026-11-15
 
 ## Context

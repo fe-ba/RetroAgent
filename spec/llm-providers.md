@@ -39,7 +39,7 @@ One model call. The runtime never calls a provider library directly.
 | Field | Type | Description |
 |---|---|---|
 | `tool_calling` | boolean or null | Whether the model supports tool calling; null when unknown. |
-| `context_window` | integer or null | Maximum context size in tokens; null when unknown. |
+| `context_window` | integer or null | Maximum context size in tokens; null when unknown. The `context_window` of the model profile takes precedence. |
 
 ### Streaming
 
@@ -102,7 +102,7 @@ An invalid answer is returned to the model as a user message with the validation
 | Rate limit | Up to 3 | Waits the time the provider indicates, or 2, 4 and 8 seconds. |
 | Network error, server error or timeout | Up to 3 | Waits 2, 4 and 8 seconds. |
 | Authentication rejected | None | Runtime error that names the variable of the profile, not its value. |
-| Context window exceeded | None | The runtime stops the call and suggests `/clear` (`context-loading.md`). |
+| Context window exceeded | 1 | The runtime frees context and retries once (`context-loading.md`); then a runtime error. |
 | Invalid request | None | Runtime error with the provider message. |
 | Response cut by `length` with tool calls | 1 | Retried once with an instruction to answer more briefly; then a runtime error. |
 | Response cut by `length` without tool calls | None | The text is kept and marked as incomplete. |

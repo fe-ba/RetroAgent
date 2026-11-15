@@ -1,6 +1,6 @@
 # ADR-0002: Model-agnostic runtime
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0026
 - **Date:** 2026-11-14
 
 ## Context

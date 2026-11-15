@@ -10,6 +10,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | `retro` | The CLI command. |
 | `RETRO.md` | Project context file at the root of a target project. Created by `/init`. |
 | `.retro/` | Project-level folder: configuration, extensions, generated tests, memory, runs and reports. |
+| Bundled resources | `src/retroagent/resources/`: the steering, skills, templates and examples shipped inside the package. Paths such as `steering/` or `templates/` in this documentation are relative to it. |
 | `~/.retro/` | User-level folder: model configuration, global extensions, approvals, worktrees and caches. |
 
 ## Agent architecture
@@ -27,6 +28,8 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | System context | Instructions and information sent to the model on every call: steering, session block, project context and skills index. |
 | Turn | One user message and every model call and tool call that follows, until the model answers without tool calls. |
 | Slash command | Command typed in a session, such as `/run`. Direct commands run without the model; model commands become a message to the model. |
+| Cycle command | `/cycle`: the regression cycle run by the runtime one step at a time, each step in a fresh conversation and checked against stored data. |
+| Context budget | Share of the context window of the model that a call may use. When it is exceeded, the runtime replaces old tool results with a note. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
 | JSON fallback mode | Mode for models without tool calling: tools are described in the system context and the model answers with JSON that the runtime validates. |
 | Permission | Consent of the user, asked before running tests, starting a service or writing test code. |

@@ -18,12 +18,14 @@
 
 Each step uses the records stored by the previous ones. When the user asks for one step, do that step and suggest the next one in a single line. When the user asks for the whole cycle, do the steps in order and stop when a tool call fails or is refused, or when a decision of the user is needed. Failed tests are not a reason to stop: triage exists for them.
 
-To run tests, call `test_runner.run_tests` with `version` `base` or `candidate`. Run the baseline before the candidate.
+During `/cycle` the runtime gives you one step at a time, named in the session block. Do only that step and end the turn; the runtime starts the next one. Each step starts with an empty conversation: read what you need from project memory.
+
+To run tests, call `test_runner__run_tests` with `version` `base` or `candidate`. Run the baseline before the candidate.
 
 ### State
 
-- Read the current state before acting: the session block, then `memory.get_analysis`, `memory.get_suite` and `memory.get_runs` as needed. Do not assume that a step was done.
-- The session versions are in the session block. When a task needs them and they are `not set`, ask the user for the refs, then call `runtime.set_versions`. Never guess a ref.
+- Read the current state before acting: the session block, then `memory__get_analysis`, `memory__get_suite` and `memory__get_runs` as needed. Do not assume that a step was done.
+- The session versions are in the session block. When a task needs them and they are `not set`, ask the user for the refs, then call `runtime__set_versions`. Never guess a ref.
 
 ### Missing information
 
@@ -43,4 +45,4 @@ When information is missing (no requirements, no versions, no test command, a re
 | `invalid_argument` | Correct the arguments as the message says. |
 | `execution_failed`, `unavailable` | Report the message. Do not retry more than once. |
 
-A run with status `error` is not a tool error: its executions are `blocked` because the environment failed. Read its evidence with `test_runner.get_evidence` and report the failed step.
+A run with status `error` is not a tool error: its executions are `blocked` because the environment failed. Read its evidence with `test_runner__get_evidence` and report the failed step.

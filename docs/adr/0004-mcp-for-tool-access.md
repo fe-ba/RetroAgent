@@ -1,6 +1,6 @@
 # ADR-0004: MCP for tool access
 
-- **Status:** Accepted
+- **Status:** Accepted. Folder layout amended by ADR-0025; use by other MCP clients amended by ADR-0026
 - **Date:** 2026-11-14
 
 ## Context

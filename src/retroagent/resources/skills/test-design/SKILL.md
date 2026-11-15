@@ -9,9 +9,9 @@ Three tasks: **design** creates test case specifications with status `designed`;
 
 ## Design
 
-1. **Suite.** Call `memory.get_suite`. Test cases are added to the current suite when designed; without one, the selection comes first: load the skill `test-selection`.
-2. **Scope.** The scope given by the user (requirement IDs, modules or free text), or the impacted requirements and modules that the current suite does not cover. Read them with `memory.get_analysis` and `memory.get_requirements`, and read the code with `git.get_diff` and `git.read_file` at `candidate`.
-3. **Avoid duplicates.** Call `memory.get_test_cases` with `requirement_id` for each requirement in scope. Do not design what an existing test case already verifies.
+1. **Suite.** Call `memory__get_suite`. Test cases are added to the current suite when designed; without one, the selection comes first: load the skill `test-selection`.
+2. **Scope.** The scope given by the user (requirement IDs, modules or free text), or the impacted requirements and modules that the current suite does not cover. Read them with `memory__get_analysis` and `memory__get_requirements`, and read the code with `git__get_diff` and `git__read_file` at `candidate`.
+3. **Avoid duplicates.** Call `memory__get_test_cases` with `requirement_id` for each requirement in scope. Do not design what an existing test case already verifies.
 4. **Derive the test cases.** For each requirement or area in scope:
    - the behavior that changed, from the diff and the documented change;
    - the unchanged behavior next to it, which is what a regression would break;
@@ -33,13 +33,13 @@ Three tasks: **design** creates test case specifications with status `designed`;
    | `selection_reason` | Which gap of the suite it covers. |
 
    When a requirement is ambiguous, state the interpretation used in the objective and tell the user.
-6. **Record.** Call `memory.design_test_case` for each test case. To correct a design that is still `designed`, use `memory.update_test_case`.
+6. **Record.** Call `memory__design_test_case` for each test case. To correct a design that is still `designed`, use `memory__update_test_case`.
 7. **Answer** with a table (test case, title, priority, requirements), stating that they are designed, not implemented, not executed. Next step: `/implement`.
 
 ## Implement
 
-1. **Targets.** The IDs given by the user, or every test case of the current suite with status `designed` (`memory.get_suite`, `memory.get_test_cases` with status `designed`).
-2. **Conventions.** Read the test conventions in `RETRO.md`, and one or two existing tests of the project (`git.list_files` and `git.read_file` at `candidate`): framework, imports, fixtures, how the service is reached.
+1. **Targets.** The IDs given by the user, or every test case of the current suite with status `designed` (`memory__get_suite`, `memory__get_test_cases` with status `designed`).
+2. **Conventions.** Read the test conventions in `RETRO.md`, and one or two existing tests of the project (`git__list_files` and `git__read_file` at `candidate`): framework, imports, fixtures, how the service is reached.
 3. **Write the code**, one file per test case, with one test function:
    - Name the function `test_req_<NNN>_<description>`, with the number of the first traced requirement and a short description in lowercase with underscores. Without requirements, `test_<description>`. Name the file as the framework requires to discover it.
    - Mention the test case ID in a comment or docstring.
@@ -48,17 +48,17 @@ Three tasks: **design** creates test case specifications with status `designed`;
    - Import the project the way its own tests do. The same file must run unchanged against both versions.
    - When the tests need the running service, read its base URL from `RETRO_BASE_URL`. Never hard-code a host or port.
    - Follow the limits for generated test code in the steering.
-4. **Record.** Call `test_runner.write_test` with the test case ID, the file path relative to `.retro/tests/`, the function name and the full content of the file. If the call is refused, stop: the remaining test cases stay `designed`.
+4. **Record.** Call `test_runner__write_test` with the test case ID, the file path relative to `.retro/tests/`, the function name and the full content of the file. If the call is refused, stop: the remaining test cases stay `designed`.
 5. **Answer** with a table (test case, implementation), stating that they are implemented, not executed. Next step: `/run --on both`.
 
 ## Rewrite
 
 For a generated test that is wrong (triage `test_defect`) or that verifies a requirement that changed (triage `expected_change`), and when the user asks to fix a test. A test case that is already `implemented` is rewritten, not designed again.
 
-1. **Read.** Call `memory.get_test_cases` with the ID and `include_code` `true`: the design, the current code and the origin. Read the triage and the evidence of the failure (`memory.get_executions`, `test_runner.get_evidence`).
+1. **Read.** Call `memory__get_test_cases` with the ID and `include_code` `true`: the design, the current code and the origin. Read the triage and the evidence of the failure (`memory__get_executions`, `test_runner__get_evidence`).
 2. **Origin.** A `project_suite` test belongs to the project: do not rewrite it. Say what must change in it and why.
-3. **Write.** Call `test_runner.write_test` with the same test case ID, the same file and the same test name, and the full corrected code. When the steps, the input data, the expected result or the traced requirements change, pass them in `fields` in the same call, so that the design and the code never disagree.
-4. **Retire.** When the test cannot be repaired, or its requirement was removed, call `memory.retire_test_case` with the reason and tell the user. A replacement is designed as a new test case.
+3. **Write.** Call `test_runner__write_test` with the same test case ID, the same file and the same test name, and the full corrected code. When the steps, the input data, the expected result or the traced requirements change, pass them in `fields` in the same call, so that the design and the code never disagree.
+4. **Retire.** When the test cannot be repaired, or its requirement was removed, call `memory__retire_test_case` with the reason and tell the user. A replacement is designed as a new test case.
 5. **Answer** with a table (test case, revision or retired, what changed), stating that rewritten test cases are implemented, not executed. Next step: `/run --on both`.
 
 A test for a new or changed requirement is expected to fail against the baseline. That is not a regression; the comparison shows it as fixed in the candidate.

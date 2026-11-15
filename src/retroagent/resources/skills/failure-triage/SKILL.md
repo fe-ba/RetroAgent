@@ -9,13 +9,13 @@ Explain every failed or error execution of a run, so that the release decision c
 
 ## Procedure
 
-1. **Run.** The run given by the user, or the latest one (`memory.get_runs` with `limit` 1). If its status is `error`, its executions are `blocked`: there is nothing to classify. Read `test_runner.get_evidence`, report the step that failed, and stop.
-2. **Failures.** Call `memory.get_executions` with the run ID and `untriaged` `true`. If there are none, say so.
+1. **Run.** The run given by the user, or the latest one (`memory__get_runs` with `limit` 1). If its status is `error`, its executions are `blocked`: there is nothing to classify. Read `test_runner__get_evidence`, report the step that failed, and stop.
+2. **Failures.** Call `memory__get_executions` with the run ID and `untriaged` `true`. If there are none, say so.
 3. **Evidence**, for each execution:
-   - `test_runner.get_evidence` with the run and the test case: failure message of each attempt and the log;
-   - `memory.get_test_case_history`: result against the baseline, earlier results, flakiness;
-   - `memory.get_test_cases` and `memory.get_requirements`: traced requirements and their documented changes;
-   - `git.get_diff` or `git.read_file` for the code the failure points to.
+   - `test_runner__get_evidence` with the run and the test case: failure message of each attempt and the log;
+   - `memory__get_test_case_history`: result against the baseline, earlier results, flakiness;
+   - `memory__get_test_cases` and `memory__get_requirements`: traced requirements and their documented changes;
+   - `git__get_diff` or `git__read_file` for the code the failure points to.
 4. **Classify.** Apply the first rule that matches:
 
    | Order | Classification | When |
@@ -29,13 +29,13 @@ Explain every failed or error execution of a run, so that the release decision c
 
    - `expected_change` and `test_defect` remove the failure from the product pass rate. Use them only with concrete evidence: a documented requirement change, or a specific error in the test. When in doubt, classify as `regression` and state the doubt.
    - A failure of a project module that was renamed or removed in the candidate is not `environment`.
-   - Code checks the evidence of `flaky`, `expected_change` and `pre_existing`. When `memory.save_triage` answers `invalid_state` because the evidence is missing, do not insist and do not reword the call: read the message, and classify with the next rule that matches.
+   - Code checks the evidence of `flaky`, `expected_change` and `pre_existing`. When `memory__save_triage` answers `invalid_state` because the evidence is missing, do not insist and do not reword the call: read the message, and classify with the next rule that matches.
    - A flaky execution has the result of its first attempt, so it is always a failure to classify. `flaky` and `environment` do not excuse it: when the test case passed against the baseline, it still blocks release until a new run passes.
    - `pre_existing` needs a baseline run that executed the test case. Without one, say that the baseline must be run, and classify as `regression`.
-5. **Record.** Call `memory.save_triage` with the execution, the classification and a justification of one to three sentences that cites the evidence: the failure message, the baseline result with its run, the requirement change, the line of the diff.
+5. **Record.** Call `memory__save_triage` with the execution, the classification and a justification of one to three sentences that cites the evidence: the failure message, the baseline result with its run, the requirement change, the line of the diff.
 6. **Defects** for each execution classified `regression`:
-   - If an open defect (`memory.get_defects` with status `open`) already describes the same failure of the same test case, call `memory.link_defect`.
-   - Otherwise call `memory.register_defect`, grouping the executions with the same cause. Steps come from the steps of the test case.
+   - If an open defect (`memory__get_defects` with status `open`) already describes the same failure of the same test case, call `memory__link_defect`.
+   - Otherwise call `memory__register_defect`, grouping the executions with the same cause. Steps come from the steps of the test case.
    - A `pre_existing` failure needs no defect. Register one only when the user asks for it.
 
    | Severity | When |
@@ -47,7 +47,7 @@ Explain every failed or error execution of a run, so that the release decision c
 
 7. **Answer** with:
    - a table: test case, classification, short justification;
-   - the defects registered and linked, and the defects that the run closed (`memory.get_defects` with status `closed`, those closed by this run);
+   - the defects registered and linked, and the defects that the run closed (`memory__get_defects` with status `closed`, those closed by this run);
    - the follow-up: `expected_change` and `test_defect` test cases must be updated, generated tests with `/implement <id>` and project tests by the user (the decision is at most `release_with_conditions`); `pre_existing` failures were already in the baseline (the decision is at most `release_with_conditions`); `flaky` tests need review and a new run; `environment` failures need the environment fixed and a new run.
 
 ## Rules

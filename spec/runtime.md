@@ -17,7 +17,8 @@ The runtime runs a session: it loads configuration, builds the context (`context
 9. Resolve approvals for project MCP servers, steering and skills (ADR-0021). In an interactive session, the user is asked once for each item not yet approved. In non-interactive mode, unapproved items are not loaded and a warning is printed. The mode `auto` never approves them. Project commands are approved at the first run, not here (see Project commands).
 10. Start the bundled MCP servers and the approved ones, with the cleaned environment of `configuration.md`, and read their tools.
 11. When `tool_calling` is `auto` and the capability is unknown, run the probe call.
-12. State the model in use and whether it is hosted or local.
+12. Check the context budget: the context window must be known and large enough for the fixed part of the context (`context-loading.md`). Otherwise exit with code `2`.
+13. State the model in use and whether it is hosted or local.
 
 ### End
 
@@ -38,7 +39,7 @@ A turn starts with a user message and ends when the model answers without tool c
    1. Record the call in `tool_call`, with secret values replaced.
    2. Check the mode and the permission of the tool (see below). A refused call returns a `denied` error to the model.
    3. If the permission is `ask`, ask the user.
-   4. Dispatch the call to its server, passing the session context (ADR-0020).
+   4. Dispatch the call to its server. Bundled servers read the session context from the `session` record, which only the runtime writes (ADR-0026).
    5. Record the outcome and add the result to the conversation.
 4. Go back to step 1 until the model answers without tool calls, then show the answer.
 
@@ -80,7 +81,7 @@ Before the first `test_runner.run_tests` of a session, the runtime checks that t
 
 ## Session state
 
-Kept by the runtime for the duration of the session, never by the model.
+Kept by the runtime for the duration of the session, never by the model. The versions and the model are also written to the `session` record, where the bundled servers read them.
 
 | State | Changed by |
 |---|---|
@@ -92,7 +93,7 @@ Kept by the runtime for the duration of the session, never by the model.
 
 ## Slash commands
 
-Slash commands are of two kinds. **Direct** commands are executed by the runtime without calling the model, because they need no judgment. **Model** commands become a message to the model built from a fixed template. In both cases, tool calls go through the same permission checks and are recorded in `tool_call`.
+Slash commands are of three kinds: direct commands, model commands and the cycle command (see Cycle command). **Direct** commands are executed by the runtime without calling the model, because they need no judgment. **Model** commands become a message to the model built from a fixed template. In both cases, tool calls go through the same permission checks and are recorded in `tool_call`.
 
 ### Direct commands
 
@@ -142,9 +143,30 @@ The full cycle, as the steering describes it to the model:
 
 For selection quality metrics (FR-34), step 9 can be complemented with `/run all --on both`.
 
+## Cycle command
+
+`/cycle [base] [candidate]` runs the regression cycle from step 2 to step 11 (FR-40, ADR-0027). The runtime, not the model, decides the order. Each model step is a turn of its own: the conversation is emptied before it, the session block names the step, and only the tools of the step are exposed. Project memory carries the state from one step to the next. After each step, code checks its outcome in project memory.
+
+| Step | Kind | Tools exposed | Outcome checked by code |
+|---|---|---|---|
+| `analyze` | Model, skill `impact-analysis` | `runtime`, `git`, `memory` | An analysis of the session versions has an impact. |
+| `discover` | Direct: full run against the baseline | — | The run is `completed`. Skipped when project tests are already known. |
+| `select` | Model, skill `test-selection` | `runtime`, `git`, `memory`, `test_runner__run_tests` | The analysis has a suite. |
+| `design` | Model, skill `test-design` | `runtime`, `git`, `memory` | None: gaps may remain, and the step says so. |
+| `implement` | Model, skill `test-design` | `runtime`, `git`, `memory`, `test_runner__write_test` | None: test cases left `designed` become a condition of the decision. |
+| `run` | Direct: the suite against the baseline, then against the candidate | — | Both runs are `completed`. |
+| `triage` | Model, skill `failure-triage` | `runtime`, `git`, `memory`, `test_runner__get_evidence` | No failed execution of the candidate run is left without triage. |
+| `report` | Model, skill `test-reporting` | `runtime`, `memory`, `reports` | A `completion` report is `rendered`. |
+
+- When the outcome of a step is missing, the step runs once more with a message that states what is missing. If it is still missing, the cycle stops with a runtime error that names the step.
+- The cycle also stops when a tool call is refused, when a run ends with status `error` or `interrupted`, and when the model ends a step with a question for the user. In an interactive session the user can answer and continue with `/cycle`; steps whose outcome is already in project memory for the session versions are not repeated.
+- In plan mode the cycle runs `analyze`, `select` and `design`, and stops before `implement`.
+- `agent.max_iterations` applies to each step.
+- The same tool sets apply to the model commands of the same skill (`/analyze`, `/select`, `/design`, `/implement`, `/triage`, `/report`).
+
 ## Non-interactive mode
 
-`retro -p "<prompt>"` runs one turn and exits.
+`retro -p "<prompt>"` runs one turn and exits. A prompt that is a slash command runs that command: `retro -p "/cycle"` runs the whole cycle, one turn per step.
 
 - Output `text` prints the final answer. Output `json` prints one object:
 
@@ -177,6 +199,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 - The turn, modes, permissions and exit codes are tested with `FakeProvider` and the bundled servers on a fixture project.
 - Each row of the permission tables has a test, including plan mode refusing tools that the model calls despite their absence from the definitions.
+- The cycle command is tested with `FakeProvider`: the order of the steps, the tools exposed in each one, the retry of a step whose outcome is missing, and every stop condition.
 - Recovery is tested by leaving a run `running`, a worktree and a lock file in place, then starting a session.
 - The approval of project commands is tested for each row of its table, and for a command changed after its approval.
 - The environment of subprocesses is tested: a model credential set in the environment of `retro` must not be visible to a test command.

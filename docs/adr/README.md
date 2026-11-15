@@ -9,9 +9,9 @@ Only decisions that would be costly to reverse deserve an ADR.
 | ADR | Title | Status |
 |---|---|---|
 | [ADR-0001](0001-standalone-terminal-agent.md) | Standalone terminal agent | Accepted |
-| [ADR-0002](0002-model-agnostic-runtime.md) | Model-agnostic runtime | Accepted |
+| [ADR-0002](0002-model-agnostic-runtime.md) | Model-agnostic runtime | Superseded by ADR-0026 |
 | [ADR-0003](0003-llm-provider-interface-with-litellm.md) | LLM provider interface with LiteLLM | Accepted |
-| [ADR-0004](0004-mcp-for-tool-access.md) | MCP for tool access | Accepted |
+| [ADR-0004](0004-mcp-for-tool-access.md) | MCP for tool access | Accepted, amended by ADR-0025 and ADR-0026 |
 | [ADR-0005](0005-steering-always-skills-on-demand.md) | Steering always loaded, skills on demand | Accepted |
 | [ADR-0006](0006-deterministic-statuses-metrics-and-release.md) | Deterministic statuses, metrics and release decision | Accepted |
 | [ADR-0007](0007-separate-test-status-and-result.md) | Separate test status and result | Superseded by ADR-0016 |
@@ -27,8 +27,11 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0017](0017-test-metrics-basis.md) | Test metrics basis | Accepted |
 | [ADR-0018](0018-report-templates-and-rendering.md) | Report templates and rendering | Accepted |
 | [ADR-0019](0019-item-templates.md) | Item templates | Accepted |
-| [ADR-0020](0020-mcp-servers-never-call-the-model.md) | MCP servers never call the model | Accepted |
+| [ADR-0020](0020-mcp-servers-never-call-the-model.md) | MCP servers never call the model | Accepted, amended by ADR-0026 |
 | [ADR-0021](0021-context-layers-and-trust.md) | Context layers and trust | Accepted |
 | [ADR-0022](0022-release-decision-guards.md) | Release decision guards | Accepted |
 | [ADR-0023](0023-test-case-identity-and-maintenance.md) | Test case identity and maintenance | Accepted |
 | [ADR-0024](0024-execution-safety.md) | Execution safety | Accepted |
+| [ADR-0025](0025-package-layout.md) | Package layout | Accepted |
+| [ADR-0026](0026-own-runtime-and-internal-servers.md) | Own runtime and internal servers | Accepted |
+| [ADR-0027](0027-context-budget-and-cycle-command.md) | Context budget and cycle command | Accepted |

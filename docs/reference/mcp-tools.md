@@ -7,7 +7,8 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Topic | Rule |
 |---|---|
 | Naming | Documented as `<server>.<tool>`. Exposed to the model as `<server>__<tool>`, because some providers do not accept dots in tool names. |
-| Session context | The project path, the session, the session versions and the model name are passed by the runtime with every call. The model never provides them. |
+| Session context | Each bundled server is started by the runtime for one project and one session. The session versions and the model name are read from the `session` record, which only the runtime writes. The model never provides them. |
+| Internal servers | The bundled servers are components of RetroAgent, not a public integration: they need a session created by the runtime, which also enforces modes, permissions and approvals. Using them from another MCP client is not supported (ADR-0026). |
 | Identifiers | Tools that create records return their new identifiers. No tool accepts an identifier for a record it creates. |
 | References | Every identifier, path or ref given by the model must exist; otherwise the call fails with `not_found` and nothing is written (INV-13). |
 | Execution results | No tool accepts an execution status or result as input (INV-03). |
@@ -34,7 +35,7 @@ Every error returns a code and a message.
 | Tool | Access | Permission | Plan mode | Writes |
 |---|---|---|---|---|
 | `runtime.load_skill` | read | — | allowed | — |
-| `runtime.set_versions` | write | — | allowed | — |
+| `runtime.set_versions` | write | — | allowed | `session` |
 | `git.resolve_ref` | read | — | allowed | — |
 | `git.analyze_changes` | write | — | allowed | `analysis`, `analysis_file` |
 | `git.get_diff` | read | — | allowed | — |
@@ -68,7 +69,7 @@ Every error returns a code and a message.
 | `reports.render_report` | write | — | allowed | `report` |
 | `reports.get_report` | read | — | allowed | — |
 
-`schema_info`, `session` and `tool_call` are written by the runtime and the data layer, never through a tool.
+`schema_info` and `tool_call` are written by the runtime and the data layer, never through a tool. `session` is written only by the runtime, which includes its own tool `runtime.set_versions`.
 
 ## Runtime tools
 

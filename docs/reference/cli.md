@@ -56,6 +56,7 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 
 | Command | Description |
 |---|---|
+| `/cycle [base] [candidate]` | Run the whole regression cycle, from the impact analysis to the completion report, one step at a time. Stops when a step fails, is refused or needs a decision of the user. |
 | `/analyze [base] [candidate]` | Compute the change set and the impact analysis. Sets the session versions when given. |
 | `/select` | Select and prioritize the regression suite for the current change. |
 | `/design [scope]` | Design test cases for the impacted areas, or for `scope` (requirement IDs, modules or free text). |
@@ -115,7 +116,7 @@ retro -C ~/projects/shop-api                        # session on another project
 retro --base v1.0 --candidate v1.1                  # session with versions preset
 retro --mode plan "design tests for REQ-004"        # design only, nothing is executed
 retro -p --mode auto --trust-commands --base v1.0 --candidate v1.1 \
-  "run the regression cycle and generate the completion report"
+  "/cycle"
 retro example shop-api ./demo                       # create the example project
 retro config set model local                        # default model at user level
 ```

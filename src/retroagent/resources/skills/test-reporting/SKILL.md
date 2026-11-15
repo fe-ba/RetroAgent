@@ -16,18 +16,18 @@ Reports are generated in two steps. Code computes every figure, status and decis
    - `defects` and `completion` need a completed run against the candidate.
 
    If one is missing, say which step produces it and stop.
-3. **Triage first.** For `completion`, call `memory.get_executions` with the evaluated run and `untriaged` `true`. If any failure is not triaged, EC-08 will be `not_met` and the decision `do_not_release`. Tell the user and offer `/triage` first. Continue only if the user wants the report anyway.
-   Also call `memory.get_runs` with `version_role` `base`. Without a completed run against the baseline, EC-09 will be `not_evaluable` and the decision `do_not_release`. Tell the user and offer `/run --on base` first.
-4. **Prepare.** Call `reports.prepare_report` with the type, and the run and formats when given. Keep the report ID, the computed data and the list of agent sections.
+3. **Triage first.** For `completion`, call `memory__get_executions` with the evaluated run and `untriaged` `true`. If any failure is not triaged, EC-08 will be `not_met` and the decision `do_not_release`. Tell the user and offer `/triage` first. Continue only if the user wants the report anyway.
+   Also call `memory__get_runs` with `version_role` `base`. Without a completed run against the baseline, EC-09 will be `not_evaluable` and the decision `do_not_release`. Tell the user and offer `/run --on base` first.
+4. **Prepare.** Call `reports__prepare_report` with the type, and the run and formats when given. Keep the report ID, the computed data and the list of agent sections.
 5. **Write** every listed section, under the exact name listed, following the rules below.
-6. **Render.** Call `reports.render_report` with the report ID and the sections. If PDF is `unavailable`, the Markdown is still produced: say so, and that the PDF needs the optional PDF dependencies.
+6. **Render.** Call `reports__render_report` with the report ID and the sections. If PDF is `unavailable`, the Markdown is still produced: say so, and repeat what the error says to install.
 7. **Answer** with the report ID, the paths of its files and, for `status` and `completion`, the decision and its main reasons, copied from the computed data.
 
-For a question about metrics or the release decision without a report, call `reports.evaluate` and explain its result.
+For a question about metrics or the release decision without a report, call `reports__evaluate` and explain its result.
 
 ## Writing agent sections
 
-- Use only the computed data returned by `reports.prepare_report`. Do not state a figure, status, identifier or decision that is not in it. Copy values as they appear.
+- Use only the computed data returned by `reports__prepare_report`. Do not state a figure, status, identifier or decision that is not in it. Copy values as they appear.
 - Never contradict the release decision. Explain it.
 - Mark hypotheses as such.
 - Plain paragraphs, with short lists when they help. No headings: each section is rendered inside a quote block.

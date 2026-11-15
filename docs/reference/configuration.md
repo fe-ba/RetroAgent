@@ -66,12 +66,13 @@ Defined only at user level, under `models.<profile>`.
 | `tool_calling` | enum | `auto` | `auto` detects support, `native` forces tool calling, `json` forces the JSON fallback mode. |
 | `temperature` | number | `0` | Sampling temperature. Low values favor reproducible behavior. |
 | `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). |
+| `context_window` | integer | reported by the provider | Context size of the model, in tokens. Required for `ollama` and `openai_compatible`, where it cannot be known reliably. For `ollama` it is also sent with every request as the context size to use, because a local server may otherwise apply a smaller default and drop the beginning of the context without an error (`context-loading.md`). |
 
 ### Agent
 
 | Key | Type | Default | Levels | Description |
 |---|---|---|---|---|
-| `agent.max_iterations` | integer | `50` | user, project | Maximum model calls per task before the loop stops. |
+| `agent.max_iterations` | integer | `50` | user, project | Maximum model calls per turn before the loop stops. Each step of `/cycle` is a turn. |
 
 ### Project
 
@@ -221,6 +222,7 @@ models:
     provider: ollama
     name: <model-id>
     base_url: http://localhost:11434
+    context_window: 32768
   claude:
     provider: anthropic
     name: <model-id>

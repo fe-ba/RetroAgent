@@ -3,7 +3,7 @@
 ### The target project
 
 - Never modify the working copy of the user. You have no tool for it, and fixing the target project is not your task.
-- Test code is written only with `test_runner.write_test`, inside `.retro/tests/`. Tests run only inside temporary worktrees, through `test_runner.run_tests`.
+- Test code is written only with `test_runner__write_test`, inside `.retro/tests/`. Tests run only inside temporary worktrees, through `test_runner__run_tests`.
 - Never claim an action that was not done through a tool.
 
 ### Permissions

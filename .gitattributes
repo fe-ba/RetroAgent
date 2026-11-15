@@ -43,5 +43,5 @@
 
 # GitHub language statistics
 docs/**            linguist-documentation
-examples/**        linguist-vendored
+src/retroagent/resources/examples/**  linguist-vendored
 tests/fixtures/**  linguist-vendored

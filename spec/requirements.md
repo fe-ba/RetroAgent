@@ -5,6 +5,8 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 - **Priority** follows MoSCoW: `Must` is required for the project to be valid, `Should` is expected, `Could` is optional if time allows.
 - **Source** links each requirement to the project brief or to an ADR.
 
+The `Must` requirements are the core: what has to work end to end, on the example project, for the project to be presented. They are built first, as a thin path through every component. `Should` requirements are built after the core works, in the order that the remaining time allows, and `Could` requirements only after them. Lowering a priority does not remove the specification of the feature.
+
 ## Brief references
 
 | ID | Brief item |
@@ -24,9 +26,11 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 | FR-01 | The agent shall start an interactive session on the current directory or on a directory given as an argument. | Must | ADR-0001, ADR-0011 |
 | FR-02 | The agent shall run a single task non-interactively and exit with a code that reflects the outcome. | Should | ADR-0011 |
 | FR-03 | The agent shall initialize a project: detect its type, create `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`. | Must | ADR-0011 |
-| FR-04 | The agent shall let the user select the model for a session and set a default model at user level. | Must | ADR-0002 |
+| FR-04 | The agent shall let the user select the model for a session and set a default model at user level. | Must | ADR-0026 |
 | FR-05 | The agent shall provide a plan mode in which it analyzes and designs but cannot execute tests. | Must | B5, ADR-0011 |
 | FR-06 | The agent shall ask for permission before running tests, starting services or writing test code, unless the configuration allows the action. The prompt shall show the test code or the commands it asks about. | Must | ADR-0011, ADR-0024 |
+| FR-40 | The agent shall run the whole regression cycle with one command, one step at a time, each step in a fresh conversation, and check the outcome of each step against stored data before the next. | Must | NFR-01, ADR-0027 |
+| FR-39 | The CLI shall provide `retro config` and `retro defects close`. | Should | ADR-0011 |
 
 ### Analysis
 
@@ -82,12 +86,14 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
-| FR-25 | The agent shall generate the test plan, test case specification, test status report, defect report and test completion report. | Must | B4 |
+| FR-25 | The agent shall generate the test completion report and the test case specification. | Must | B2, B4 |
+| FR-37 | The agent shall generate the test plan, the test status report and the defect report. | Should | B4 |
 | FR-26 | The agent shall compute metrics, evaluate exit criteria and produce the release decision deterministically. | Must | B4, ADR-0006 |
 | FR-35 | The release decision shall be `do_not_release` when test cases that passed against the baseline fail against the candidate without a documented reason, or when no baseline run exists to compare with. | Must | B4, ADR-0022 |
 | FR-27 | Reports shall separate computed sections from sections written by the model, and mark the latter. | Must | B5, ADR-0006 |
 | FR-28 | Reports shall include charts of results: outcome distribution and comparison against the baseline. | Must | B4 |
-| FR-29 | The agent shall export reports to Markdown, and to PDF when the PDF dependencies are installed. | Must | B4, ADR-0018 |
+| FR-38 | Reports shall include a chart of the exit criteria against their thresholds. | Should | B4 |
+| FR-29 | The agent shall export reports to Markdown and to PDF. The PDF libraries are part of the default installation; when the system library they need is missing, the Markdown is still produced and the error says what to install. | Must | B4, ADR-0018 |
 | FR-30 | The agent shall display summaries of runs and results as tables in the terminal. | Must | B4 |
 
 ### Extensibility
@@ -102,19 +108,21 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 
 | ID | Category | Requirement | Priority | Source |
 |---|---|---|---|---|
-| NFR-01 | Model independence | The agent shall work with local and hosted model providers; switching providers shall require only configuration. | Must | ADR-0002, ADR-0003 |
+| NFR-01 | Model independence | The agent shall work with at least one local provider (`ollama`) and one hosted provider, using native tool calling; switching between them shall require only configuration. | Must | ADR-0003, ADR-0026 |
+| NFR-17 | Model coverage | The agent shall support the remaining providers of `llm-providers.md`, and the JSON fallback mode for models without tool calling. | Should | ADR-0003 |
 | NFR-02 | Result integrity | A test execution result shall be impossible to store unless the execution status is `executed` and it belongs to a run with stored evidence. Enforced in the data layer. | Must | B5, ADR-0016 |
 | NFR-03 | Determinism | The same stored data shall always produce the same metrics, exit criteria evaluation and release decision. | Must | ADR-0006 |
 | NFR-04 | Auditability | Every figure in a report shall be traceable to stored runs and evidence. Every tool call shall be recorded with its inputs, outcome and timestamp. | Must | B3, ADR-0006 |
 | NFR-05 | Safety | The agent shall never modify the user's working copy. Inside the project, the agent writes only under `.retro/`, `RETRO.md` when the user runs `retro init`, and the worktree metadata git keeps in `.git/worktrees/`, which is removed after each run. Tests run only inside worktrees, which are created outside the project tree. | Must | ADR-0009, ADR-0015, ADR-0024 |
 | NFR-06 | Secrets | API keys shall be read only from environment variables and never written to files, logs or reports. | Must | — |
-| NFR-07 | Robustness | Model errors, tool failures and interruptions shall not corrupt stored data. The agent loop shall stop after a configurable maximum number of iterations. | Must | ADR-0002 |
+| NFR-07 | Robustness | Model errors, tool failures and interruptions shall not corrupt stored data. The agent loop shall stop after a configurable maximum number of iterations. The context of a call shall stay within the context window of the model without dropping steering. | Must | ADR-0026, ADR-0027 |
 | NFR-08 | Usability | The CLI shall follow the conventions of terminal agents and provide help for every command. | Must | ADR-0011 |
 | NFR-09 | Extensibility | New providers, MCP servers, steering files and skills shall be addable without modifying the runtime core. | Should | ADR-0003, ADR-0004, ADR-0005 |
-| NFR-10 | Offline operation | The agent shall run without internet access when using a local model. | Should | ADR-0002 |
+| NFR-10 | Offline operation | The agent shall run without internet access when using a local model. | Should | ADR-0026 |
 | NFR-11 | Portability | The agent shall run on Linux, macOS and Windows with Python 3.11 or later. | Should | — |
 | NFR-12 | Testability | Metrics, exit criteria evaluation and the release decision shall be fully covered by unit tests. | Must | ADR-0006 |
-| NFR-13 | Language | All project content shall be in English. The language of responses and reports shall be configurable. | Must | ADR-0012 |
+| NFR-13 | Language | All project content shall be in English. The language of responses and of the agent sections of reports shall be configurable. | Must | ADR-0012 |
+| NFR-18 | Translated templates | Report templates shall be available in languages other than English. | Should | ADR-0018 |
 | NFR-14 | Untrusted configuration | The configuration of a target project shall not define model providers, loosen permissions, or enable MCP servers, steering or skills without user approval. | Must | ADR-0014, ADR-0021 |
 | NFR-15 | Command approval | Commands defined by the target project shall run only after the user approved their exact content. | Must | ADR-0024 |
 | NFR-16 | Credential isolation | Processes started by the agent (setup, tests, services and MCP servers) shall not receive model credentials. | Must | ADR-0024 |

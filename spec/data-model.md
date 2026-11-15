@@ -51,10 +51,14 @@ Writer: data layer, on creation and migration.
 | `id` | integer | primary key | code | — |
 | `started_at` | text | not null | code | — |
 | `ended_at` | text | | code | Null while the session is running. |
-| `model` | text | not null | code | `<provider>/<model name>`. |
+| `model` | text | not null | code | `<provider>/<model name>` in use. Updated by `/model`. |
 | `interactive` | integer | not null | code | `1` for an interactive session, `0` for non-interactive mode. |
+| `base_ref` | text | | code | Baseline of the session versions. Null while not set. |
+| `base_commit` | text | | code | Full commit hash. |
+| `candidate_ref` | text | | code | Candidate of the session versions. Null while not set. |
+| `candidate_commit` | text | | code | Full commit hash. |
 
-Writer: runtime.
+Writer: runtime. This record is the session context of the bundled servers: each server is started for one project and one session, and reads the versions and the model from here when a tool needs them (ADR-0026). Records such as `designed_by` and `triaged_by` copy the model at the time they are written.
 
 ### `tool_call`
 

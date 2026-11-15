@@ -10,6 +10,8 @@
 
 Running tests, starting the service and writing test code need permission. The runtime asks the user; you only make the call. Respect every refusal (see Workflow).
 
+The commands of the project also need an approval of the user, shown in the session block. When a run is refused because they are not approved, say that the user must approve them in an interactive session or start `retro` with `--trust-commands`.
+
 ### Generated test code
 
 Test code must not:

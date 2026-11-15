@@ -17,6 +17,7 @@ Without a command, `retro` starts an interactive session on the target project. 
 | `-p`, `--print` | Non-interactive mode: run `prompt`, print the result and exit. |
 | `-m`, `--model <name>` | Model profile to use for this session. Overrides the configured default. |
 | `--mode <mode>` | Permission mode: `default`, `plan` or `auto`. Default: `default`. |
+| `--trust-commands` | Approve the test commands of the project for this session without asking. For non-interactive runs on a repository of your own. Does not approve project MCP servers, steering or skills. |
 | `--base <ref>` | Baseline version: tag, branch or commit. |
 | `--candidate <ref>` | Candidate version: tag, branch or commit. |
 | `--lang <code>` | Language of responses and reports (e.g. `en`, `es`). Overrides configuration. |
@@ -45,7 +46,7 @@ Without a command, `retro` starts an interactive session on the target project. 
 | `plan` | Analyzes and designs. Cannot run tests or write test code. Test cases can only reach status `designed`. |
 | `auto` | Performs actions allowed by the configuration without asking. Actions not allowed are refused. Intended for CI. |
 
-In non-interactive mode (`-p`) there is no one to ask: with mode `default`, any action that requires permission fails with exit code `4`. Use `--mode auto` for unattended runs.
+In non-interactive mode (`-p`) there is no one to ask: with mode `default`, any action that requires permission fails with exit code `4`. Use `--mode auto` for unattended runs. The test commands of the project must also be approved: either stored from an interactive session, or with `--trust-commands`.
 
 ## Slash commands
 
@@ -104,7 +105,7 @@ Apply to commands and to non-interactive mode.
 | `1` | Runtime error: model, tool or unexpected failure. |
 | `2` | Invalid usage or invalid configuration. |
 | `3` | Completed with release decision `do_not_release`. |
-| `4` | An action required permission that could not be granted. |
+| `4` | An action required a permission or an approval that could not be granted. |
 
 ## Examples
 
@@ -113,7 +114,7 @@ retro                                               # session on the current dir
 retro -C ~/projects/shop-api                        # session on another project
 retro --base v1.0 --candidate v1.1                  # session with versions preset
 retro --mode plan "design tests for REQ-004"        # design only, nothing is executed
-retro -p --mode auto --base v1.0 --candidate v1.1 \
+retro -p --mode auto --trust-commands --base v1.0 --candidate v1.1 \
   "run the regression cycle and generate the completion report"
 retro example shop-api ./demo                       # create the example project
 retro config set model local                        # default model at user level

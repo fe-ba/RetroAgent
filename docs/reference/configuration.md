@@ -20,11 +20,27 @@ The project configuration belongs to the target project, which may come from an 
 
 - `models` can only be defined at user level. A project can only select a profile by name with `model`.
 - `permissions` at project level can only make actions stricter (`allow` to `ask` or `deny`, `ask` to `deny`), never looser.
+- The commands a project defines (`tests.setup`, `tests.command`, `tests.select`, `service.start`) and `tests.env` run only after the user approved their exact content. See Project commands.
 - MCP servers declared by a project require user approval the first time they are used. Approvals are stored in `~/.retro/approvals.json`.
+- Every approval covers the exact content approved: a command, a server declaration, a steering file or a skill that changes is asked again.
 - Steering and skills of a project are loaded only after user approval, and never replace bundled or user ones (ADR-0021).
 - The permission mode is not a configuration key. It is set only with `--mode` or `/mode`.
 
+## Project commands
+
+`tests.setup`, `tests.command`, `tests.select`, `service.start` and `tests.env` are written in the project and run on the user's machine with the user's privileges. They run only after the user approved them (ADR-0024).
+
+- The approval covers the five values together. It is stored in `~/.retro/approvals.json` as a hash of their content, for the path of the project. When any value changes, the approval is asked again.
+- In an interactive session, the first run shows every command and every variable in full, and asks. This is separate from the permission `run_tests`, which decides whether the agent may start a run.
+- In non-interactive mode there is no one to ask: without a stored approval, running tests is refused and the session exits with code `4`. `--trust-commands` approves them for that session only; it is meant for CI on a repository of the user's own.
+- The mode `auto` never approves commands.
+- Commands are read from the configuration in the working copy, never from the versions under test.
+
+RetroAgent is not a sandbox: approved commands and the tests they run are code of the project. To test a repository that is not trusted, run RetroAgent inside a container or a virtual machine.
+
 ## Validation
+
+`tests.junit` and `tests.generated_dir` must be relative paths that stay inside the worktree, and the host of `service.url` must be `127.0.0.1` or `localhost`.
 
 Unknown keys, invalid values and restricted keys at the wrong level are errors. RetroAgent reports the key and the level where it was found, and exits with code `2`.
 
@@ -75,7 +91,7 @@ Defined only at user level, under `models.<profile>`.
 | `tests.junit` | string | `{junit}` | project | Where the JUnit XML is read from: `{junit}`, a path or a glob, relative to the worktree. |
 | `tests.select` | string | none | project | Command that runs only selected tests, using `{names}`. If absent, the full suite runs and only selected test cases are counted. Also used for reruns. |
 | `tests.select_separator` | string | `" or "` | project | Separator used to join test names in `{names}`. |
-| `tests.setup` | string | none | project | Command run once in each new worktree before tests. Must install dependencies locally to the worktree, never globally. |
+| `tests.setup` | string | none | project | Command run once in each new worktree before tests. Must install dependencies locally to the worktree, never globally. Worktrees are new for every run, so `{cache_dir}` is the place for downloads that should be reused. |
 | `tests.env` | map | `{}` | project | Extra environment variables for setup and test commands. |
 | `tests.timeout` | integer | `900` | user, project | Seconds before a test command is stopped. |
 | `tests.reruns` | integer | `2` | user, project | Reruns of each test case whose first attempt did not pass, to detect flaky tests. All of them always run, and they never change the result (`metrics.md`). |
@@ -138,6 +154,7 @@ Available in `tests.*` and `service.*` commands.
 | `{port}` | Free port assigned to the service of this version. |
 | `{worktree}` | Absolute path of the worktree being tested. |
 | `{run_dir}` | Absolute path of the run directory (`.retro/runs/<run_id>/`). |
+| `{cache_dir}` | Absolute path of a directory kept between runs for this project (`~/.retro/cache/<project-id>/`), for example for a package download cache. |
 
 ## Environment variables
 
@@ -158,15 +175,21 @@ Available in `tests.*` and `service.*` commands.
 | `RETRO_VERSION` | `base` or `candidate`. |
 | `RETRO_BASE_URL` | Base URL of the running service, when `service.start` is configured. |
 
+### Environment of subprocesses
+
+Setup, test and service commands, and every MCP server, start with the environment of `retro` without the model credentials: every variable named in an `api_key_env` of the user configuration, and the well-known key variables of the supported providers, are removed. `tests.env`, the variables above and the `env` of an MCP server declaration are then added. Tests and servers never need a model credential (ADR-0020), so none reaches them (NFR-16).
+
 ## User level files
 
 ```
 ~/.retro/
 ├── config.yaml          # User configuration and model profiles
 ├── mcp.json             # Optional: user MCP servers
-├── approvals.json       # Approved project MCP servers, steering and skills (managed by RetroAgent)
+├── approvals.json       # Approved project commands, MCP servers, steering and skills (managed by RetroAgent)
 ├── skills/              # Optional: user skills
-└── steering/            # Optional: user steering
+├── steering/            # Optional: user steering
+├── worktrees/           # Temporary checkouts, per project (managed by RetroAgent)
+└── cache/               # Directories kept between runs, per project (managed by RetroAgent)
 ```
 
 ## MCP servers

@@ -1,6 +1,6 @@
 # ADR-0014: Untrusted project configuration
 
-- **Status:** Accepted
+- **Status:** Accepted. Extended by ADR-0024
 - **Date:** 2026-11-14
 
 ## Context

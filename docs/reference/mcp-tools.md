@@ -13,7 +13,7 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Execution results | No tool accepts an execution status or result as input (INV-03). |
 | Large output | Tools that return file content, diffs or evidence return at most 20,000 characters, cut at a line boundary. When they cut, they set `truncated` to `true` and return `next_line`; calling the tool again with `start_line` set to that value returns what follows. |
 | Models | No MCP tool calls a model (ADR-0020). Text written by the model reaches the servers only as tool arguments. |
-| Mode and permissions | Enforced by the runtime before dispatch. A refused call is recorded with outcome `denied`. |
+| Mode, permissions and approvals | Enforced by the runtime before dispatch, including the approval of the project commands before `test_runner.run_tests` (`configuration.md`). A refused call is recorded with outcome `denied`. |
 | User-only tools | A tool marked user only is called only by the runtime, for a direct command of the user. It is not in the tool definitions, and a call from the model is refused with `denied`. |
 
 ### Errors
@@ -25,7 +25,7 @@ Every error returns a code and a message.
 | `invalid_argument` | An argument has the wrong type or value. |
 | `not_found` | A referenced record, file or ref does not exist. |
 | `invalid_state` | The operation is not possible in the current state, for example designing before a suite exists. |
-| `denied` | The mode or a permission does not allow the call. Returned by the runtime. |
+| `denied` | The mode, a permission or a missing approval of the project commands does not allow the call. Returned by the runtime. |
 | `execution_failed` | An external process failed: git, the setup, the test command or the service. |
 | `unavailable` | A dependency is missing, for example the PDF libraries. |
 

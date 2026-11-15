@@ -1,6 +1,6 @@
 # ADR-0009: Git worktrees for version checkout
 
-- **Status:** Accepted
+- **Status:** Accepted. Location of the worktrees amended by ADR-0024
 - **Date:** 2026-11-14
 
 ## Context

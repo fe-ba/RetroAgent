@@ -34,11 +34,10 @@ my-project/
     ├── retro.db
     ├── retro.lock
     ├── runs/
-    ├── reports/
-    └── worktrees/
+    └── reports/
 ```
 
-Only `RETRO.md` and `.retro/config.yaml` are needed to start. RetroAgent creates the rest. Outside `.retro/`, RetroAgent only writes `RETRO.md`, and only when the user runs `retro init`.
+Only `RETRO.md` and `.retro/config.yaml` are needed to start. RetroAgent creates the rest. Outside `.retro/`, RetroAgent only writes `RETRO.md`, and only when the user runs `retro init`. Worktrees are created outside the project (see Test execution).
 
 ## RETRO.md
 
@@ -113,7 +112,7 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 
 ## Test execution
 
-1. RetroAgent creates a detached worktree of the version to test under `.retro/worktrees/`.
+1. RetroAgent creates a detached worktree of the version to test under `~/.retro/worktrees/<project-id>/`. It is outside the project tree, so that the tools of the project never find the configuration or the dependencies of the working copy by searching parent directories.
 2. If `tests.setup` is set, it runs once in that worktree.
 3. Generated tests from `.retro/tests/` are copied to `tests.generated_dir` inside the worktree.
 4. If `service.start` is set, the service starts on a free port and RetroAgent waits for `service.ready_path` to answer.
@@ -125,6 +124,12 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`. When `tests.timeout` stops the command, the run is `interrupted` and its test executions are `blocked`. A test case that the run was asked to execute and that the JUnit XML does not report is `blocked` with reason `not_reported`.
 
 Commands must not require interactive input. Setup must install dependencies locally to the worktree (for example, in a virtual environment), never globally.
+
+## Trust
+
+The setup, test and service commands are written in the project and run with the privileges of the user. RetroAgent runs them only after the user approved their exact content, and asks again when they change (`configuration.md`, Project commands). They never receive the model credentials of the user.
+
+This limits surprises; it is not a sandbox. Approved commands, the tests of the project and the generated tests are code that runs on the machine. A repository that is not trusted should be tested inside a container or a virtual machine.
 
 ## Detection by `retro init`
 
@@ -154,7 +159,6 @@ For versions, `retro init` proposes the two most recent tags as `versions.base` 
 | `retro.db` | No | Project memory. |
 | `retro.lock` | No | Session lock; one session per project at a time. |
 | `runs/` | No | Run evidence. |
-| `worktrees/` | No | Temporary checkouts. |
 
 `retro init` creates `.retro/.gitignore` with:
 
@@ -163,5 +167,4 @@ retro.db
 retro.db-*
 retro.lock
 runs/
-worktrees/
 ```

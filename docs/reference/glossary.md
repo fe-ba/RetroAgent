@@ -9,8 +9,8 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | RetroAgent | The product. Repository and Python package `retroagent`. |
 | `retro` | The CLI command. |
 | `RETRO.md` | Project context file at the root of a target project. Created by `/init`. |
-| `.retro/` | Project-level folder: configuration, extensions, generated tests, memory, runs, reports, worktrees. |
-| `~/.retro/` | User-level folder: model configuration and global extensions. |
+| `.retro/` | Project-level folder: configuration, extensions, generated tests, memory, runs and reports. |
+| `~/.retro/` | User-level folder: model configuration, global extensions, approvals, worktrees and caches. |
 
 ## Agent architecture
 
@@ -29,7 +29,9 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Slash command | Command typed in a session, such as `/run`. Direct commands run without the model; model commands become a message to the model. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
 | JSON fallback mode | Mode for models without tool calling: tools are described in the system context and the model answers with JSON that the runtime validates. |
-| Permission | User approval required before running tests, starting a service or writing test code. |
+| Permission | Consent of the user, asked before running tests, starting a service or writing test code. |
+| Approval | Stored consent of the user for content that comes from the target project: its commands, MCP servers, steering and skills. It covers the exact content approved. |
+| Project commands | The setup, test, selection and service commands of the target project, with their environment variables. |
 
 ## Testing domain
 
@@ -55,7 +57,7 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | Test execution | Outcome of one test case in one run: an execution status and, when executed, a result. |
 | Attempt | One try of a test execution. The first attempt gives the result. When it does not pass, the test case is rerun to detect flaky tests; reruns never change the result. |
 | Evidence | Artifacts proving a run happened: exit code, JUnit XML, logs and timestamps. |
-| Worktree | Temporary git checkout of a version under `.retro/worktrees/`. The user's working copy is never modified. |
+| Worktree | Temporary git checkout of a version under `~/.retro/worktrees/<project-id>/`, outside the project tree. The user's working copy is never modified. |
 | Triage | Classification of a failed test execution. |
 | Current triage | The latest triage of a test execution. Earlier ones are kept. |
 | Rewrite | New version of the code of a generated test. The test case keeps its ID and gets a new revision. |

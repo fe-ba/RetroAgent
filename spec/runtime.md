@@ -9,13 +9,13 @@ The runtime runs a session: it loads configuration, builds the context (`context
 1. Parse the command line (`cli.md`).
 2. Resolve and validate the configuration (`configuration.md`). An invalid configuration exits with code `2`.
 3. Resolve the target project: `-C <path>` or the current directory. A directory that is not a git repository exits with code `2`.
-4. Take the session lock `.retro/retro.lock`. If another session holds it, exit with code `2` and name the process that holds it.
+4. Take the session lock: an operating-system file lock on `.retro/retro.lock`. If another running session holds it, exit with code `2` and name the process that holds it. A lock file left by a session that crashed is not held by any process and is taken over.
 5. Open project memory, migrating it if needed, and create the `session` record.
-6. Recover from an interrupted previous session: runs left in status `running` become `interrupted`, and leftover worktrees under `.retro/worktrees/` are removed.
+6. Recover from an interrupted previous session: runs left in status `running` become `interrupted`, and leftover worktrees of this project under `~/.retro/worktrees/<project-id>/` are removed, together with their metadata in `.git/worktrees/`.
 7. Resolve the model profile and its credentials (`llm-providers.md`). A missing credential exits with code `2`.
 8. Resolve the session versions: `--base` and `--candidate`, then `versions.*` from the configuration. They may stay unset.
-9. Resolve approvals for project MCP servers, steering and skills (ADR-0021). In an interactive session, the user is asked once for each item not yet approved. In non-interactive mode, unapproved items are not loaded and a warning is printed. The mode `auto` never approves them.
-10. Start the bundled MCP servers and the approved ones, and read their tools.
+9. Resolve approvals for project MCP servers, steering and skills (ADR-0021). In an interactive session, the user is asked once for each item not yet approved. In non-interactive mode, unapproved items are not loaded and a warning is printed. The mode `auto` never approves them. Project commands are approved at the first run, not here (see Project commands).
+10. Start the bundled MCP servers and the approved ones, with the cleaned environment of `configuration.md`, and read their tools.
 11. When `tool_calling` is `auto` and the capability is unknown, run the probe call.
 12. State the model in use and whether it is hosted or local.
 
@@ -63,9 +63,20 @@ Every other tool needs no permission. The effective value of each permission fol
 
 In plan mode, tools that need a permission are also left out of the tool definitions (`context-loading.md`).
 
-When the user is asked, the prompt shows the tool and its main arguments, and offers three answers: allow once, allow for the rest of the session, or deny. A grant for the session is kept in memory only; it is never written to configuration.
+When the user is asked, the prompt shows what will happen, not only the name of the tool. For `test_runner.write_test`: the full code, or the difference with the current code in a rewrite. For `test_runner.run_tests`: the version, the scope, the number of test cases and the commands that will run. It offers three answers: allow once, allow for the rest of the session, or deny. A grant for the session is kept in memory only; it is never written to configuration.
 
 In non-interactive mode there is no one to ask: a permission `ask` in mode `default` is refused, and the session exits with code `4` (`cli.md`).
+
+### Project commands
+
+Before the first `test_runner.run_tests` of a session, the runtime checks that the project commands are approved in their current content (`configuration.md`, ADR-0024). This check does not depend on the mode or on `permissions.*`.
+
+| Situation | Behavior |
+|---|---|
+| Approved | The call continues to the permission check. |
+| Not approved, interactive session | The runtime shows every command and variable in full and asks. An approval is stored; a refusal returns `denied`. |
+| Not approved, non-interactive mode | `denied`, and the session exits with code `4`. |
+| `--trust-commands` | Approved for this session only; nothing is stored. |
 
 ## Session state
 
@@ -158,11 +169,14 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 ## Robustness
 
 - Every tool call that writes project memory runs in a single transaction: it is applied completely or not at all (NFR-07).
-- The session lock prevents two sessions from writing the same project memory.
+- The session lock prevents two sessions from writing the same project memory. The operating system releases it when the process ends, however it ends, so a crashed session never blocks the next one.
+- Setup, test and service commands run in their own process group. A timeout, an interruption or the end of the session terminates the whole group, so no process of the target project outlives its run.
 - Model errors are handled as in `llm-providers.md`; a failed turn never leaves partial records.
 
 ## Testing
 
 - The turn, modes, permissions and exit codes are tested with `FakeProvider` and the bundled servers on a fixture project.
 - Each row of the permission tables has a test, including plan mode refusing tools that the model calls despite their absence from the definitions.
-- Recovery is tested by leaving a run `running` and a worktree in place, then starting a session.
+- Recovery is tested by leaving a run `running`, a worktree and a lock file in place, then starting a session.
+- The approval of project commands is tested for each row of its table, and for a command changed after its approval.
+- The environment of subprocesses is tested: a model credential set in the environment of `retro` must not be visible to a test command.

@@ -87,7 +87,7 @@ A block is replaced by a table or a list, or by its empty message when there is 
 | `table:planned_suite` | Test case, Title, Priority, Status, Requirements, Selection reason | Each test case of the current suite, with the justification recorded at selection (FR-14). | The suite is empty. |
 | `table:environment` | Item, Value | Baseline ref, candidate ref, setup command, test command, selection command, service start command, JUnit location, reruns, timeout and model. | — |
 | `table:criteria_thresholds` | ID, Criterion, Threshold, Blocking | Each exit criterion with its effective threshold. | — |
-| `table:criteria` | ID, Criterion, Threshold, Value, State, Blocking | Each exit criterion with its evaluation. | — |
+| `table:criteria` | ID, Criterion, Threshold, Value, State, Blocking | Each exit criterion with its evaluation. Thresholds read `at least <value>`, `at most <value>` or `none`. The value of EC-08 reads `<n> of <n> triaged, <n> of <n> regressions linked to a defect`. | — |
 | `table:deviations` | Test case, Deviation, Reason | Test cases of the suite that were `designed` only, and executions that were `blocked` or `skipped`, with their recorded reason. | No deviations: every planned test case was implemented and executed. |
 | `table:review_items` | Test case, Reason for review, Detail | Excused executions (classification and justification), flaky executions (attempt results) pre-existing failures (baseline run and result), and executions triaged more than once (previous and current classification). | Nothing requires review. |
 | `table:open_defects` | ID, Severity, Title, Test cases | Each open defect, highest severity first. | No open defects. |

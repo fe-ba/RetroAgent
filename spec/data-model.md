@@ -14,7 +14,7 @@ Long-term memory of a target project, stored in `.retro/retro.db` (SQLite, ADR-0
 
 | Item | Rule |
 |---|---|
-| Timestamps | Text in ISO 8601, UTC. Converted to local time with offset only when displayed. |
+| Timestamps | Text in ISO 8601, UTC, with milliseconds. Converted to local time with offset only when displayed. |
 | Lists | JSON arrays stored as text, in the order given. |
 | Booleans | Integer `0` or `1`. |
 | Identifiers | Text primary keys in the glossary format (`TC-001`). Internal tables without a glossary identifier use an integer key named `id`. |
@@ -366,8 +366,9 @@ A stored computation of metrics, exit criteria and the release decision, so that
 | `analysis_id` | integer | references `analysis` | code | — |
 | `thresholds` | text | not null | code | Effective `exit_criteria.*` as JSON. |
 | `metrics` | text | not null | code | Every metric as JSON; not evaluable metrics are `null`. Ratios are stored as numerator and denominator. |
-| `criteria` | text | not null | code | Every criterion with its state, as JSON. |
-| `decision` | text | `release`, `release_with_conditions` or `do_not_release` | code | Null when the criteria cannot be evaluated. |
+| `criteria` | text | not null | code | Every criterion as JSON: identifier, state, value, threshold and whether it is blocking. |
+| `decision` | text | not null; `release`, `release_with_conditions` or `do_not_release` | code | Always set: a blocking criterion that cannot be evaluated gives `do_not_release` (`metrics.md`). |
+| `decision_details` | text | not null | code | The reasons and the conditions of the decision as JSON, with the test cases and classifications they name, as they were when the evaluation was computed. |
 | `tool_version` | text | not null | code | RetroAgent version that computed it. |
 | `created_at` | text | not null | code | — |
 

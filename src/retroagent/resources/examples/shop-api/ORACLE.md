@@ -90,7 +90,7 @@ Exit criteria, with `min_pass_rate` 0.90 from the project configuration and the 
 
 ## Cycle 2: `v1.1` to `v1.2`
 
-Same reference suite: every test of the project at `v1.2`.
+Same reference suite: every test of the project at `v1.2`, and the same configuration: `min_pass_rate` 0.90. Every impacted requirement is covered, no test case is designed only, and DEF-001 is the only defect.
 
 | Metric | Value |
 |---|---|

@@ -110,6 +110,9 @@ A test case is **revealing** when it was executed in both `F0` and `F`, its verd
 | Metric | Formula | Meaning | Basis |
 |---|---|---|---|
 | `open_defects.<severity>` | Defects with status `open`, per severity, at evaluation time | — | [ISTQB-FL] |
+| `triaged_failures` | `failed` or `error` executions of `R` that have a triage | Used by EC-08. | [ISO29119-3] |
+| `regressions` | Executions of `R` whose current triage is `regression` | Used by EC-08. | Project (ADR-0022) |
+| `regressions_with_defect` | Of those, the ones linked to a defect | Used by EC-08. | Project (ADR-0022) |
 | `defects_found` | Defects linked to executions of `R` | — | [ISTQB-FL] |
 | `defects_closed` | Defects with status `closed` at evaluation time | — | [ISTQB-FL] |
 
@@ -118,7 +121,7 @@ A test case is **revealing** when it was executed in both `F0` and `F`, its verd
 | Metric | Formula | Meaning | Basis |
 |---|---|---|---|
 | `run_duration` | End time minus start time of `R`, in seconds | — | [ISO29119-3] |
-| `test_time` | Sum of the test times reported in the JUnit XML of `R`, in seconds | — | [ISO29119-3] |
+| `test_time` | Sum of the test times reported in the JUnit XML of the first attempt of `R`, in seconds | — | [ISO29119-3] |
 
 ## Exit criteria
 
@@ -134,7 +137,7 @@ A test case is **revealing** when it was executed in both `F0` and `F`, its verd
 | EC-08 | Failures triaged | Every `failed` or `error` execution of `R` has a triage classification, and every execution classified `regression` is linked to a defect | Yes | [ISO29119-3] |
 | EC-09 | New failures | `unexcused_new_failures <= max_new_failures` | Yes | [RH96], Project (ADR-0022) |
 
-Thresholds come from `exit_criteria.*` in the configuration. Their default values are common conventions, not values required by any standard. EC-08 has no threshold and is always applied.
+Thresholds come from `exit_criteria.*` in the configuration. Their default values are common conventions, not values required by any standard. EC-08 has no threshold and is always applied; it is `met` when `R` has no failure. Its value is the four counts it compares: failures, `triaged_failures`, `regressions` and `regressions_with_defect`.
 
 Each criterion is evaluated to one state:
 

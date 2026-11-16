@@ -92,6 +92,7 @@ Existing tests are linked to requirements through their names, which appear in J
 
 - A test name containing `REQ-004`, `REQ_004` or `req004` (case-insensitive) is linked to `REQ-004`.
 - A test can reference several requirements.
+- A reference to a requirement that is not in project memory creates no link. Links by name are added when a test is discovered and again when requirements are synchronized, so the order of the two does not matter.
 - Tests written by RetroAgent follow the form `test_req_004_<description>`.
 
 ## Test identity

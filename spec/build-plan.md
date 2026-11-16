@@ -19,7 +19,7 @@ Each slice cuts through several components and ends with something that runs. Th
 | Slice | Result | Done when |
 |---|---|---|
 | 0. Skeleton | An installable package with a `retro` command. | `pip install -e ".[dev]"` works; `retro --version` prints the version; `retro example shop-api <dir>` passes SC-01; `pytest` runs. |
-| 1. Evidence without a model | Tests run against both versions and their results are stored and evaluated. No model is involved. | SC-05, SC-06, SC-07 and SC-08 pass. Every invariant has a unit test. Metrics and the decision rule have full unit coverage (NFR-12). |
+| 1. Evidence without a model | Tests run against both versions and their results are stored and evaluated. No model is involved. | SC-05, SC-06, SC-07 and SC-08 pass. Every invariant enforced by the data layer has a unit test; INV-03 and INV-14 are tool contracts, and the `expected_change` evidence of INV-15 needs git, so they are tested in slice 4. Metrics and the decision rule have full unit coverage (NFR-12). |
 | 2. Report | The completion report in Markdown and PDF, with charts. Agent sections say `Not provided.` | Given the records of the reference scenario, loaded by a fixture, the computed sections equal `expected/test-completion-report.md` (SC-10 and SC-11 without the model). |
 | 3. First turn of the agent | A session with a model that analyzes the impact of a change. | SC-02 passes. The turn, the permissions and the context pass their tests with `FakeProvider`. `/analyze v1.0 v1.1` works with a real model. The fixed part of the context is measured (see below). |
 | 4. The whole cycle | Every skill, the approval of commands, and `/cycle`. | SC-03, SC-04 and SC-09 to SC-20 pass. SC-21 to SC-28 were run with one local and one hosted model and recorded. |

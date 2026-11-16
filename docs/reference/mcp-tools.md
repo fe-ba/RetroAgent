@@ -317,7 +317,7 @@ Three classifications are accepted only when code finds their evidence (INV-15):
 | Classification | Evidence required |
 |---|---|
 | `expected_change` | The execution belongs to a run against the candidate, and a requirement traced to the test case has a `Changed` or `Removed` entry that applies to the change between the session versions (`project-contract.md`). |
-| `flaky` | The attempts of the execution have different results, or an earlier execution of the same test case against the same commit has a different verdict. |
+| `flaky` | At least one rerun of the execution passed, or an earlier execution of the same test case against the same commit has a different verdict (`passed` against `failed` or `error`; see `metrics.md`). |
 | `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run on the baseline commit of the session versions that executed the test case has it with result `failed` or `error`. |
 
 `regression`, `environment` and `test_defect` are judgments of the model and are not validated.

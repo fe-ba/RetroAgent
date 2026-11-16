@@ -26,7 +26,7 @@ The evaluation records its timestamp and the values of every input, so the same 
 
 - Counts refer to test executions of `R`, unless stated otherwise.
 - The result of a test execution is the result of its **first attempt**. An execution whose first attempt did not pass is rerun `tests.reruns` times, always all of them; reruns never change the result (ADR-0022).
-- An execution is **flaky** when its attempts produced different results. A flaky execution therefore always has the result `failed` or `error`, and goes through triage like any other failure.
+- An execution is **flaky** when at least one of its reruns passed: its attempts have different verdicts. Attempts that are `failed` and `error` have the same verdict and do not make an execution flaky. A flaky execution therefore always has the result `failed` or `error`, and goes through triage like any other failure.
 - The triage of an execution is its **current triage**: the latest one (`data-model.md`).
 - The **verdict** of an executed execution is `passed` or `not passed` (`failed` or `error`).
 - Ratios are stored and compared as exact values. They are displayed as percentages with one decimal. A criterion is evaluated on the exact value, never on the displayed one.
@@ -60,7 +60,7 @@ Names are the identifiers used in code, storage and templates.
 | `excused` | `failed` or `error` executions triaged as `expected_change` or `test_defect` | Failures that do not indicate a product problem; the tests must be updated. | Project (ADR-0017) |
 | `product_pass_rate` | `passed / (executed - excused)` | Pass rate of the product. Used by the exit criteria. | Project (ADR-0017) |
 | `pre_existing` | `failed` or `error` executions triaged as `pre_existing` | Failures that the baseline already had. They are not excused: they count against `product_pass_rate` and add a condition to the decision. | Project (ADR-0022) |
-| `flaky` | Executed executions whose attempts produced different results | Detected flaky executions. A lower bound, see below. | [LUO14], [GRU21] |
+| `flaky` | Executed executions with at least one rerun that passed | Detected flaky executions. A lower bound, see below. | [LUO14], [GRU21] |
 | `flaky_rate` | `flaky / executed` | — | [LUO14], [GRU21] |
 
 ### Coverage

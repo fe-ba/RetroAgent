@@ -20,7 +20,7 @@ Explain every failed or error execution of a run, so that the release decision c
 
    | Order | Classification | When |
    |---|---|---|
-   | 1 | `flaky` | The attempts of the execution produced different results, or an earlier execution of the test case against the same commit had a different verdict. |
+   | 1 | `flaky` | At least one rerun of the execution passed, or an earlier execution of the test case against the same commit had a different verdict. |
    | 2 | `environment` | The failure comes from infrastructure: service not reachable, timeout of an external resource, missing third-party dependency, port or file permission problem. |
    | 3 | `expected_change` | A traced requirement has a `Changed` or `Removed` entry that applies to the change between the session versions, and the failure matches that documented change. |
    | 4 | `test_defect` | The test itself is wrong: its assertion contradicts the requirement, its data is invalid, or it has an error of its own. |

@@ -304,7 +304,7 @@ Which test cases get an execution in a run depends on its scope (`mcp-tools.md`,
 | `duration` | real | | code | Seconds. |
 | `failure_message` | text | | code | From the JUnit XML. |
 
-Writer: test runner server. Attempt `1` is the original execution and gives the result; attempts `2` and later are reruns, created only when attempt `1` did not pass. A test execution is **flaky** when its attempts have different results; this is computed, not stored.
+Writer: test runner server. Attempt `1` is the original execution and gives the result; attempts `2` and later are reruns, created only when attempt `1` did not pass. A test execution is **flaky** when at least one of its reruns passed (`metrics.md`); this is computed, not stored. Attempts are added only while the run is `running`.
 
 ## Interpretation
 
@@ -334,7 +334,7 @@ The **current triage** of an execution is its latest row. Metrics, exit criteria
 | `detected_run_id` | text | not null, references `run` | code | Run of the first linked execution. |
 | `detected_at` | text | not null | code | — |
 | `expected` | text | | code | Expected result of the linked test case. Null when the test case has none. |
-| `actual` | text | not null | code | First line of the failure message of the linked execution. |
+| `actual` | text | not null | code | First line of the failure message of the first linked execution. When it has no message, its result followed by `without a message`. |
 | `steps` | text | not null, default `[]` | model | Steps to reproduce. |
 | `closed_at` | text | | code | — |
 | `closed_by` | text | `run` or `user` | code | Null while `open`. |
@@ -403,7 +403,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-07 | Identifiers are assigned by the data layer in sequence and never reused. | Data layer API |
 | INV-08 | A triage, and a link from a defect, refer only to executions with result `failed` or `error`. | Trigger |
 | INV-09 | A run with `scope` `suite` has a `suite_id`, and its executions are only for test cases of that suite. | `CHECK` constraint and trigger |
-| INV-10 | Runs that are not `running`, their executions and attempts, triage rows, the impact of an analysis, evaluations and rendered reports are never updated. | Triggers |
+| INV-10 | Runs that are not `running`, their executions and attempts, triage rows, the impact of an analysis, evaluations and rendered reports are never updated. No execution or attempt is added to a run that is not `running`. | Triggers |
 | INV-11 | Records are never deleted. | Triggers |
 | INV-12 | A defect with status `closed` has a `closed_at`, a `closed_by` and a `close_reason`; an `open` one has none. A defect closed by a run has a `closed_run_id`. | `CHECK` constraint |
 | INV-13 | Every reference made by the model (requirement, test case, file, execution) must exist; otherwise the tool call fails and nothing is written. | Data layer API |

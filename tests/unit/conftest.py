@@ -47,7 +47,7 @@ class Builder:
             requirement_ids=requirement_ids,
         )
         if implemented:
-            design.mark_implemented(self.conn, test_case_id, f".retro/tests/test_case_{number}.py::test_case_{number}")
+            design.mark_implemented(self.conn, test_case_id, f"test_case_{number}.py::test_case_{number}")
         return test_case_id
 
     def suite(self, *test_case_ids):

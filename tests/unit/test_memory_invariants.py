@@ -90,7 +90,7 @@ def test_inv_06_designed_test_case_has_no_executions(conn, build):
     designed = build.test_case(implemented=False)
     with pytest.raises(sqlite3.IntegrityError, match="INV-06"):
         insert_execution(conn, run_id, designed, "blocked", reason="not_reported")
-    design.mark_implemented(conn, designed, ".retro/tests/test_late.py::test_late")
+    design.mark_implemented(conn, designed, "test_late.py::test_late")
     insert_execution(conn, run_id, designed, "blocked", reason="not_reported")
 
 
@@ -449,16 +449,16 @@ def test_inv_16_retired_test_case_is_never_added_to_a_suite(conn, build):
 def test_inv_17_generated_test_name_and_file_are_unique_and_kept(conn, build):
     first = build.test_case(implemented=False)
     second = build.test_case(implemented=False)
-    design.mark_implemented(conn, first, ".retro/tests/test_a.py::test_a")
+    design.mark_implemented(conn, first, "test_a.py::test_a")
     with pytest.raises(InvariantViolation, match="INV-17"):  # same file
-        design.mark_implemented(conn, second, ".retro/tests/test_a.py::test_b")
+        design.mark_implemented(conn, second, "test_a.py::test_b")
     with pytest.raises(InvariantViolation, match="INV-17"):  # same function name
-        design.mark_implemented(conn, second, ".retro/tests/test_b.py::test_a")
-    design.mark_implemented(conn, second, ".retro/tests/test_b.py::test_b")
+        design.mark_implemented(conn, second, "test_b.py::test_a")
+    design.mark_implemented(conn, second, "test_b.py::test_b")
     # a rewrite keeps both and increments the revision
-    assert design.rewrite_generated_test(conn, first, ".retro/tests/test_a.py::test_a") == 2
-    assert design.rewrite_generated_test(conn, first, ".retro/tests/test_a.py::test_a") == 3
-    for changed in (".retro/tests/test_c.py::test_a", ".retro/tests/test_a.py::test_c"):
+    assert design.rewrite_generated_test(conn, first, "test_a.py::test_a") == 2
+    assert design.rewrite_generated_test(conn, first, "test_a.py::test_a") == 3
+    for changed in ("test_c.py::test_a", "test_a.py::test_c"):
         with pytest.raises(InvariantViolation, match="INV-17"):
             design.rewrite_generated_test(conn, first, changed)
     assert design.get_test_case(conn, first)["revision"] == 3

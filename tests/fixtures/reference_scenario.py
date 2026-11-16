@@ -69,9 +69,7 @@ V1_1_TESTS = [
     *V1_0_TESTS[17:],
 ]
 
-GENERATED = (
-    ".retro/tests/test_req_002_quantity_above_stock_is_rejected.py::test_req_002_quantity_above_stock_is_rejected"
-)
+GENERATED = "test_req_002_quantity_above_stock_is_rejected.py::test_req_002_quantity_above_stock_is_rejected"
 
 S1, S2, S3, S4 = (
     "tests.test_shipping::test_req_005_shipping_charged_when_discount_drops_below_threshold",

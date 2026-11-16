@@ -208,13 +208,13 @@ def test_model_prefix_of_every_provider(keys, model):
     assert stub.calls[0]["model"] == model
 
 
-def test_ollama_gets_the_context_size_its_base_url_and_no_key():
+def test_ollama_gets_the_context_size_its_base_url_and_the_placeholder_key():
     stub = Stub(model_response())
     provider(stub, **OLLAMA_PROFILE).complete(request(**OLLAMA_PROFILE))
     sent = stub.calls[0]
     assert sent["num_ctx"] == 32768
     assert sent["api_base"] == "http://localhost:11434"
-    assert "api_key" not in sent
+    assert sent["api_key"] == NO_KEY
 
 
 def test_other_providers_get_no_context_size():

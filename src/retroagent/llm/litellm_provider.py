@@ -45,7 +45,8 @@ UNAVAILABLE_WAITS = (2, 4, 8)
 QUOTA_WAIT = 120  # a rate limit that asks to wait longer is an exhausted quota
 PACING_WINDOW = 60
 
-# Sent by an openai_compatible profile without api_key_env, so LiteLLM never picks OPENAI_API_KEY by itself.
+# Sent by an ollama profile, and by an openai_compatible profile without api_key_env, so LiteLLM never picks a key
+# by itself (OLLAMA_API_KEY, OPENAI_API_KEY, litellm.api_key).
 NO_KEY = "no-key"
 REASONING_EFFORT = {"off": "none", "on": "medium"}  # thinking "default" sends nothing
 BLOCKED = "The provider blocked the response with a content filter."
@@ -92,11 +93,11 @@ class LiteLLMProvider:
         """Raise ``MissingCredential`` when the variable of the profile is not set. Used at session start."""
         self._api_key()
 
-    def _api_key(self) -> str | None:
+    def _api_key(self) -> str:
         """Read at each call and never kept (NFR-06)."""
         variable = self._profile["api_key_env"]
-        if variable is None:
-            return NO_KEY if self._provider == "openai_compatible" else None
+        if variable is None:  # only ollama and openai_compatible: the schema requires it for hosted providers
+            return NO_KEY
         value = os.environ.get(variable)
         if not value:
             raise MissingCredential(variable)
@@ -162,7 +163,7 @@ class LiteLLMProvider:
             self._on_wait(wait)
         self._sleep(wait.seconds)
 
-    def _arguments(self, request: Request, api_key: str | None) -> dict[str, object]:
+    def _arguments(self, request: Request, api_key: str) -> dict[str, object]:
         arguments: dict[str, object] = {
             "model": self._model,
             "messages": _messages(request.messages),
@@ -172,9 +173,8 @@ class LiteLLMProvider:
             "num_retries": 0,  # the retries are ours: LiteLLM's and the OpenAI SDK's would multiply them
             "max_retries": 0,
             "drop_params": True,  # a provider that does not accept a setting ignores it
+            "api_key": api_key,
         }
-        if api_key is not None:
-            arguments["api_key"] = api_key
         if self._profile["base_url"] is not None:
             arguments["api_base"] = self._profile["base_url"]
         if request.tools:
@@ -191,7 +191,7 @@ class LiteLLMProvider:
             arguments["num_ctx"] = request.context_window  # into the options of /api/chat
         return arguments
 
-    def _classify(self, error: Exception, api_key: str | None):
+    def _classify(self, error: Exception, api_key: str):
         """None for an error that is not LiteLLM's; ``(kind, wait, message)`` for a retry of kind ``rate_limit`` or
         ``unavailable``; otherwise the ``ProviderError`` to raise."""
         import openai  # a dependency of LiteLLM, whose API errors all derive from openai.APIError
@@ -232,8 +232,8 @@ class LiteLLMProvider:
         return InvalidRequest(f"Invalid request: {message}")
 
 
-def _scrub(text: str, api_key: str | None) -> str:
-    if api_key and api_key != NO_KEY:
+def _scrub(text: str, api_key: str) -> str:
+    if api_key != NO_KEY:
         text = text.replace(api_key, "***")
     return text
 

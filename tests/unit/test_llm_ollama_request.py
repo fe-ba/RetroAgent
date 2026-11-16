@@ -53,11 +53,26 @@ OLLAMA_ANSWER = {
 }
 
 
+FOREIGN_KEY = "foreign-key-7f3a9c1e5b2d"  # a key LiteLLM could pick by itself; it must never be sent
+
+
+def assert_no_foreign_key(requests: list[httpx.Request]) -> None:
+    for request in requests:
+        assert FOREIGN_KEY not in str(request.url)
+        assert FOREIGN_KEY.encode() not in b"".join(name + b": " + value for name, value in request.headers.raw)
+        assert FOREIGN_KEY.encode() not in request.content
+
+
 @pytest.fixture
 def posted(monkeypatch):
-    """Every HTTP request LiteLLM makes during the test, answered with ``OLLAMA_ANSWER``."""
-    for variable in ("OLLAMA_API_KEY", "OLLAMA_API_BASE"):
-        monkeypatch.delenv(variable, raising=False)
+    """Every HTTP request LiteLLM makes during the test, answered with ``OLLAMA_ANSWER``.
+
+    ``OLLAMA_API_KEY`` and ``litellm.api_key`` hold a recognizable key: LiteLLM reads them for ollama when it is not
+    given a key, and the adapter always gives one.
+    """
+    monkeypatch.setenv("OLLAMA_API_KEY", FOREIGN_KEY)
+    monkeypatch.setattr(lite, "api_key", FOREIGN_KEY)
+    monkeypatch.delenv("OLLAMA_API_BASE", raising=False)
     requests: list[httpx.Request] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -77,7 +92,7 @@ def test_the_body_posted_to_ollama_has_the_context_size_thinking_off_and_the_too
     (sent,) = requests
     assert sent.method == "POST"
     assert str(sent.url) == "http://localhost:11434/api/chat"
-    assert "authorization" not in sent.headers
+    assert_no_foreign_key(requests)
     body = json.loads(sent.content)
     assert body["model"] == "qwen3.5:4b"
     assert body["options"]["num_ctx"] == 32768
@@ -118,6 +133,7 @@ def test_a_tool_result_goes_back_to_ollama_with_the_call(posted):
         Message("user", "State."),
     ]
     provider.complete(request_from_profile(PROFILE, history, [TOOL]))
+    assert_no_foreign_key(requests)
     body = json.loads(requests[1].content)
     assistant, tool = body["messages"][2], body["messages"][3]
     assert assistant["tool_calls"][0]["function"] == {

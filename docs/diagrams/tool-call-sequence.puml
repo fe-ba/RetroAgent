@@ -1,0 +1,54 @@
+@startuml tool-call-sequence
+title RetroAgent - One turn with a tool call
+
+actor User
+participant "CLI" as CLI
+participant "Turn loop" as Turn
+participant "Context builder" as Context
+participant "Provider adapter" as Provider
+participant "Model" as Model
+participant "Permissions" as Permissions
+participant "MCP client" as Client
+participant "MCP server" as Server
+participant "Data layer" as Data
+database "Project memory" as DB
+
+User -> CLI : message or model command
+CLI -> Turn : start turn
+
+loop until the model answers without tool calls
+  Turn -> Context : build system context, tools and state message
+  Context -> Data : read state digest
+  Data -> DB : query
+  Context --> Turn : context within budget
+  Turn -> Provider : complete(messages, tools)
+  Provider -> Model : request
+  Model --> Provider : text and tool calls
+  Provider --> Turn : response and token usage
+  Turn -> Turn : truncation guard, calibration
+
+  loop for each tool call, in order
+    Turn -> Data : record tool call
+    Turn -> Permissions : check mode, permission, approval
+    alt refused
+      Permissions --> Turn : denied
+      Turn -> Data : record outcome denied
+    else allowed
+      opt permission is ask
+        Permissions -> User : prompt with code or commands
+        User --> Permissions : allow or deny
+      end
+      Turn -> Client : call tool
+      Client -> Server : tools/call
+      Server -> Data : read and write records
+      Data -> DB : transaction with invariants
+      Server --> Client : result or error
+      Client --> Turn : result
+      Turn -> Data : record outcome
+    end
+  end
+end
+
+Turn --> CLI : final answer
+CLI --> User : answer and tables
+@enduml

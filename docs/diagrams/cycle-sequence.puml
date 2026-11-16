@@ -1,0 +1,55 @@
+@startuml cycle-sequence
+title RetroAgent - Cycle command
+
+actor User
+participant "Cycle command" as Cycle
+participant "Turn loop" as Turn
+participant "Model" as Model
+participant "test_runner server" as Runner
+participant "Data layer" as Data
+
+User -> Cycle : /cycle base candidate
+Cycle -> Data : set session versions
+
+group analyze (model step)
+  Cycle -> Turn : empty conversation, tools of the step
+  Turn -> Model : skill impact-analysis
+  Model --> Turn : tool calls, then answer
+  Cycle -> Data : check: analysis has an impact
+end
+
+group discover (direct step, only when no project test is known)
+  Cycle -> Runner : run_tests base, scope all
+  Cycle -> Data : check: run completed
+end
+
+group select, design, implement (model steps)
+  Cycle -> Turn : one turn per step
+  Turn -> Model : skills test-selection and test-design
+  Cycle -> Data : check: the analysis has a suite
+end
+
+group run (direct step)
+  Cycle -> Runner : run_tests base, scope suite
+  Cycle -> Runner : run_tests candidate, scope suite
+  Runner -> Data : executions, attempts, closed defects
+  Cycle -> Data : check: both runs completed
+end
+
+group triage (model step)
+  Cycle -> Turn : skill failure-triage
+  Cycle -> Data : check: no failure without triage
+end
+
+group report (model step)
+  Cycle -> Turn : skill test-reporting
+  Cycle -> Data : check: completion report rendered
+end
+
+alt outcome of a step missing
+  Cycle -> Turn : run the step once more
+  Cycle --> User : stop with the name of the step, if still missing
+else every step done
+  Cycle --> User : decision and report location
+end
+@enduml

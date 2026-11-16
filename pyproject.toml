@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "retroagent"
+dynamic = ["version"]
+description = "An AI agent for software regression testing, built on MCP, skills and steering."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Ferney Ballesta" }]
+keywords = ["testing", "regression", "agent", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "litellm>=1.50",          # provider adapter (ADR-0003)
+    "mcp>=1.2",               # MCP client and servers (ADR-0004)
+    "pyyaml>=6.0",            # configuration
+    "rich>=13.7",             # terminal tables and prompts
+    "prompt_toolkit>=3.0.43", # interactive session
+    "markdown>=3.5",          # Markdown to HTML for PDF export (ADR-0018)
+    "weasyprint>=62",         # HTML to PDF (ADR-0018)
+    "matplotlib>=3.8",        # charts as SVG (ADR-0018)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+retro = "retroagent.cli.main:main"
+
+[tool.hatch.version]
+path = "src/retroagent/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retroagent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "spec", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["src/retroagent/resources/examples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

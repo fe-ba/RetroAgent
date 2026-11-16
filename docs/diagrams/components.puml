@@ -1,0 +1,137 @@
+@startuml components
+title RetroAgent - Component diagram
+
+skinparam componentStyle uml2
+left to right direction
+
+actor "User" as User
+
+cloud "Model service" as ModelService {
+  component "Hosted or local model" as Model
+}
+
+node "User machine" {
+
+  package "retroagent" {
+
+    component "CLI" as CLI
+
+    package "Runtime" as RuntimePkg {
+      component "Session" as Session
+      component "Turn loop" as Turn
+      component "Cycle command" as Cycle
+      component "Permissions and approvals" as Permissions
+      component "Slash commands" as Commands
+    }
+
+    component "Context builder" as Context
+    component "Provider adapter" as Provider
+    component "MCP client" as McpClient
+
+    package "Bundled MCP servers" as Servers {
+      component "git server" as GitServer
+      component "memory server" as MemoryServer
+      component "test_runner server" as RunnerServer
+      component "reports server" as ReportsServer
+    }
+
+    component "Data layer" as DataLayer
+    component "Metrics and decision" as Metrics
+    component "Report renderer" as Renderer
+    component "Configuration" as Config
+
+    folder "resources" as Resources {
+      artifact "steering" as Steering
+      artifact "skills" as Skills
+      artifact "templates" as Templates
+      artifact "examples" as Examples
+    }
+
+    interface "ModelProvider" as IModelProvider
+    interface "MCP over stdio" as IMcp
+    interface "Memory API" as IMemory
+  }
+
+  database "Project memory" as Database
+  folder "Target project" as Target {
+    artifact "git repository" as Repo
+    artifact "RETRO.md" as RetroMd
+    artifact "run evidence" as Evidence
+    artifact "generated tests" as GeneratedTests
+    artifact "reports" as ReportFiles
+  }
+  folder "User configuration" as UserConfig {
+    artifact "config.yaml" as UserYaml
+    artifact "approvals.json" as Approvals
+  }
+  node "Worktree" as Worktree {
+    component "Test command" as TestCommand
+    component "Service under test" as Service
+  }
+}
+
+User --> CLI : commands and messages
+CLI --> Session : starts
+Session --> Config : reads
+Session --> Turn
+Session --> Commands
+Commands --> Cycle
+Cycle --> Turn : one turn per step
+Turn --> Permissions : checks every tool call
+Turn --> Context : builds context
+Turn ..> IModelProvider : calls
+Provider -up- IModelProvider
+Provider --> Model : HTTPS or local HTTP
+Turn --> McpClient : dispatches tool calls
+Commands --> McpClient : direct commands
+McpClient ..> IMcp
+GitServer -up- IMcp
+MemoryServer -up- IMcp
+RunnerServer -up- IMcp
+ReportsServer -up- IMcp
+
+Context --> Steering : loads
+Context --> Skills : loads
+Context --> RetroMd : reads
+Context ..> IMemory : state digest
+Session ..> IMemory : session record, tool calls
+Permissions --> Approvals : reads and writes
+Config --> UserYaml : reads
+
+DataLayer -up- IMemory
+GitServer ..> IMemory
+MemoryServer ..> IMemory
+RunnerServer ..> IMemory
+ReportsServer ..> IMemory
+DataLayer --> Database : SQLite, invariants
+
+GitServer --> Repo : reads
+RunnerServer --> Worktree : creates, runs, removes
+RunnerServer --> Evidence : writes JUnit XML and logs
+RunnerServer --> GeneratedTests : writes and copies
+TestCommand --> Service : HTTP
+ReportsServer --> Metrics : evaluates
+ReportsServer --> Renderer : renders
+Metrics ..> IMemory : reads records
+Renderer --> Templates : fills
+Renderer --> ReportFiles : writes Markdown, SVG and PDF
+CLI --> Examples : retro example
+
+note right of Permissions
+  Enforced before dispatch:
+  modes, permissions and the
+  approval of project commands.
+end note
+
+note bottom of DataLayer
+  Only writer of the database.
+  No tool accepts a test result:
+  results come from parsed JUnit XML.
+end note
+
+note bottom of Provider
+  The only component that
+  talks to a model.
+end note
+
+@enduml

@@ -126,7 +126,7 @@ Integration tests create their own example project and never touch a directory o
 
 | Use | Profile |
 |---|---|
-| Development and the model scenarios | A small hosted model with tool calling and prompt caching. It keeps each call to a few seconds. |
+| Development and the model scenarios | `google` with `gemini-3.1-flash-lite` on the free tier, `requests_per_minute: 12`. Measured: every check of the model test passed, about 2 seconds per call. Its limits on the development account are 15 requests per minute and 500 per day, so a cycle of about 60 calls can run a few times a day; `gemini-3.5-flash-lite` has a separate quota of the same size. Stronger models of that tier allow 20 requests per day, which is less than one cycle. |
 | The local model of the presentation | `ollama` with `qwen3.5:4b`, `thinking: off`, and a `context_window` of 32,768 if the machine allows it. Measured on the development machine: all the checks of the model test passed three times out of three; short calls take 2 to 30 seconds on CPU, and a context read for the first time takes minutes. |
 
 The local model is used on a short scenario (SC-22 or SC-25) or on a recorded run of SC-28, not for development.

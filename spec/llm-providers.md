@@ -102,7 +102,8 @@ An invalid answer is returned to the model as a user message with the validation
 
 | Error | Retries | Behavior |
 |---|---|---|
-| Rate limit | Up to 3 | Waits the time the provider indicates, or 2, 4 and 8 seconds. |
+| Rate limit | Up to 3 | Waits the time the provider indicates, or 15, 30 and 60 seconds: limits per minute need about a minute to clear. |
+| Quota exhausted | None | A limit that does not clear within minutes, such as requests per day, is a runtime error that says which limit was reached. Project memory keeps the work done; `/cycle` continues from the step that stopped. |
 | Network error, server error or timeout | Up to 3 | Waits 2, 4 and 8 seconds. |
 | Authentication rejected | None | Runtime error that names the variable of the profile, not its value. |
 | Context window exceeded | 1 | The runtime frees context and retries once (`context-loading.md`); then a runtime error. |
@@ -112,9 +113,13 @@ An invalid answer is returned to the model as a user message with the validation
 
 A runtime error ends the current turn; in non-interactive mode it exits with code `1`. Every retry is shown in verbose mode.
 
+## Pacing
+
+When the model profile sets `requests_per_minute`, the adapter spaces model calls so that no window of one minute holds more than that number. It waits before a call instead of sending it and being refused. Services with a low rate limit, such as free tiers, need it: a regression cycle makes tens of calls in a row.
+
 ## Usage
 
-Token usage is added up per session and shown in verbose mode. It is not stored in project memory. The runtime also uses the input tokens of each call to calibrate its size estimates and to detect a server that dropped part of the context (`context-loading.md`).
+The number of model calls and the token usage are added up per session, shown in verbose mode and by `/status`. It is not stored in project memory. The runtime also uses the input tokens of each call to calibrate its size estimates and to detect a server that dropped part of the context (`context-loading.md`).
 
 ## Context size, state message and caching
 

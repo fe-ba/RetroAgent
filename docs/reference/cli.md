@@ -69,7 +69,7 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 
 | Command | Description |
 |---|---|
-| `/status` | Session versions, test cases by status, test executions of the last run by status and result, and current mode. |
+| `/status` | Session versions, test cases by status, test executions of the last run by status and result, current mode, and the model calls and tokens used in the session. |
 | `/history [n]` | Last `n` runs. Default: 10. |
 | `/defects [--all]` | Open defects. With `--all`, include closed ones. |
 | `/defects close <id> <reason>` | Close a defect by decision of the user, for example when it was fixed outside the tested scope or no longer applies. Otherwise defects are closed only by a run against the candidate in which every linked test case passes. |

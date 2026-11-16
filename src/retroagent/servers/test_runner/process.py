@@ -42,7 +42,7 @@ def run(command: str, *, cwd: str | Path, env: Mapping[str, str], timeout: float
     ``KeyboardInterrupt`` terminates the group and is raised again.
     """
     started_at = utc_now()
-    _note(log, f"[{started_at}] $ {command}")
+    note(log, f"[{started_at}] $ {command}")
     process = _popen(command, cwd, env, log)
     timed_out = False
     try:
@@ -51,20 +51,20 @@ def run(command: str, *, cwd: str | Path, env: Mapping[str, str], timeout: float
         timed_out = True
     except BaseException:
         terminate(process)
-        _note(log, f"[{utc_now()}] interrupted")
+        note(log, f"[{utc_now()}] interrupted")
         raise
     terminate(process)
     ended_at = utc_now()
     if timed_out:
-        _note(log, f"[{ended_at}] stopped after {timeout} seconds")
+        note(log, f"[{ended_at}] stopped after {timeout} seconds")
     else:
-        _note(log, f"[{ended_at}] exit code {process.returncode}")
+        note(log, f"[{ended_at}] exit code {process.returncode}")
     return Outcome(None if timed_out else process.returncode, timed_out, started_at, ended_at)
 
 
 def start(command: str, *, cwd: str | Path, env: Mapping[str, str], log: str | Path) -> subprocess.Popen:
     """Start a long-running command, such as a service. Stop it with ``terminate``."""
-    _note(log, f"[{utc_now()}] $ {command}")
+    note(log, f"[{utc_now()}] $ {command}")
     return _popen(command, cwd, env, log)
 
 
@@ -100,6 +100,7 @@ def _signal_group(group: int, signal_number: int) -> None:
         pass  # the group has already ended
 
 
-def _note(log: str | Path, line: str) -> None:
+def note(log: str | Path, line: str) -> None:
+    """Append one line to a log, such as the run log."""
     with open(log, "a", encoding="utf-8") as output:
         output.write(line + "\n")

@@ -54,6 +54,9 @@ include = ["src", "tests", "docs", "spec", "README.md", "LICENSE", "pyproject.to
 testpaths = ["tests"]
 pythonpath = ["tests"]
 addopts = "-q"
+markers = [
+    "network: needs the network (the example's setup installs pytest from PyPI); deselect with -m \"not network\"",
+]
 
 [tool.ruff]
 line-length = 120

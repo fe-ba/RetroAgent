@@ -226,8 +226,46 @@ def retire_test_case(conn: sqlite3.Connection, test_case_id: str, *, reason: str
         )
 
 
+def bind_test_id(conn: sqlite3.Connection, test_case_id: str, test_id: str) -> None:
+    """Bind a generated test to its JUnit entry, the first time a run reports it (project-contract.md)."""
+    with transaction(conn):
+        row = _generated(conn, test_case_id)
+        if row["status"] != "implemented":
+            raise InvariantViolation(f"{test_case_id} has no generated test to bind")
+        if row["test_id"] is not None:
+            raise InvariantViolation(f"{test_case_id} is already bound to {row['test_id']!r}")
+        conn.execute(
+            "UPDATE test_case SET test_id = ?, updated_at = ? WHERE id = ?", (test_id, utc_now(), test_case_id)
+        )
+
+
 def get_test_case(conn: sqlite3.Connection, test_case_id: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM test_case WHERE id = ?", (test_case_id,)).fetchone()
+
+
+def active_implemented_test_cases(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM test_case WHERE status = 'implemented' AND retired_at IS NULL ORDER BY id"
+    ).fetchall()
+
+
+def current_suite(conn: sqlite3.Connection, base_commit: str, candidate_commit: str) -> int | None:
+    """The latest suite of the latest analysis of these versions; None when that analysis has no suite yet."""
+    row = conn.execute(
+        "SELECT id FROM suite WHERE analysis_id = (SELECT id FROM analysis WHERE base_commit = ?"
+        " AND candidate_commit = ? ORDER BY id DESC LIMIT 1) ORDER BY id DESC LIMIT 1",
+        (base_commit, candidate_commit),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def suite_test_cases(conn: sqlite3.Connection, suite_id: int) -> list[sqlite3.Row]:
+    """The test cases of a suite, in the order of their position."""
+    return conn.execute(
+        "SELECT tc.* FROM suite_test_case AS s JOIN test_case AS tc ON tc.id = s.test_case_id"
+        " WHERE s.suite_id = ? ORDER BY s.position, tc.id",
+        (suite_id,),
+    ).fetchall()
 
 
 def add_suite(conn: sqlite3.Connection, *, analysis_id: int, session_id: int) -> int:

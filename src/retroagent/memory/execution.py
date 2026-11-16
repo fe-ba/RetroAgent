@@ -44,6 +44,12 @@ def start_run(
     return run_id
 
 
+def set_command(conn: sqlite3.Connection, run_id: str, command: str) -> None:
+    """Store the test command of the first attempt once its placeholders, which name the run, are expanded."""
+    with transaction(conn):
+        conn.execute("UPDATE run SET command = ? WHERE id = ?", (command, run_id))
+
+
 def set_junit_path(conn: sqlite3.Connection, run_id: str, junit_path: str) -> None:
     """Store the JUnit XML of a run that is still running. Needed before any execution can be ``executed``."""
     with transaction(conn):
@@ -81,7 +87,8 @@ def record_test_execution(
     """Store one test execution with its attempts, in one transaction.
 
     An executed execution needs its attempts: the first gives the result (INV-04). Each attempt is
-    ``{result, duration, failure_message}``; the number is its position, from 1.
+    ``{number, result, duration, failure_message}``. The number is the round of the run that produced it, so a
+    round without a result for the test case leaves a gap; without ``number``, the position from 1 is used.
     """
     attempts = attempts or []
     with transaction(conn):
@@ -97,10 +104,16 @@ def record_test_execution(
             (run_id, test_case_id, status, result, reason, duration, test_revision),
         )
         execution_id = cursor.lastrowid
-        for number, attempt in enumerate(attempts, start=1):
+        for position, attempt in enumerate(attempts, start=1):
             conn.execute(
                 "INSERT INTO attempt (execution_id, number, result, duration, failure_message) VALUES (?, ?, ?, ?, ?)",
-                (execution_id, number, attempt["result"], attempt.get("duration"), attempt.get("failure_message")),
+                (
+                    execution_id,
+                    attempt.get("number", position),
+                    attempt["result"],
+                    attempt.get("duration"),
+                    attempt.get("failure_message"),
+                ),
             )
     return execution_id
 

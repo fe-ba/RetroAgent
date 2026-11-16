@@ -71,6 +71,30 @@ def test_inv_04_first_attempt_gives_the_result(conn, build):
         conn.execute("INSERT INTO attempt (execution_id, number, result) VALUES (?, 1, 'passed')", (blocked,))
 
 
+def test_inv_04_attempt_numbers_are_rounds_and_may_leave_gaps(conn, build):
+    run_id = build.run()
+    gap = execution.record_test_execution(
+        conn,
+        run_id=run_id,
+        test_case_id=build.test_case(),
+        status="executed",
+        result="failed",
+        attempts=[{"number": 1, "result": "failed"}, {"number": 3, "result": "passed"}],
+    )
+    assert [a["number"] for a in execution.list_attempts(conn, gap)] == [1, 3]
+    assert execution.is_flaky(conn, gap)
+    # refused: an execution whose first round has no attempt
+    with pytest.raises(sqlite3.IntegrityError, match="INV-04"):
+        execution.record_test_execution(
+            conn,
+            run_id=run_id,
+            test_case_id=build.test_case(),
+            status="executed",
+            result="failed",
+            attempts=[{"number": 2, "result": "failed"}],
+        )
+
+
 def test_inv_05_status_matches_implementation_fields(conn, build):
     designed = build.test_case(implemented=False)
     implemented = build.test_case()

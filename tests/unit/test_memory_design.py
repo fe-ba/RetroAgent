@@ -4,6 +4,7 @@ links by name (project-contract.md, Traceability)."""
 import json
 
 import pytest
+from conftest import BASE_COMMIT, CANDIDATE_COMMIT
 
 from retroagent.memory import design
 from retroagent.memory.errors import InvariantViolation
@@ -150,3 +151,35 @@ def test_generated_tests_are_not_linked_by_name(conn, build):
     test_case_id = build.test_case(implemented=True)
     design.link_tests_by_name(conn)
     assert links(conn, test_case_id) == []
+
+
+def test_a_generated_test_is_bound_once_to_its_junit_entry(conn, build):
+    test_case_id = build.test_case()
+    design.bind_test_id(conn, test_case_id, "tests.retro.test_case_1::test_case_1")
+    assert design.get_test_case(conn, test_case_id)["test_id"] == "tests.retro.test_case_1::test_case_1"
+    with pytest.raises(InvariantViolation, match="already bound"):
+        design.bind_test_id(conn, test_case_id, "other::test_case_1")
+    with pytest.raises(InvariantViolation, match="no generated test"):
+        design.bind_test_id(conn, build.test_case(implemented=False), "x::y")
+    project = project_test(conn, "tests.test_a::test_a")
+    with pytest.raises(InvariantViolation, match="not designed by the agent"):
+        design.bind_test_id(conn, project, "tests.test_a::test_b")
+
+
+def test_active_implemented_test_cases_leave_out_designed_and_retired_ones(conn, build):
+    implemented, designed, retired = build.test_case(), build.test_case(implemented=False), build.test_case()
+    design.retire_test_case(conn, retired, reason="obsolete", retired_by="fake/model")
+    assert [row["id"] for row in design.active_implemented_test_cases(conn)] == [implemented]
+    assert designed not in [row["id"] for row in design.active_implemented_test_cases(conn)]
+
+
+def test_the_current_suite_is_the_latest_suite_of_the_latest_analysis_of_the_versions(conn, build):
+    first, second = build.test_case(), build.test_case()
+    old = build.suite(first)
+    assert design.current_suite(conn, BASE_COMMIT, CANDIDATE_COMMIT) == old
+    latest = build.suite(second, first)
+    assert design.current_suite(conn, BASE_COMMIT, CANDIDATE_COMMIT) == latest
+    assert [row["id"] for row in design.suite_test_cases(conn, latest)] == [second, first]
+    assert design.current_suite(conn, BASE_COMMIT, "d" * 40) is None
+    build.analysis_id = build.analysis()  # a new analysis starts a new cycle without a suite
+    assert design.current_suite(conn, BASE_COMMIT, CANDIDATE_COMMIT) is None

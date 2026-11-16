@@ -4,6 +4,7 @@ Functional (FR) and non-functional (NFR) requirements of RetroAgent.
 
 - **Priority** follows MoSCoW: `Must` is required for the project to be valid, `Should` is expected, `Could` is optional if time allows.
 - **Source** links each requirement to the project brief or to an ADR.
+- Every requirement is verified by at least one scenario of `acceptance-scenarios.md`, which lists the requirements each scenario covers.
 
 The `Must` requirements are the core: what has to work end to end, on the example project, for the project to be presented. They are built first, as a thin path through every component. `Should` requirements are built after the core works, in the order that the remaining time allows, and `Could` requirements only after them. Lowering a priority does not remove the specification of the feature.
 

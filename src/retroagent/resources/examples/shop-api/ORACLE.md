@@ -112,6 +112,25 @@ Same reference suite: every test of the project at `v1.2`.
 
 **Decision: `release_with_conditions`.** Condition: the tax rounding test already failed against the baseline.
 
+## Reference scenario
+
+`expected/` holds the completion report of one complete run of cycle 1, filled by hand: `test-completion-report.md`, its charts, and the generated test it assumes. It is what RetroAgent must produce when the model makes the choices below. The computed sections must match exactly; the agent sections are an example.
+
+| Element | Reference |
+|---|---|
+| Discovery | RUN-0001, full run against `v1.0`: 22 tests, TC-001 to TC-022 in the order of the JUnit XML. RUN-0002, full run against `v1.1`: adds TC-023 to TC-026. |
+| Suite | Every test of the project (26), TC-027 and TC-028. The suite is small, so everything is selected. |
+| TC-027 | Designed for REQ-002 and implemented: `expected/test_req_002_quantity_above_stock_is_rejected.py`. Passes on both versions. Priority `high`. |
+| TC-028 | Designed for REQ-002 (an unknown product cannot be added) and left without code. Priority `medium`. |
+| Priorities | Tests of REQ-002, REQ-003, REQ-004 and REQ-006 are `high`, except TC-028: 15 test cases. |
+| Runs | RUN-0003, the suite against `v1.0`: 23 executed, 21 passed, 2 failed, 4 blocked as `not_reported`. RUN-0004, the suite against `v1.1`: 27 executed, 23 passed, 4 failed. |
+| Seeded tests | S1 is TC-020, S2 is TC-014, S3 is TC-011, S4 is TC-022. |
+| Impacted requirements | REQ-002 to REQ-008: 7. |
+| Defect | DEF-001, severity `high`, linked to TC-020. |
+| Decision | `do_not_release`: EC-01 (88.5% under 90%), EC-05 and EC-09 are not met. |
+
+These figures differ from the table of cycle 1 above, which has no generated test: here 28 are planned, 27 executed and 23 passed, and one more test case is a stable pass.
+
 ## Judgments of the model
 
 These depend on the model, so they are checked with tolerance.

@@ -16,16 +16,18 @@
 | 10. Triage failures | `/triage` | `failure-triage` |
 | 11. Report | `/report completion` | `test-reporting` |
 
+Every call ends with a `<session-state>` block. The runtime writes it, not the user: it holds the session state and a digest of project memory computed by code. Trust it like a tool result, and read the details with tools.
+
 Each step uses the records stored by the previous ones. When the user asks for one step, do that step and suggest the next one in a single line. When the user asks for the whole cycle, do the steps in order and stop when a tool call fails or is refused, or when a decision of the user is needed. Failed tests are not a reason to stop: triage exists for them.
 
-During `/cycle` the runtime gives you one step at a time, named in the session block. Do only that step and end the turn; the runtime starts the next one. Each step starts with an empty conversation: read what you need from project memory.
+During `/cycle` the runtime gives you one step at a time, named in the session state. Do only that step and end the turn; the runtime starts the next one. Each step starts with an empty conversation: read what you need from project memory.
 
 To run tests, call `test_runner__run_tests` with `version` `base` or `candidate`. Run the baseline before the candidate.
 
 ### State
 
-- Read the current state before acting: the session block, then `memory__get_analysis`, `memory__get_suite` and `memory__get_runs` as needed. Do not assume that a step was done.
-- The session versions are in the session block. When a task needs them and they are `not set`, ask the user for the refs, then call `runtime__set_versions`. Never guess a ref.
+- Read the current state before acting: the session state, then `memory__get_analysis`, `memory__get_suite` and `memory__get_runs` as needed. Do not assume that a step was done.
+- The session versions are in the session state. When a task needs them and they are `not set`, ask the user for the refs, then call `runtime__set_versions`. Never guess a ref.
 
 ### Missing information
 

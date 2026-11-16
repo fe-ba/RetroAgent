@@ -55,5 +55,6 @@ Explain every failed or error execution of a run, so that the release decision c
 - Classify from evidence, never from the test name alone.
 - Never change a result: triage explains a failure, it does not turn it into a pass.
 - Triage an execution again (`replace` `true`) only when the user asks, or when new evidence exists, such as a baseline run made after the first triage. State the previous classification in the justification.
+- Triage one execution at a time: read its evidence and record its triage before reading the next one.
 - You cannot close a defect. A run closes it when every linked test case passes; the user can close it with `/defects close`.
 - The probable cause of a regression is a hypothesis; say so.

@@ -57,6 +57,7 @@ Writer: data layer, on creation and migration.
 | `base_commit` | text | | code | Full commit hash. |
 | `candidate_ref` | text | | code | Candidate of the session versions. Null while not set. |
 | `candidate_commit` | text | | code | Full commit hash. |
+| `result_char_limit` | integer | not null | code | Largest tool result of the session, in characters (`context-loading.md`). |
 
 Writer: runtime. This record is the session context of the bundled servers: each server is started for one project and one session, and reads the versions and the model from here when a tool needs them (ADR-0026). Records such as `designed_by` and `triaged_by` copy the model at the time they are written.
 

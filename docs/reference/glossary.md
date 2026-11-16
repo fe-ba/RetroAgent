@@ -25,11 +25,12 @@ Single vocabulary for code, database, CLI, steering, skills, templates and docum
 | MCP server | Process that exposes tools through the Model Context Protocol. |
 | Tool | A single callable operation exposed by an MCP server or by the runtime. |
 | Session | One interactive or non-interactive execution of `retro`. |
-| System context | Instructions and information sent to the model on every call: steering, session block, project context and skills index. |
+| System context | Instructions and information sent to the model on every call: steering, project context and skills index. It is stable during a session. |
 | Turn | One user message and every model call and tool call that follows, until the model answers without tool calls. |
 | Slash command | Command typed in a session, such as `/run`. Direct commands run without the model; model commands become a message to the model. |
 | Cycle command | `/cycle`: the regression cycle run by the runtime one step at a time, each step in a fresh conversation and checked against stored data. |
-| Context budget | Share of the context window of the model that a call may use. When it is exceeded, the runtime replaces old tool results with a note. |
+| Context budget | The context window of the model minus the space reserved for its answer. When the conversation fills its share, the runtime replaces old tool results, and then old turns, with a note. |
+| State message | Last message of every call, written by the runtime: the session state and a digest of project memory computed by code. |
 | Plan mode | Mode in which the agent analyzes and designs but cannot execute tests. |
 | JSON fallback mode | Mode for models without tool calling: tools are described in the system context and the model answers with JSON that the runtime validates. |
 | Permission | Consent of the user, asked before running tests, starting a service or writing test code. |

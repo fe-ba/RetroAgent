@@ -33,14 +33,14 @@ When the user exits, the single prompt is answered, or a fatal error occurs:
 
 A turn starts with a user message and ends when the model answers without tool calls.
 
-1. Build the system context and the tool definitions for the current mode.
+1. Build the system context and the tool definitions for the current mode and tool set, free context when the budget requires it, and append the state message (`context-loading.md`).
 2. Call the model.
 3. If the answer has tool calls, process them **one by one, in the order given**:
    1. Record the call in `tool_call`, with secret values replaced.
    2. Check the mode and the permission of the tool (see below). A refused call returns a `denied` error to the model.
    3. If the permission is `ask`, ask the user.
    4. Dispatch the call to its server. Bundled servers read the session context from the `session` record, which only the runtime writes (ADR-0026).
-   5. Record the outcome and add the result to the conversation.
+   5. Record the outcome and add the result to the conversation. When the results of this model message already fill their share of the context, the remaining calls are not executed and return `deferred`.
 4. Go back to step 1 until the model answers without tool calls, then show the answer.
 
 **Iteration limit.** A turn makes at most `agent.max_iterations` model calls. When the limit is reached, the turn stops with a message; in non-interactive mode this is a runtime error.
@@ -89,7 +89,7 @@ Kept by the runtime for the duration of the session, never by the model. The ver
 | Mode | `--mode`, `/mode`, `Shift+Tab` |
 | Model profile | `--model`, `/model`. Changing it keeps the conversation and runs the probe again when needed. |
 | Session permission grants | Answers to permission prompts. |
-| Conversation and loaded skills | Every turn; emptied by `/clear`. |
+| Conversation and loaded skill | Every turn; emptied by `/clear`, by every model command and by every step of `/cycle`. |
 
 ## Slash commands
 
@@ -121,6 +121,8 @@ Slash commands are of three kinds: direct commands, model commands and the cycle
 | `/triage [run_id]` | "Load the skill `failure-triage` and triage the failed executions of run `<run_id>`." Default: the latest run. |
 | `/report <type> [--run <run_id>] [--format <format>]` | "Load the skill `test-reporting` and generate the `<type>` report" followed by the run and format when given. |
 
+Every model command starts with an empty conversation and exposes only the tools of its skill (see Cycle command). The state message tells the model where the project stands, and project memory holds the details. A free message typed afterwards continues that conversation.
+
 The templates are part of the bundled package. A message typed in natural language works the same way; the model follows the workflow in the steering.
 
 ## Regression cycle
@@ -145,7 +147,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 ## Cycle command
 
-`/cycle [base] [candidate]` runs the regression cycle from step 2 to step 11 (FR-40, ADR-0027). The runtime, not the model, decides the order. Each model step is a turn of its own: the conversation is emptied before it, the session block names the step, and only the tools of the step are exposed. Project memory carries the state from one step to the next. After each step, code checks its outcome in project memory.
+`/cycle [base] [candidate]` runs the regression cycle from step 2 to step 11 (FR-40, ADR-0027). The runtime, not the model, decides the order. Each model step is a turn of its own: the conversation is emptied before it, the state message names the step, and only the tools of the step are exposed. Project memory carries the state from one step to the next. After each step, code checks its outcome in project memory.
 
 | Step | Kind | Tools exposed | Outcome checked by code |
 |---|---|---|---|
@@ -192,6 +194,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 - Every tool call that writes project memory runs in a single transaction: it is applied completely or not at all (NFR-07).
 - The session lock prevents two sessions from writing the same project memory. The operating system releases it when the process ends, however it ends, so a crashed session never blocks the next one.
+- A server that reads fewer tokens than it was sent is detected after the call, and the session stops instead of continuing with a model that lost its instructions (`context-loading.md`).
 - Setup, test and service commands run in their own process group. A timeout, an interruption or the end of the session terminates the whole group, so no process of the target project outlives its run.
 - Model errors are handled as in `llm-providers.md`; a failed turn never leaves partial records.
 

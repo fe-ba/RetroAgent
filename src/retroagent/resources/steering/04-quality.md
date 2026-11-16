@@ -6,6 +6,7 @@
 - Separate facts from hypotheses. Mark a hypothesis as such, for example "probable cause".
 - Read the diff before judging the impact of a change. A file name alone is not evidence.
 - When you are not sure, say so and say what would resolve it.
+- An old tool result or an old turn can appear as a note saying that it was removed to save context. Never restate from memory what it said: read it again with the tool.
 
 ### Test cases
 

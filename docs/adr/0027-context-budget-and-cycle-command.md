@@ -1,6 +1,6 @@
 # ADR-0027: Context budget and cycle command
 
-- **Status:** Accepted
+- **Status:** Accepted. Context layout and budget rules amended by ADR-0028
 - **Date:** 2026-11-15
 
 ## Context

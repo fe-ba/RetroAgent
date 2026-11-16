@@ -66,7 +66,9 @@ Defined only at user level, under `models.<profile>`.
 | `tool_calling` | enum | `auto` | `auto` detects support, `native` forces tool calling, `json` forces the JSON fallback mode. |
 | `temperature` | number | `0` | Sampling temperature. Low values favor reproducible behavior. |
 | `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). |
-| `context_window` | integer | reported by the provider | Context size of the model, in tokens. Required for `ollama` and `openai_compatible`, where it cannot be known reliably. For `ollama` it is also sent with every request as the context size to use, because a local server may otherwise apply a smaller default and drop the beginning of the context without an error (`context-loading.md`). |
+| `max_output_tokens` | integer | `4096` | Limit of one model response, thinking included. Kept free in the context window as the output reserve (`context-loading.md`). |
+| `thinking` | enum | `default` | For reasoning models: `default` leaves it to the provider, `off` asks for answers without thinking, `on` asks for it. Ignored by providers that do not accept it. |
+| `context_window` | integer | reported by the provider | Context size of the model, in tokens. Required for `ollama` and `openai_compatible`, where it cannot be known reliably. For `ollama` it is also sent with every request as the context size to use, because a local server may otherwise apply a smaller default and drop the beginning of the context without an error (`context-loading.md`). A window of 32,768 tokens or more is recommended. |
 
 ### Agent
 

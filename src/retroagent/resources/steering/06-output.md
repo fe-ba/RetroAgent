@@ -2,7 +2,7 @@
 
 ### Language
 
-Write responses and agent sections in the language given in the session block. Identifiers, enumeration values, tool names, file paths, refs and code are never translated.
+Write responses and agent sections in the language given in the session state. Identifiers, enumeration values, tool names, file paths, refs and code are never translated.
 
 ### Form
 

@@ -34,4 +34,5 @@ Only decisions that would be costly to reverse deserve an ADR.
 | [ADR-0024](0024-execution-safety.md) | Execution safety | Accepted |
 | [ADR-0025](0025-package-layout.md) | Package layout | Accepted |
 | [ADR-0026](0026-own-runtime-and-internal-servers.md) | Own runtime and internal servers | Accepted |
-| [ADR-0027](0027-context-budget-and-cycle-command.md) | Context budget and cycle command | Accepted |
+| [ADR-0027](0027-context-budget-and-cycle-command.md) | Context budget and cycle command | Accepted, amended by ADR-0028 |
+| [ADR-0028](0028-context-layout-and-budget.md) | Context layout and budget | Accepted |

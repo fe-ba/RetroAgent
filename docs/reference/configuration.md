@@ -96,8 +96,8 @@ Defined only at user level, under `models.<profile>`.
 | `tests.select` | string | none | project | Command that runs only selected tests, using `{names}`. If absent, the full suite runs and only selected test cases are counted. Also used for reruns. |
 | `tests.select_separator` | string | `" or "` | project | Separator used to join test names in `{names}`. |
 | `tests.setup` | string | none | project | Command run once in each new worktree before tests. Must install dependencies locally to the worktree, never globally. Worktrees are new for every run, so `{cache_dir}` is the place for downloads that should be reused. |
-| `tests.env` | map | `{}` | project | Extra environment variables for setup and test commands. |
-| `tests.timeout` | integer | `900` | user, project | Seconds before a test command is stopped. |
+| `tests.env` | map | `{}` | project | Extra environment variables for setup, test and service commands. Placeholders are not expanded in them. |
+| `tests.timeout` | integer | `900` | user, project | Seconds before a setup or test command is stopped. |
 | `tests.reruns` | integer | `2` | user, project | Reruns of each test case whose first attempt did not pass, to detect flaky tests. All of them always run, and they never change the result (`metrics.md`). |
 | `tests.generated_dir` | string | `tests/retro` | project | Path inside each worktree where generated tests from `.retro/tests/` are copied before a run (ADR-0015). |
 
@@ -158,7 +158,7 @@ Available in `tests.*` and `service.*` commands.
 | `{port}` | Free port assigned to the service of this version. |
 | `{worktree}` | Absolute path of the worktree being tested. |
 | `{run_dir}` | Absolute path of the run directory (`.retro/runs/<run_id>/`). |
-| `{cache_dir}` | Absolute path of a directory kept between runs for this project (`~/.retro/cache/<project-id>/`), for example for a package download cache. |
+| `{cache_dir}` | Absolute path of a directory kept between runs for this project (`~/.retro/cache/<project-id>/`), for example for a package download cache. `<project-id>` is the name of the project directory, a hyphen, and the first 12 hexadecimal digits of the SHA-256 of its absolute path. |
 
 ## Environment variables
 
@@ -181,7 +181,7 @@ Available in `tests.*` and `service.*` commands.
 
 ### Environment of subprocesses
 
-Setup, test and service commands, and every MCP server, start with the environment of `retro` without the model credentials: every variable named in an `api_key_env` of the user configuration, and the well-known key variables of the supported providers, are removed. `tests.env`, the variables above and the `env` of an MCP server declaration are then added. Tests and servers never need a model credential (ADR-0020), so none reaches them (NFR-16).
+Setup, test and service commands, and every MCP server, start with the environment of `retro` without the model credentials: every variable named in an `api_key_env` of the user configuration, and the well-known key variables of the supported providers (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY` and `GOOGLE_API_KEY`), are removed. `tests.env`, the variables above and the `env` of an MCP server declaration are then added. Tests and servers never need a model credential (ADR-0020), so none reaches them (NFR-16).
 
 ## User level files
 

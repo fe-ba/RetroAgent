@@ -395,10 +395,10 @@ Creates a run against one session version and executes it, following `project-co
 
 | Scope | What runs | Executions created |
 |---|---|---|
-| `all` | `tests.command` as configured: every test of the project and every generated test of an active test case. It needs no known test case, so it is also how the project suite is discovered. | One for each test the JUnit XML reports. A generated test it does not report gets `blocked` with reason `not_reported`. |
+| `all` | `tests.command` as configured: every test of the project and every generated test of an active test case. It needs no known test case, so it is also how the project suite is discovered. | One for each test the JUnit XML reports. A generated test it does not report gets `blocked` with reason `not_reported`. When the run ends before any valid JUnit XML exists (failed setup, service not ready, no JUnit XML, timeout or interruption), every active implemented test case known to memory gets one `blocked` execution with that reason; on a project whose tests were never discovered there is none, and the status and the error of the run tell what happened. |
 | `suite`, `selected` | The implemented, active test cases of the scope, through `tests.select` when it is configured. | One for each of them, `blocked` with reason `not_reported` when the JUnit XML has no result for it. Results of tests outside the scope are ignored. |
 
-Returns the run ID, its status, the counts of execution statuses and results, and the defects closed by the run. Tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names.
+Returns the run ID, its status, the counts of execution statuses and results, and the defects closed by the run. In a run with scope `all`, tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names. Runs with other scopes register nothing.
 
 **Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times, always all of them. The result of the execution is the result of the first attempt (INV-04). Reruns use `tests.select` with the test cases to rerun when it is configured; otherwise the test command runs again in full. Each attempt keeps its own JUnit XML in the run directory.
 

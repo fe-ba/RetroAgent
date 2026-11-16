@@ -116,13 +116,17 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 1. RetroAgent creates a detached worktree of the version to test under `~/.retro/worktrees/<project-id>/`. It is outside the project tree, so that the tools of the project never find the configuration or the dependencies of the working copy by searching parent directories.
 2. If `tests.setup` is set, it runs once in that worktree.
 3. Generated tests from `.retro/tests/` are copied to `tests.generated_dir` inside the worktree.
-4. If `service.start` is set, the service starts on a free port and RetroAgent waits for `service.ready_path` to answer.
+4. If `service.start` is set, the service starts on a free port and RetroAgent waits for `service.ready_path` to answer. Any HTTP response with a status below 500 means ready.
 5. `tests.command` (or `tests.select` for a subset) runs in the worktree with the variables listed in `configuration.md`.
 6. Results are read only from the JUnit XML at `tests.junit`.
-7. Each test case whose first attempt did not pass is rerun `tests.reruns` times: with `tests.select` when it is set, otherwise with the full command. Each attempt writes its own JUnit XML.
+7. Each test case whose first attempt did not pass is rerun `tests.reruns` times: with `tests.select` when it is set, otherwise with the full command. Each attempt writes its own JUnit XML. A rerun never changes the outcome of the run: when a rerun round times out or gives no valid JUnit XML, no attempt is stored for it, the remaining rounds are not run, and the run log says so. A test case that a rerun does not report, or reports as skipped, gets no attempt for that round.
 8. The service is stopped and the worktree is removed, including its metadata in `.git/worktrees/`.
 
 The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`. When `tests.timeout` stops the command, the run is `interrupted` and its test executions are `blocked`. A test case that the run was asked to execute and that the JUnit XML does not report is `blocked` with reason `not_reported`.
+
+In a JUnit XML entry that has both a failure and an error, the result is `error`. When two entries have the same `classname` and `name`, the first one counts.
+
+`tests.setup` is stopped after `tests.timeout` seconds, like a test command; the run then has status `error` and its executions are `blocked` with reason `setup_failed`.
 
 Commands must not require interactive input. Setup must install dependencies locally to the worktree (for example, in a virtual environment), never globally.
 

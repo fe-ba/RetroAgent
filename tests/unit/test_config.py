@@ -195,6 +195,13 @@ def test_invalid_values_are_errors(home, project, text, key):
         ("models:\n  x:\n    provider: acme\n    name: m\n", "models.x.provider"),
         ("models:\n  x:\n    name: m\n", "models.x.provider"),
         ("models:\n  x:\n    provider: openai\n    name: m\n    key: secret\n", "models.x.key"),
+        ("models:\n  x:\n    provider: google\n    name: m\n", "models.x.api_key_env"),
+        ("models:\n  x:\n    provider: anthropic\n    name: m\n", "models.x.api_key_env"),
+        (
+            "models:\n  x:\n    provider: ollama\n    name: m\n    base_url: http://localhost:11434\n"
+            "    context_window: 32768\n    api_key_env: OLLAMA_TOKEN\n",
+            "models.x.api_key_env",
+        ),
     ],
 )
 def test_invalid_model_profiles_are_errors(home, project, text, key):

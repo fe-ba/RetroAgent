@@ -53,9 +53,10 @@ include = ["src", "tests", "docs", "spec", "README.md", "LICENSE", "pyproject.to
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
-addopts = "-q"
+addopts = "-q -m \"not model\""
 markers = [
     "network: needs the network (the example's setup installs pytest from PyPI); deselect with -m \"not network\"",
+    "model: calls a real model; deselected by default, run on purpose with -m model",
 ]
 
 [tool.ruff]

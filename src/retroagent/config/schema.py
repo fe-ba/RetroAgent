@@ -70,6 +70,7 @@ KEYS: dict[str, Key] = {
 
 # models.<profile>.<key>, only at user level.
 PROVIDERS = ("anthropic", "openai", "xai", "google", "ollama", "openai_compatible")
+HOSTED_PROVIDERS = ("anthropic", "openai", "xai", "google")
 PROFILE_KEYS: dict[str, Key] = {
     "provider": Key("enum", choices=PROVIDERS),
     "name": Key("string"),
@@ -138,9 +139,13 @@ def _profiles(level: str, raw: object) -> dict[str, dict]:
         required = ["provider", "name"]
         if values["provider"] in ("ollama", "openai_compatible"):
             required += _REQUIRED_FOR_LOCAL
+        if values["provider"] in HOSTED_PROVIDERS:
+            required.append("api_key_env")
         for name in required:
             if values[name] is None:
                 raise ConfigError(level, f"{where}.{name}", "is required")
+        if values["provider"] == "ollama" and values["api_key_env"] is not None:
+            raise ConfigError(level, f"{where}.api_key_env", "is not accepted for ollama, which takes no credential")
         profiles[str(profile)] = values
     return profiles
 

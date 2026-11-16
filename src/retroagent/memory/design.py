@@ -249,6 +249,16 @@ def active_implemented_test_cases(conn: sqlite3.Connection) -> list[sqlite3.Row]
     ).fetchall()
 
 
+def count_active_test_cases(conn: sqlite3.Connection) -> dict[str, int]:
+    """Active test cases by status: ``designed`` and ``implemented``."""
+    counts = {"designed": 0, "implemented": 0}
+    for row in conn.execute(
+        "SELECT status, COUNT(*) AS n FROM test_case WHERE retired_at IS NULL GROUP BY status"
+    ).fetchall():
+        counts[row["status"]] = row["n"]
+    return counts
+
+
 def current_suite(conn: sqlite3.Connection, base_commit: str, candidate_commit: str) -> int | None:
     """The latest suite of the latest analysis of these versions; None when that analysis has no suite yet."""
     row = conn.execute(

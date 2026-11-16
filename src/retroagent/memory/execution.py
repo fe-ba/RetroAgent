@@ -122,6 +122,33 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM run WHERE id = ?", (run_id,)).fetchone()
 
 
+def list_runs(conn: sqlite3.Connection, limit: int, *, session_id: int | None = None) -> list[sqlite3.Row]:
+    """The latest runs first, of every session or of one."""
+    sql, params = "SELECT * FROM run", []
+    if session_id is not None:
+        sql, params = sql + " WHERE session_id = ?", [session_id]
+    return conn.execute(sql + " ORDER BY started_at DESC, id DESC LIMIT ?", (*params, limit)).fetchall()
+
+
+def running_runs(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM run WHERE status = 'running' ORDER BY id").fetchall()
+
+
+# Counts of the executions of a run: by status, then by result.
+COUNTS = ("executed", "blocked", "skipped", "passed", "failed", "error")
+
+
+def execution_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, int]:
+    counts = dict.fromkeys(COUNTS, 0)
+    for row in conn.execute(
+        "SELECT status, result, COUNT(*) AS n FROM test_execution WHERE run_id = ? GROUP BY status, result", (run_id,)
+    ):
+        counts[row["status"]] += row["n"]
+        if row["result"]:
+            counts[row["result"]] += row["n"]
+    return counts
+
+
 def list_executions(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM test_execution WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
 

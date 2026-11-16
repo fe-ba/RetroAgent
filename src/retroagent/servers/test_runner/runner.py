@@ -19,7 +19,6 @@ from retroagent.servers.test_runner import generated, junit, process, service, w
 
 VERSIONS = ("base", "candidate")
 SCOPES = ("all", "suite", "selected")
-COUNTS = ("executed", "blocked", "skipped", "passed", "failed", "error")
 
 
 @dataclass(frozen=True)
@@ -35,16 +34,17 @@ def run_tests(
     session_id: int,
     version: str,
     scope: str,
-    base_ref: str,
-    base_commit: str,
-    candidate_ref: str,
-    candidate_commit: str,
+    base_ref: str | None,
+    base_commit: str | None,
+    candidate_ref: str | None,
+    candidate_commit: str | None,
     commands_approved: bool,
     test_case_ids: list[str] | None = None,
 ) -> RunSummary:
     """Create a run of ``scope`` against the ``base`` or ``candidate`` version and execute it.
 
-    Raises ``ToolError``; a failed setup, service or test command gives a run with that status, not an error.
+    The refs and commits are the session versions; a version that is not set is ``None``. Raises ``ToolError``; a
+    failed setup, service or test command gives a run with that status, not an error.
     ``KeyboardInterrupt`` is raised again once the interrupted run is stored.
     """
     if not commands_approved:
@@ -64,6 +64,10 @@ def run_tests(
         raise ToolError("invalid_state", "tests.command is not configured")
     _check_placeholders(config)
     ref, commit = (base_ref, base_commit) if version == "base" else (candidate_ref, candidate_commit)
+    if commit is None:
+        raise ToolError("invalid_state", f"the {version} version of the session is not set")
+    if scope == "suite" and None in (base_commit, candidate_commit):
+        raise ToolError("invalid_state", "the current suite needs both session versions, and one is not set")
 
     conn = connect(project_dir)
     try:
@@ -432,9 +436,5 @@ class _Run:
         process.note(self.log, f"[{utc_now()}] {line}")
 
     def _summary(self) -> RunSummary:
-        counts = dict.fromkeys(COUNTS, 0)
-        for row in execution.list_executions(self.conn, self.run_id):
-            counts[row["status"]] += 1
-            if row["result"]:
-                counts[row["result"]] += 1
+        counts = execution.execution_counts(self.conn, self.run_id)
         return RunSummary(self.run_id, execution.get_run(self.conn, self.run_id)["status"], counts)

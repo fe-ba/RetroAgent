@@ -36,6 +36,19 @@ def remove(project_dir: str | Path, path: str | Path) -> None:
     _git(project_dir, "worktree", "prune")
 
 
+def remove_leftovers(project_dir: str | Path) -> list[Path]:
+    """Remove every worktree of this project under its folder, and git metadata whose directory is gone.
+
+    Used when a session starts, after a session that ended before its run did, and when a session ends.
+    """
+    root = worktrees_dir(project_dir)
+    removed = sorted(path for path in root.iterdir() if path.is_dir()) if root.is_dir() else []
+    for path in removed:
+        remove(project_dir, path)
+    _git(project_dir, "worktree", "prune")
+    return removed
+
+
 @contextmanager
 def checkout(project_dir: str | Path, commit: str) -> Iterator[Path]:
     path = create(project_dir, commit)

@@ -256,11 +256,11 @@ Writer of both tables: memory server. Test cases designed for the change are add
 | `scope` | text | `suite`, `all` or `selected` | code | What was run. `all` makes it a full run. |
 | `suite_id` | integer | references `suite` | code | Required when `scope` is `suite`. |
 | `status` | text | `running`, `completed`, `error` or `interrupted` | code | — |
-| `command` | text | not null | code | Command actually executed, after placeholder substitution. |
-| `exit_code` | integer | | code | Exit code of the test command. |
-| `junit_path` | text | | code | Stored JUnit XML. Null when none was produced. |
+| `command` | text | not null | code | Test command of the first attempt, after placeholder substitution. Recorded when the run starts, also when an earlier step fails. Commands of reruns are in the run log. |
+| `exit_code` | integer | | code | Exit code of the test command of the first attempt. Null when it did not run. |
+| `junit_path` | text | | code | JUnit XML of the first attempt in the run directory, relative to the project. Null when none was produced. |
 | `evidence_dir` | text | not null | code | `.retro/runs/<run_id>/`. |
-| `error` | text | | code | Failed step and message when `status` is `error`. |
+| `error` | text | | code | Failed step and message when `status` is `error` or `interrupted`. |
 | `session_id` | integer | not null, references `session` | code | — |
 | `started_at` | text | not null | code | — |
 | `ended_at` | text | | code | — |
@@ -278,7 +278,7 @@ Writer: test runner server.
 | `result` | text | `passed`, `failed` or `error` | code | Only when `status` is `executed`. |
 | `reason` | text | | code | Why it was `blocked` or `skipped`. See the reasons below. |
 | `duration` | real | | code | Seconds, from the first attempt. |
-| `test_revision` | integer | | code | `revision` of the generated test code that ran. Null for `project_suite`. |
+| `test_revision` | integer | | code | `revision` of the generated test code used by the run, for every execution of a generated test, blocked ones included. Null for `project_suite`. |
 
 Writer: test runner server, only from parsed run evidence.
 
@@ -299,7 +299,7 @@ Which test cases get an execution in a run depends on its scope (`mcp-tools.md`,
 | Column | Type | Constraints | Source | Description |
 |---|---|---|---|---|
 | `execution_id` | integer | references `test_execution` | code | — |
-| `number` | integer | not null, from `1` | code | Unique together with `execution_id`. |
+| `number` | integer | not null, from `1` | code | Unique together with `execution_id`. It is the round of the run: `1` for the test command, `2` and later for the reruns, and it names the JUnit XML of that round. A round without a result for the test case leaves a gap. |
 | `result` | text | `passed`, `failed` or `error` | code | — |
 | `duration` | real | | code | Seconds. |
 | `failure_message` | text | | code | From the JUnit XML. |

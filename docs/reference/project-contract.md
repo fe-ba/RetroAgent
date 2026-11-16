@@ -101,6 +101,8 @@ A test is identified by its entry in the JUnit XML: `<classname>::<name>`. Each 
 
 A generated test is bound to its test case the first time a run reports it: the entry whose `name` equals the function name written by RetroAgent, and whose `classname` ends with the name of its file or is the only entry of the run with that name. To keep this reliable, the function name and the file of a generated test are unique among generated tests, and generated tests are never parametrized.
 
+An entry whose `name` is the function name of a generated test and that cannot be bound by this rule is never registered as a test of the project: it is ignored, and the test case is `blocked` with reason `not_reported`.
+
 `{names}` in `tests.select` is the `name` of each selected test, without its parameter suffix (`[...]`) and without duplicates, joined with `tests.select_separator`. A selection command may run more tests than asked, for example when one name is contained in another; results of tests outside the scope are ignored.
 
 ## Discovery
@@ -123,6 +125,10 @@ Test code written by RetroAgent is stored in `.retro/tests/`, never in the proje
 8. The service is stopped and the worktree is removed, including its metadata in `.git/worktrees/`.
 
 The exit code of the test command is recorded as evidence but does not decide results. If no valid JUnit XML exists after the command, the run is recorded as an error and its test executions are marked `blocked`. When `tests.timeout` stops the command, the run is `interrupted` and its test executions are `blocked`. A test case that the run was asked to execute and that the JUnit XML does not report is `blocked` with reason `not_reported`.
+
+**Evidence.** Each run has a directory `.retro/runs/<run_id>/` with `run.log` (every command with its times, exit code and output, and every note about a step that failed), `service.log`, and one JUnit XML per round: `junit-1.xml` for the test command and `junit-2.xml` onwards for the reruns. `{junit}` is the path of the file of the current round. When `tests.junit` is a path or a pattern inside the worktree instead, the files it matches are copied to `junit-<n>/` after each round and removed from the worktree before the next one.
+
+When the user interrupts a run during a rerun, the run is still `completed` with the attempts stored so far, and the interruption then ends the turn.
 
 In a JUnit XML entry that has both a failure and an error, the result is `error`. When two entries have the same `classname` and `name`, the first one counts.
 

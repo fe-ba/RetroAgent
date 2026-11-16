@@ -400,11 +400,11 @@ Creates a run against one session version and executes it, following `project-co
 
 Returns the run ID, its status, the counts of execution statuses and results, and the defects closed by the run. In a run with scope `all`, tests of the project unknown to memory are registered as `project_suite` test cases, with requirement links from their names. Runs with other scopes register nothing.
 
-**Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times, always all of them. The result of the execution is the result of the first attempt (INV-04). Reruns use `tests.select` with the test cases to rerun when it is configured; otherwise the test command runs again in full. Each attempt keeps its own JUnit XML in the run directory.
+**Attempts.** Each test case whose first attempt did not pass is rerun `tests.reruns` times. The reruns do not stop when one of them passes; they stop only when a rerun round itself fails (`project-contract.md`). The result of the execution is the result of the first attempt (INV-04). Reruns use `tests.select` with the test cases to rerun when it is configured; otherwise the test command runs again in full. Each attempt keeps its own JUnit XML in the run directory.
 
 **Identity.** Tests are matched to test cases as described in `project-contract.md`, under Test identity.
 
-**Closing defects.** When a run against the candidate completes, each open defect is closed if every test case linked to it has an execution in this run with result `passed`. The defect records `closed_by` `run`, the run and a generated reason. A flaky execution never closes a defect, because its result is not `passed`. Errors: `invalid_state` when the scope is `suite` or `selected` and has no implemented test cases, or when `tests.command` is not configured; a failed setup or service produces a run with status `error`, not a tool error.
+**Closing defects.** When a run against the candidate completes, each open defect is closed if every test case linked to it has an execution in this run with result `passed`. The defect records `closed_by` `run`, the run and a generated reason. A flaky execution never closes a defect, because its result is not `passed`. Errors: `invalid_state` when the scope is `suite` or `selected` and has no implemented test cases, or when `tests.command` is not configured; `execution_failed` when the worktree of the version cannot be created, in which case no run is stored; a failed setup or service produces a run with status `error`, not a tool error.
 
 ### `test_runner.get_evidence`
 

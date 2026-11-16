@@ -98,7 +98,7 @@ Defined only at user level, under `models.<profile>`.
 | `tests.setup` | string | none | project | Command run once in each new worktree before tests. Must install dependencies locally to the worktree, never globally. Worktrees are new for every run, so `{cache_dir}` is the place for downloads that should be reused. |
 | `tests.env` | map | `{}` | project | Extra environment variables for setup, test and service commands. Placeholders are not expanded in them. |
 | `tests.timeout` | integer | `900` | user, project | Seconds before a setup or test command is stopped. |
-| `tests.reruns` | integer | `2` | user, project | Reruns of each test case whose first attempt did not pass, to detect flaky tests. All of them always run, and they never change the result (`metrics.md`). |
+| `tests.reruns` | integer | `2` | user, project | Reruns of each test case whose first attempt did not pass, to detect flaky tests. They do not stop when one of them passes, and they never change the result (`metrics.md`). |
 | `tests.generated_dir` | string | `tests/retro` | project | Path inside each worktree where generated tests from `.retro/tests/` are copied before a run (ADR-0015). |
 
 ### Service

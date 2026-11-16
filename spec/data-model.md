@@ -366,7 +366,7 @@ A stored computation of metrics, exit criteria and the release decision, so that
 | `analysis_id` | integer | references `analysis` | code | — |
 | `thresholds` | text | not null | code | Effective `exit_criteria.*` as JSON. |
 | `metrics` | text | not null | code | Every metric as JSON; not evaluable metrics are `null`. Ratios are stored as numerator and denominator. |
-| `criteria` | text | not null | code | Every criterion as JSON: identifier, state, value, threshold and whether it is blocking. |
+| `criteria` | text | not null | code | Every criterion as JSON: identifier, name, state, value, threshold, whether it is blocking, and the reason when it is not evaluable. |
 | `decision` | text | not null; `release`, `release_with_conditions` or `do_not_release` | code | Always set: a blocking criterion that cannot be evaluated gives `do_not_release` (`metrics.md`). |
 | `decision_details` | text | not null | code | The reasons and the conditions of the decision as JSON, with the test cases and classifications they name, as they were when the evaluation was computed. |
 | `tool_version` | text | not null | code | RetroAgent version that computed it. |
@@ -405,7 +405,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-08 | A triage, and a link from a defect, refer only to executions with result `failed` or `error`. | Trigger |
 | INV-09 | A run with `scope` `suite` has a `suite_id`, and its executions are only for test cases of that suite. | `CHECK` constraint and trigger |
 | INV-10 | Runs that are not `running`, their executions and attempts, triage rows, the impact of an analysis, evaluations and rendered reports are never updated. No execution or attempt is added to a run that is not `running`. | Triggers |
-| INV-11 | Records are never deleted. | Triggers |
+| INV-11 | Records are never deleted. One exception: the `design` links of a test case in `test_case_requirement` are replaced when its `requirement_ids` change, because they are part of its design, like its other design fields. Links with `link` `name` are never deleted. | Triggers |
 | INV-12 | A defect with status `closed` has a `closed_at`, a `closed_by` and a `close_reason`; an `open` one has none. A defect closed by a run has a `closed_run_id`. | `CHECK` constraint |
 | INV-13 | Every reference made by the model (requirement, test case, file, execution) must exist; otherwise the tool call fails and nothing is written. | Data layer API |
 | INV-14 | A defect is closed only by a run that verifies the fix or by the user. No tool exposed to the model closes a defect. | Tool contracts |

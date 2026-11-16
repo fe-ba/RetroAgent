@@ -241,7 +241,7 @@ Updates the description of a test case.
 | Input | Type | Required | Description |
 |---|---|---|---|
 | `test_case_id` | string | yes | — |
-| `fields` | object | yes | Any of the design fields of `design_test_case`, except `selection_reason`, within the limits below. |
+| `fields` | object | yes | Any of the design fields of `design_test_case`, except `selection_reason`, within the limits below. `requirement_ids` replaces the `design` links of the test case; links found in the test name are kept. |
 
 | Test case | Fields that can change |
 |---|---|

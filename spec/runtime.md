@@ -155,7 +155,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | `discover` | Direct: full run against the baseline | — | The run is `completed`. Skipped when project tests are already known. |
 | `select` | Model, skill `test-selection` | `runtime`, `git`, `memory`, `test_runner__run_tests` | The analysis has a suite. |
 | `design` | Model, skill `test-design` | `runtime`, `git`, `memory` | None: gaps may remain, and the step says so. |
-| `implement` | Model, skill `test-design` | `runtime`, `git`, `memory`, `test_runner__write_test` | None: test cases left `designed` become a condition of the decision. |
+| `implement` | Model, skill `test-design` | `runtime`, `git`, `memory`, `test_runner__write_test`, `test_runner__get_evidence` | None: test cases left `designed` become a condition of the decision. |
 | `run` | Direct: the suite against the baseline, then against the candidate | — | Both runs are `completed`. |
 | `triage` | Model, skill `failure-triage` | `runtime`, `git`, `memory`, `test_runner__get_evidence` | No failed execution of the candidate run is left without triage. |
 | `report` | Model, skill `test-reporting` | `runtime`, `memory`, `reports` | A `completion` report is `rendered`. |

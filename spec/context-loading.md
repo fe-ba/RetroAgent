@@ -132,6 +132,7 @@ description: One paragraph that says what the skill does and when to use it.
 <instructions>
 ```
 
+- The frontmatter is YAML. A value that contains a colon followed by a space must be quoted. Unknown keys are ignored.
 - `name` is required, must equal the folder name and uses lowercase letters, digits and hyphens.
 - `description` is required and has at most 300 characters.
 - A skill with an invalid frontmatter is skipped and reported by `/skills` with the reason.

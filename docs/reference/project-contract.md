@@ -41,7 +41,7 @@ Only `RETRO.md` and `.retro/config.yaml` are needed to start. RetroAgent creates
 
 ## RETRO.md
 
-Project context loaded at the start of every session, after steering. Created by `retro init` and edited by the user.
+Project context placed after steering and read again at the start of every turn (`context-loading.md`). Created by `retro init` and edited by the user.
 
 Recommended sections:
 

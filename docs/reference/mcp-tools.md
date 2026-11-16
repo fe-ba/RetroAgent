@@ -432,7 +432,7 @@ Returns the metrics, the state of each criterion and the decision. Errors: `inva
 
 ### `reports.prepare_report`
 
-First step of report generation: computes everything and creates a `draft` report.
+First step of report generation: computes everything, writes the computed sections and the charts to the folder of the report, and creates a `draft` report.
 
 | Input | Type | Required | Description |
 |---|---|---|---|
@@ -440,11 +440,11 @@ First step of report generation: computes everything and creates a `draft` repor
 | `run_id` | string | no | For `status`, `defects` and `completion`. Defaults as in `reports.md`. |
 | `formats` | list of strings | no | `md`, `pdf`. Default: `reports.default_format`. |
 
-Returns the report ID, the computed data of the report and the agent sections to write, each with its purpose from `reports.md`.
+Returns the report ID, the computed data of the report and the agent sections to write, each with its purpose from `reports.md`. The computed data is the Markdown of the draft, with the markers of the agent sections still in place. Errors: `invalid_argument` when `run_id` is given for a type that does not use it.
 
 ### `reports.render_report`
 
-Second step: writes the report files and sets the report to `rendered`.
+Second step: adds the agent sections to the draft, writes the report files and sets the report to `rendered`. It computes nothing again. When PDF was requested and its libraries are missing, the report is still `rendered`, with `md` as its only format.
 
 | Input | Type | Required | Description |
 |---|---|---|---|

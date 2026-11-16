@@ -20,13 +20,15 @@ In a `status` report about a run against the baseline, `decision.value` and `cri
 
 - Each generation creates a new report with the next identifier (`RPT-0001`, `RPT-0002`, ...). Reports are never overwritten, so a delivered report never changes.
 - Files are written to `.retro/reports/<report-id>-<type>/`: `report.md`, `report.pdf` when PDF is requested, and `charts/*.svg` when the template references charts.
-- The model that wrote the agent sections and the generation time are part of the report header.
+- The model that wrote the agent sections and the generation time are part of the report header. The generation time is the time at which the report was prepared.
+- The computed sections are fixed when the report is prepared: `reports.prepare_report` writes them to `draft.md`, with the charts, and `reports.render_report` only adds the agent sections. Whatever is recorded between the two steps does not change the report.
 
 ## Template resolution
 
 1. The template is looked up in `templates/<language>/` and then in `templates/`.
 2. Item templates are looked up in `templates/<language>/items/` and then in `templates/items/`.
-3. Every marker is resolved. An unknown marker stops generation with an error that names the marker and the template.
+3. HTML comments of the template are removed; they are notes for whoever edits it.
+4. Every marker is resolved, in a single pass: text that comes from memory or from the model is never read as a marker. An unknown marker stops generation with an error that names the marker and the template.
 
 ## Formatting
 
@@ -35,7 +37,7 @@ In a `status` report about a run against the baseline, `decision.value` and `cri
 | Ratio | Percentage with one decimal | `88.9%` |
 | Count | Integer | `12` |
 | Duration | Seconds with one decimal | `42.3 s` |
-| Timestamp | ISO 8601 with UTC offset, to the minute | `2026-11-15T10:00-05:00` |
+| Timestamp | ISO 8601 in the local time zone, with its UTC offset, to the minute | `2026-11-15T10:00-05:00` |
 | Commit | First 7 characters | `a1b2c3d` |
 | List | Items joined with commas | `TC-004, TC-007` |
 | Enumeration | Value as defined in the glossary | `do_not_release` |

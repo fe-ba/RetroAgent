@@ -108,6 +108,8 @@ Apply to commands and to non-interactive mode.
 | `3` | Completed with release decision `do_not_release`. |
 | `4` | An action required a permission or an approval that could not be granted. |
 
+A direct command that starts a run exits with `1` when the run ends with status `error` or `interrupted`. Failed tests in a completed run are not an error: without a release decision the exit code is `0`.
+
 ## Examples
 
 ```

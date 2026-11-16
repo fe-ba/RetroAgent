@@ -7,13 +7,13 @@ The runtime runs a session: it loads configuration, builds the context (`context
 ### Start
 
 1. Parse the command line (`cli.md`).
-2. Resolve and validate the configuration (`configuration.md`). An invalid configuration exits with code `2`.
-3. Resolve the target project: `-C <path>` or the current directory. A directory that is not a git repository exits with code `2`.
+2. Resolve the target project: `-C <path>` or the current directory. It must be the top level of a git repository; any other directory exits with code `2`, and a subdirectory of a repository names its top level. The directory `.retro/` is created when it is missing.
+3. Resolve and validate the configuration (`configuration.md`). An invalid configuration exits with code `2`.
 4. Take the session lock: an operating-system file lock on `.retro/retro.lock`. If another running session holds it, exit with code `2` and name the process that holds it. A lock file left by a session that crashed is not held by any process and is taken over.
 5. Open project memory, migrating it if needed, and create the `session` record.
-6. Recover from an interrupted previous session: runs left in status `running` become `interrupted`, and leftover worktrees of this project under `~/.retro/worktrees/<project-id>/` are removed, together with their metadata in `.git/worktrees/`.
+6. Recover from an interrupted previous session: runs left in status `running` become `interrupted`, with the reason in `error` and without new executions, and leftover worktrees of this project under `~/.retro/worktrees/<project-id>/` are removed, together with their metadata in `.git/worktrees/`.
 7. Resolve the model profile and its credentials (`llm-providers.md`). A missing credential exits with code `2`.
-8. Resolve the session versions: `--base` and `--candidate`, then `versions.*` from the configuration. They may stay unset.
+8. Resolve the session versions: `--base` and `--candidate`, then `versions.*` from the configuration. Each ref is resolved to its commit here, and both are written to the `session` record; a ref that does not resolve exits with code `2`. A version may stay unset; a command that needs it then fails with `invalid_state`.
 9. Resolve approvals for project MCP servers, steering and skills (ADR-0021). In an interactive session, the user is asked once for each item not yet approved. In non-interactive mode, unapproved items are not loaded and a warning is printed. The mode `auto` never approves them. Project commands are approved at the first run, not here (see Project commands).
 10. Start the bundled MCP servers and the approved ones, with the cleaned environment of `configuration.md`, and read their tools.
 11. When `tool_calling` is `auto` and the capability is unknown, run the probe call.
@@ -99,8 +99,8 @@ Slash commands are of three kinds: direct commands, model commands and the cycle
 
 | Command | Action |
 |---|---|
-| `/run [target] [--on <version>]` | Calls `test_runner.run_tests`: `suite` uses scope `suite`, `all` uses scope `all`, IDs use scope `selected`. `--on both` runs the baseline first, then the candidate. Shows a summary table of each run. |
-| `/status` | Shows the session state and the counts from `memory.get_suite` and `memory.get_runs`. |
+| `/run [target] [--on <version>]` | Calls `test_runner.run_tests`: `suite` uses scope `suite`, `all` uses scope `all`, IDs use scope `selected`. IDs are separated by spaces. `--on both` runs the baseline first, then the candidate only when the baseline run is `completed`. Shows a summary table of each run. |
+| `/status` | Shows the session state, the active test cases by status, the size of the current suite, and the executions of the latest run by status and result. |
 | `/history [n]` | Shows `memory.get_runs` as a table. |
 | `/defects [--all]` | Shows `memory.get_defects` as a table. |
 | `/defects close <id> <reason>` | Calls the user-only tool `memory.close_defect`. The model has no way to close a defect. |

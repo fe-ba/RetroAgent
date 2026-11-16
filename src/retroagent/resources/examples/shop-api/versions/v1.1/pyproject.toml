@@ -1,0 +1,10 @@
+[project]
+name = "shop-api"
+version = "1.1.0"
+description = "A small shop back end: catalog, cart, coupons, shipping, tax, checkout and order history."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]

@@ -1,0 +1,22 @@
+project:
+  name: shop-api
+  requirements: [docs/requirements.md]
+  source: [src]
+
+versions:
+  base: v1.0
+  candidate: v1.1
+
+# Linux and macOS. On Windows, replace .venv/bin/python with .venv\Scripts\python
+# and python3 with python.
+tests:
+  setup: python3 -m venv .venv && .venv/bin/python -m pip install --quiet --cache-dir {cache_dir}/pip -r requirements-dev.txt
+  command: .venv/bin/python -m pytest tests --junitxml={junit}
+  select: .venv/bin/python -m pytest tests --junitxml={junit} -k "{names}"
+
+service:
+  start: .venv/bin/python serve.py --port {port}
+  ready_path: /health
+
+exit_criteria:
+  min_pass_rate: 0.90

@@ -1,0 +1,27 @@
+# Manifest of a bundled example project.
+# Each version is a full snapshot under versions/<dir>, committed in order and tagged.
+# Author and dates are fixed so that every materialization produces the same commits.
+
+name = "shop-api"
+description = "Small shop back end in Python, tested with pytest. Three tagged versions with seeded regression cases."
+branch = "main"
+author_name = "RetroAgent Examples"
+author_email = "examples@retroagent.invalid"
+
+[[versions]]
+dir = "v1.0"
+tag = "v1.0"
+date = "2026-03-02T10:00:00+00:00"
+message = "Release 1.0: catalog, cart, coupons, shipping, tax and checkout"
+
+[[versions]]
+dir = "v1.1"
+tag = "v1.1"
+date = "2026-04-13T10:00:00+00:00"
+message = "Release 1.1: combine two coupons (REQ-004) and order history (REQ-008)"
+
+[[versions]]
+dir = "v1.2"
+tag = "v1.2"
+date = "2026-04-27T10:00:00+00:00"
+message = "Release 1.2: charge shipping on the discounted subtotal; update coupon tests"

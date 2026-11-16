@@ -8,6 +8,7 @@ import zlib
 from pathlib import Path
 
 import pytest
+from fixtures.chart_text import overflowing
 from fixtures.reference_scenario import S4
 
 from retroagent.memory import interpretation
@@ -189,3 +190,10 @@ def test_render_without_the_pdf_library_still_produces_the_markdown(reference, m
     assert (folder / "report.md").is_file() and not (folder / "report.pdf").exists()
     row = session.conn.execute("SELECT status, formats FROM report").fetchone()
     assert (row["status"], row["formats"]) == ("rendered", '["md"]')
+
+
+@pytest.mark.parametrize("name", ["outcomes.svg", "comparison.svg", "criteria.svg"])
+def test_no_label_of_the_reference_charts_leaves_the_canvas(reference, name):
+    session, _ = reference
+    folder, _ = generate(session)
+    assert overflowing((folder / "charts" / name).read_bytes()) == []

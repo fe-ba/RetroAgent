@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from fractions import Fraction
 
 import matplotlib
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from retroagent.metrics import NotEvaluable, Ratio
@@ -17,6 +18,7 @@ from retroagent.reports.render import ReportError
 
 WIDTH = 640  # one SVG unit is one pixel: the figure is WIDTH / 72 inches at 72 dpi
 ROW = 34
+EDGE = 8  # px of the 16 px right margin that a label may use
 BAR, INK, GRID, PAPER = "#2a78d6", "#0b0b0b", "#e4e3df", "#fcfcfb"
 RC = {
     "svg.fonttype": "none",
@@ -32,6 +34,19 @@ def _figure(height: int, title: str) -> Figure:
     fig = Figure(figsize=(WIDTH / 72, height / 72), dpi=72, facecolor=PAPER)
     fig.text(16 / WIDTH, 1 - 24 / height, title, fontsize=14, fontweight="bold", color=INK, va="baseline")
     return fig
+
+
+def _fit(fig: Figure, width_px: int, base: float, labels: Sequence[tuple[float, str]]) -> float:
+    """The scale (``xmax``) of a panel: at least ``base``, and large enough for every label, which starts 6 px after
+    its bar, to end inside the canvas even when the bar is at its maximum."""
+    renderer = FigureCanvasAgg(fig).get_renderer()
+    xmax = base
+    for end, label in labels:
+        probe = fig.text(0, 0, label, fontsize=12)
+        room = width_px + EDGE - 6 - probe.get_window_extent(renderer).width
+        probe.remove()
+        xmax = max(xmax, end * width_px / room)
+    return xmax
 
 
 def _save(fig: Figure) -> bytes:
@@ -79,7 +94,9 @@ def _bars_chart(title: str, names: Sequence[str], values: Sequence[int]) -> byte
     height = 52 + ROW * len(names)
     with matplotlib.rc_context(RC):
         fig = _figure(height, title)
-        panel = _Panel(fig, height, 40, len(names), 170, max(max(values), 1) * 1.15)
+        width_px = WIDTH - 170 - 16
+        xmax = _fit(fig, width_px, max(max(values), 1) * 1.15, [(v, str(v)) for v in values])
+        panel = _Panel(fig, height, 40, len(names), 170, xmax)
         panel.labels(names)
         for row, value in enumerate(values):
             panel.bar(row, value, f"bar-{row}")
@@ -125,7 +142,9 @@ def criteria_chart(rates: list[dict], counts: list[dict]) -> bytes:
         top, index = 40, 0
         for heading, rows in groups:
             numbers = [x for row in rows for x in (row["value"], row["threshold"]) if x is not None]
-            xmax = 1.35 if heading == "Rates" else max(max(numbers), 1) * 1.35
+            base = 1.0 if heading == "Rates" else max(max(numbers), 1)
+            ends = [(max(row["value"] or 0, row["threshold"]), row["text"]) for row in rows]
+            xmax = _fit(fig, WIDTH - 230 - 16, base * 1.1, ends)
             panel = _Panel(fig, height, top + 26, len(rows), 230, xmax, heading)
             panel.labels([row["label"] for row in rows])
             for i, row in enumerate(rows):

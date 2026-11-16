@@ -58,8 +58,8 @@ def transaction(conn: sqlite3.Connection):
 
 
 def utc_now() -> str:
-    """Timestamp in ISO 8601, UTC."""
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    """Timestamp in ISO 8601, UTC, with milliseconds."""
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 def require_exists(conn: sqlite3.Connection, table: str, column: str, value, label: str) -> None:

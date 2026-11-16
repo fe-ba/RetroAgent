@@ -13,20 +13,22 @@ def add_evaluation(
     run_id: str,
     thresholds: dict,
     metrics: dict,
-    criteria: list | dict,
-    decision: str | None,
+    criteria: list,
+    decision: str,
+    decision_details: dict,
     tool_version: str,
     baseline_run_id: str | None = None,
     full_base_run_id: str | None = None,
     full_candidate_run_id: str | None = None,
     analysis_id: int | None = None,
 ) -> int:
+    """Store an evaluation, with the reasons and conditions of its decision as they are now."""
     with transaction(conn):
         require_exists(conn, "run", "id", run_id, "run")
         cursor = conn.execute(
             "INSERT INTO evaluation (run_id, baseline_run_id, full_base_run_id, full_candidate_run_id, analysis_id,"
-            " thresholds, metrics, criteria, decision, tool_version, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " thresholds, metrics, criteria, decision, decision_details, tool_version, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 baseline_run_id,
@@ -37,6 +39,7 @@ def add_evaluation(
                 json.dumps(metrics),
                 json.dumps(criteria),
                 decision,
+                json.dumps(decision_details),
                 tool_version,
                 utc_now(),
             ),

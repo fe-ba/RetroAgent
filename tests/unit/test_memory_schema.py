@@ -118,6 +118,7 @@ TABLES = {
         "metrics",
         "criteria",
         "decision",
+        "decision_details",
         "tool_version",
         "created_at",
     ],

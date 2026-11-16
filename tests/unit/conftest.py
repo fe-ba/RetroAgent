@@ -132,7 +132,10 @@ def populate_every_table(build):
     impact.add_risk(
         conn, description="rounding", level="medium", analysis_id=build.analysis_id, requirement_ids=[requirement_id]
     )
-    test_case_id = build.test_case(requirement_ids=[requirement_id])
+    test_case_id = build.test_case(requirement_ids=[requirement_id])  # a design link
+    design.add_project_suite_test_case(  # a name link
+        conn, test_id="tests.test_cart::test_req_001_total", implementation="tests/test_cart.py::test_req_001_total"
+    )
     suite_id = build.suite(test_case_id)
     run_id = build.run(scope="suite", suite_id=suite_id)
     execution_id = build.execute(run_id, test_case_id, "failed")
@@ -142,7 +145,14 @@ def populate_every_table(build):
     )
     interpretation.add_defect(conn, title="wrong total", severity="high", execution_ids=[execution_id])
     evaluation_id = reporting.add_evaluation(
-        conn, run_id=run_id, thresholds={}, metrics={}, criteria=[], decision=None, tool_version="0.1.0"
+        conn,
+        run_id=run_id,
+        thresholds={},
+        metrics={},
+        criteria=[],
+        decision="do_not_release",
+        decision_details={"reasons": [], "conditions": []},
+        tool_version="0.1.0",
     )
     reporting.add_report(conn, type="completion", model="fake/model", evaluation_id=evaluation_id)
     sessions.record_tool_call(

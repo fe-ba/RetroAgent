@@ -206,7 +206,14 @@ def test_inv_10_closed_records_are_never_updated(conn, build):
     impact.record_impact(conn, other_analysis, modules=[module], requirements=[])
     # evaluations and rendered reports
     evaluation_id = reporting.add_evaluation(
-        conn, run_id=run_id, thresholds={}, metrics={}, criteria=[], decision="do_not_release", tool_version="0.1.0"
+        conn,
+        run_id=run_id,
+        thresholds={},
+        metrics={},
+        criteria=[],
+        decision="do_not_release",
+        decision_details={"reasons": [], "conditions": []},
+        tool_version="0.1.0",
     )
     with pytest.raises(sqlite3.IntegrityError, match="INV-10"):
         conn.execute("UPDATE evaluation SET decision = 'release' WHERE id = ?", (evaluation_id,))
@@ -223,8 +230,15 @@ def test_inv_11_records_are_never_deleted(conn, build):
     assert len(counts) == 23 and all(counts.values()), counts  # every table has a row to delete
     for table in counts:
         with pytest.raises(sqlite3.IntegrityError, match="INV-11"):
-            conn.execute(f"DELETE FROM {table}")
+            conn.execute(f"DELETE FROM {table}")  # for test_case_requirement, the name link refuses the statement
     assert count_rows(conn) == counts
+    # The one exception: design links can be deleted, so that they are replaced; name links never are.
+    links = "SELECT link FROM test_case_requirement ORDER BY link"
+    assert [r[0] for r in conn.execute(links)] == ["design", "name"]
+    with pytest.raises(sqlite3.IntegrityError, match="INV-11"):
+        conn.execute("DELETE FROM test_case_requirement WHERE link = 'name'")
+    conn.execute("DELETE FROM test_case_requirement WHERE link = 'design'")
+    assert [r[0] for r in conn.execute(links)] == ["name"]
 
 
 def test_defect_actual_is_the_first_line_or_the_result_without_a_message(conn, build):

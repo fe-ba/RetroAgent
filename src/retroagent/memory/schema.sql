@@ -264,7 +264,8 @@ CREATE TABLE evaluation (
     thresholds            TEXT NOT NULL CHECK (json_valid(thresholds)),
     metrics               TEXT NOT NULL CHECK (json_valid(metrics)),
     criteria              TEXT NOT NULL CHECK (json_valid(criteria)),
-    decision              TEXT CHECK (decision IN ('release', 'release_with_conditions', 'do_not_release')),
+    decision              TEXT NOT NULL CHECK (decision IN ('release', 'release_with_conditions', 'do_not_release')),
+    decision_details      TEXT NOT NULL CHECK (json_valid(decision_details)),
     tool_version          TEXT NOT NULL,
     created_at            TEXT NOT NULL
 );
@@ -440,8 +441,10 @@ CREATE TRIGGER inv_11_risk_requirement BEFORE DELETE ON risk_requirement
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_test_case BEFORE DELETE ON test_case
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+-- The one exception: design links are replaced when the requirement_ids of a test case change. Name links stay.
 CREATE TRIGGER inv_11_test_case_requirement BEFORE DELETE ON test_case_requirement
-BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+WHEN OLD.link <> 'design'
+BEGIN SELECT RAISE(ABORT, 'INV-11: links found in a test name are never deleted'); END;
 CREATE TRIGGER inv_11_suite BEFORE DELETE ON suite
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_suite_test_case BEFORE DELETE ON suite_test_case

@@ -52,6 +52,7 @@ include = ["src", "tests", "docs", "spec", "README.md", "LICENSE", "pyproject.to
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = "-q"
 
 [tool.ruff]

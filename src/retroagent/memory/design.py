@@ -1,6 +1,7 @@
 """Test design and selection: tables ``test_case``, ``test_case_requirement``, ``suite`` and ``suite_test_case``."""
 
 import json
+import re
 import sqlite3
 
 from retroagent.memory.db import require_exists, transaction, utc_now
@@ -55,7 +56,10 @@ def add_test_case(
 
 
 def add_project_suite_test_case(conn: sqlite3.Connection, *, test_id: str, implementation: str) -> str:
-    """Create a test case for a test found in the project's own tests (``<classname>::<name>``)."""
+    """Create a test case for a test found in the project's own tests (``<classname>::<name>``).
+
+    The requirements named in the test name that are in memory are linked by name (project-contract.md).
+    """
     now = utc_now()
     with transaction(conn):
         test_case_id = next_id(conn, "TC")
@@ -64,7 +68,93 @@ def add_project_suite_test_case(conn: sqlite3.Connection, *, test_id: str, imple
             " updated_at) VALUES (?, ?, 'medium', 'implemented', 'project_suite', ?, ?, ?, ?)",
             (test_case_id, test_id.split("::")[-1], test_id, implementation, now, now),
         )
+        _link_by_name(conn, test_case_id, test_id)
     return test_case_id
+
+
+# REQ-004, REQ_004 or req004, case-insensitive (project-contract.md, Traceability).
+_REQUIREMENT_IN_NAME = re.compile(r"req[-_]?(\d{3,})", re.IGNORECASE)
+
+
+def requirements_in_name(test_id: str) -> list[str]:
+    """Requirement identifiers referenced by the name of a test (the part after ``::``), in order, once each."""
+    name = test_id.rpartition("::")[2]
+    return list(dict.fromkeys(f"REQ-{digits}" for digits in _REQUIREMENT_IN_NAME.findall(name)))
+
+
+def _link_by_name(conn: sqlite3.Connection, test_case_id: str, test_id: str) -> int:
+    added = 0
+    for requirement_id in requirements_in_name(test_id):
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO test_case_requirement (test_case_id, requirement_id, link)"
+            " SELECT ?, id, 'name' FROM requirement WHERE id = ?",
+            (test_case_id, requirement_id),
+        )
+        added += cursor.rowcount
+    return added
+
+
+def link_tests_by_name(conn: sqlite3.Connection) -> int:
+    """Add the missing name links of every project test; returns how many were added.
+
+    Called again when requirements are synchronized, so the order of discovery and synchronization does not matter.
+    """
+    with transaction(conn):
+        rows = conn.execute("SELECT id, test_id FROM test_case WHERE origin = 'project_suite' ORDER BY id").fetchall()
+        return sum(_link_by_name(conn, row["id"], row["test_id"]) for row in rows)
+
+
+_DESIGN_FIELDS = (
+    "title",
+    "objective",
+    "priority",
+    "preconditions",
+    "input_data",
+    "steps",
+    "expected_result",
+    "requirement_ids",
+)
+_JSON_FIELDS = ("preconditions", "input_data", "steps")
+
+
+def update_test_case(conn: sqlite3.Connection, test_case_id: str, fields: dict) -> None:
+    """Change the description of a test case, within the limits of ``memory.update_test_case`` (mcp-tools.md).
+
+    A designed test case and a project test can change every design field; a generated test that is implemented
+    only ``title``, ``objective`` and ``priority``. A retired test case cannot change. ``requirement_ids`` replaces
+    the design links and keeps the links found in the test name. A failed call changes nothing.
+    """
+    with transaction(conn):
+        row = conn.execute("SELECT * FROM test_case WHERE id = ?", (test_case_id,)).fetchone()
+        if row is None:
+            raise InvariantViolation(f"INV-13: test case {test_case_id!r} does not exist")
+        if row["retired_at"] is not None:
+            raise InvariantViolation(f"invalid_state: test case {test_case_id} is retired")
+        if row["origin"] == "designed" and row["status"] == "implemented":
+            allowed = ("title", "objective", "priority")
+        else:
+            allowed = _DESIGN_FIELDS
+        refused = [name for name in fields if name not in allowed]
+        if refused:
+            raise InvariantViolation(f"invalid_state: {', '.join(refused)} cannot change for {test_case_id}")
+        for requirement_id in fields.get("requirement_ids", []):
+            require_exists(conn, "requirement", "id", requirement_id, "requirement")
+        for name, value in fields.items():
+            if name == "requirement_ids":
+                # The one exception to INV-11: design links are replaced; name links are never deleted.
+                conn.execute(
+                    "DELETE FROM test_case_requirement WHERE test_case_id = ? AND link = 'design'", (test_case_id,)
+                )
+                for requirement_id in dict.fromkeys(value):
+                    conn.execute(
+                        "INSERT INTO test_case_requirement (test_case_id, requirement_id, link)"
+                        " VALUES (?, ?, 'design')",
+                        (test_case_id, requirement_id),
+                    )
+            else:
+                stored = json.dumps(value) if name in _JSON_FIELDS else value
+                conn.execute(f"UPDATE test_case SET {name} = ? WHERE id = ?", (stored, test_case_id))
+        conn.execute("UPDATE test_case SET updated_at = ? WHERE id = ?", (utc_now(), test_case_id))
 
 
 def _split_implementation(implementation: str) -> tuple[str, str]:

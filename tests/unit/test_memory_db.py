@@ -36,3 +36,23 @@ def test_nested_transaction_rolls_back_only_the_inner_part(conn):
                 conn.execute(insert)
                 raise RuntimeError("boom")
     assert conn.execute("SELECT COUNT(*) FROM session").fetchone()[0] == 1
+
+
+def test_timestamps_are_utc_with_milliseconds():
+    import re
+
+    from retroagent.memory.db import utc_now
+
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\+00:00", utc_now())
+
+
+def test_evaluation_needs_a_decision_and_its_details(conn, build):
+    run_id = build.run()
+    columns = "run_id, thresholds, metrics, criteria, decision, decision_details, tool_version, created_at"
+    insert = f"INSERT INTO evaluation ({columns}) VALUES (?, '{{}}', '{{}}', '[]', ?, ?, '0.1.0', 't')"
+    with pytest.raises(Exception, match="NOT NULL"):
+        conn.execute(insert, (run_id, None, "{}"))
+    with pytest.raises(Exception, match="NOT NULL"):
+        conn.execute(insert, (run_id, "release", None))
+    with pytest.raises(Exception, match="CHECK"):
+        conn.execute(insert, (run_id, "maybe", "{}"))

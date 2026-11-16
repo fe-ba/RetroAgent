@@ -4,7 +4,7 @@ links by name (project-contract.md, Traceability)."""
 import json
 
 import pytest
-from conftest import BASE_COMMIT, CANDIDATE_COMMIT
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT
 
 from retroagent.memory import design
 from retroagent.memory.errors import InvariantViolation

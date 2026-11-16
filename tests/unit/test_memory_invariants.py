@@ -6,7 +6,7 @@ import inspect
 import sqlite3
 
 import pytest
-from conftest import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, populate_every_table
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, populate_every_table
 
 from retroagent.memory import design, execution, impact, interpretation, reporting
 from retroagent.memory.errors import InvariantViolation

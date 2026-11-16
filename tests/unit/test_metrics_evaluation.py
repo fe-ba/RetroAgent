@@ -5,8 +5,8 @@ import json
 from dataclasses import replace
 
 import pytest
-from conftest import BASE_COMMIT, CANDIDATE_COMMIT
 from fixtures import reference_scenario as ref
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT
 
 from retroagent.memory import execution, impact
 from retroagent.metrics import EvaluationError, OpenDefectLimits, Thresholds, evaluate, load_inputs

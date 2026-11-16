@@ -54,14 +54,28 @@ def add_report(
     model: str,
     path_template: str = ".retro/reports/{id}-{type}/",
     evaluation_id: int | None = None,
+    formats: list[str] | None = None,
+    created_at: str | None = None,
 ) -> str:
-    """Create a ``draft`` report. The path is built from its new identifier."""
+    """Create a ``draft`` report. The path is built from its new identifier.
+
+    ``formats`` are the requested ones while the report is a draft; ``mark_rendered`` replaces them with the
+    produced ones. ``created_at`` lets the caller write the generation time into the draft before inserting.
+    """
     with transaction(conn):
         report_id = next_id(conn, "RPT")
         conn.execute(
             "INSERT INTO report (id, type, status, evaluation_id, model, path, formats, created_at)"
-            " VALUES (?, ?, 'draft', ?, ?, ?, '[]', ?)",
-            (report_id, type, evaluation_id, model, path_template.format(id=report_id, type=type), utc_now()),
+            " VALUES (?, ?, 'draft', ?, ?, ?, ?, ?)",
+            (
+                report_id,
+                type,
+                evaluation_id,
+                model,
+                path_template.format(id=report_id, type=type),
+                json.dumps(formats or []),
+                created_at or utc_now(),
+            ),
         )
     return report_id
 
@@ -72,3 +86,7 @@ def mark_rendered(conn: sqlite3.Connection, report_id: str, formats: list[str]) 
         conn.execute(
             "UPDATE report SET status = 'rendered', formats = ? WHERE id = ?", (json.dumps(formats), report_id)
         )
+
+
+def get_report(conn: sqlite3.Connection, report_id: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM report WHERE id = ?", (report_id,)).fetchone()

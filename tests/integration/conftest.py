@@ -1,10 +1,13 @@
 """Fixtures of the integration tests."""
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from fixtures.example_project import example_project, start
+from fixtures.reference_scenario import load_reference_scenario
+from fixtures.report_session import open_project
 
 from retroagent.runtime import commands
 from retroagent.runtime.commands import RunOutcome
@@ -37,3 +40,22 @@ def shop_after_both_runs(tmp_path_factory, pip_cache) -> BothRuns:
         with start(path, trust_commands=True) as started:
             outcome = commands.run(started, "all", "both")
     return BothRuns(path, outcome)
+
+
+@pytest.fixture
+def local_time(monkeypatch):
+    """The local time zone is UTC-5 (POSIX ``EST5``): the reports of these tests do not depend on the machine."""
+    monkeypatch.setenv("TZ", "EST5")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.fixture
+def reference(tmp_path, local_time):
+    """The records of the reference scenario, cycle 1, in a temporary project, and the session that reports on it."""
+    project = open_project(tmp_path)
+    scenario = load_reference_scenario(project.conn)
+    yield project.with_id(scenario.session_id), scenario
+    project.conn.close()

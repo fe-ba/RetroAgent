@@ -87,6 +87,7 @@ FAILING = {
         S1: ("failed", "failed", "failed"),
         S2: ("failed", "failed", "failed"),
     },
+    "v1.2": {S3: ("failed", "passed", "passed"), S4: ("failed", "failed", "failed")},
 }
 
 MESSAGES = {
@@ -245,19 +246,19 @@ def load_reference_scenario(conn) -> ReferenceScenario:
     )
     for description, level, requirement_ids in [
         (
-            "Totals are computed in a new order in src/shop/pricing.py; shipping and tax may be computed on the"
+            "Totals are computed in a new order in `src/shop/pricing.py`; shipping and tax may be computed on the"
             " wrong amount.",
             "high",
             ["REQ-003", "REQ-005", "REQ-007"],
         ),
         (
-            "Coupon rules changed in src/shop/discounts.py; combinations of coupons may give a wrong discount.",
+            "Coupon rules changed in `src/shop/discounts.py`; combinations of coupons may give a wrong discount.",
             "high",
             ["REQ-004"],
         ),
-        ("src/shop/cart.py changed and its stock check had no test before this cycle.", "medium", ["REQ-002"]),
+        ("`src/shop/cart.py` changed and its stock check had no test before this cycle.", "medium", ["REQ-002"]),
         (
-            "Orders are now kept in memory by src/shop/store.py; checkout has a new side effect.",
+            "Orders are now kept in memory by `src/shop/store.py`; checkout has a new side effect.",
             "low",
             ["REQ-006", "REQ-008"],
         ),
@@ -332,7 +333,12 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         conn.execute(
             "INSERT INTO triage (execution_id, classification, justification, triaged_by, created_at)"
             " VALUES (?, 'expected_change', ?, 'none', ?)",
-            (executions[S2], "REQ-004 changed in v1.1: two different coupons can be combined.", db.utc_now()),
+            (
+                executions[S2],
+                'REQ-004 has the entry "Changed: v1.1 - Two different coupons can be combined". The test still'
+                " expects a second coupon to be rejected. The test must be updated.",
+                db.utc_now(),
+            ),
         )
     interpretation.add_triage(
         conn,
@@ -369,3 +375,95 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         evaluated_run=evaluated,
         defect_id=defect_id,
     )
+
+
+V1_2_COMMIT = "9936dccd1584a9226feabe90acf9dd8ab1c62e59"
+V1_2_TESTS = [t for t in V1_1_TESTS if t != S2]  # v1.2 removes the obsolete coupon test
+
+
+@dataclass(frozen=True)
+class Cycle2:
+    session_id: int
+    suite_id: int
+    baseline_run: str  # the suite against v1.1
+    evaluated_run: str  # the suite against v1.2
+
+
+def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
+    """Cycle 2 of ``ORACLE.md`` (v1.1 to v1.2) after ``load_reference_scenario``: the 25 tests of the project at
+    v1.2, no generated test, and DEF-001 closed by the evaluated run. There is no full run in this cycle."""
+    session_id = sessions.start_session(
+        conn,
+        model="none",
+        interactive=False,
+        result_char_limit=8000,
+        base_ref=CANDIDATE_REF,
+        base_commit=CANDIDATE_COMMIT,
+        candidate_ref="v1.2",
+        candidate_commit=V1_2_COMMIT,
+    )
+    analysis_id = impact.add_analysis(
+        conn,
+        session_id=session_id,
+        base_ref=CANDIDATE_REF,
+        base_commit=CANDIDATE_COMMIT,
+        candidate_ref="v1.2",
+        candidate_commit=V1_2_COMMIT,
+        files=[
+            {"path": "src/shop/pricing.py", "change": "modified", "lines_added": 3, "lines_removed": 2},
+            {"path": "tests/test_discounts.py", "change": "modified", "lines_added": 0, "lines_removed": 8},
+        ],
+    )
+    impact.record_impact(
+        conn,
+        analysis_id,
+        modules=[{"module": "pricing", "files": ["src/shop/pricing.py"], "risk_level": "high", "reason": "Shipping"}],
+        requirements=[{"requirement_id": "REQ-005", "reason": "Shipping is computed again on the discounted subtotal"}],
+    )
+    suite_id = design.add_suite(conn, analysis_id=analysis_id, session_id=session_id)
+    for position, test_id in enumerate(V1_2_TESTS, start=1):
+        design.add_to_suite(
+            conn, suite_id, test_case_id=scenario.tc(test_id), position=position, selection_reason="all"
+        )
+
+    def suite_run(role, ref, commit, version):
+        run_id = execution.start_run(
+            conn,
+            version_role=role,
+            ref=ref,
+            commit=commit,
+            scope="suite",
+            command="python -m pytest --junitxml={junit} {names}",
+            session_id=session_id,
+            suite_id=suite_id,
+        )
+        execution.set_junit_path(conn, run_id, f".retro/runs/{run_id}/junit.xml")
+        executions = {t: _execute(conn, run_id, scenario.tc(t), _attempts(version, t)) for t in V1_2_TESTS}
+        execution.finish_run(conn, run_id, status="completed", exit_code=1)
+        return run_id, executions
+
+    baseline, _ = suite_run("base", CANDIDATE_REF, CANDIDATE_COMMIT, "v1.1")
+    evaluated, executions = suite_run("candidate", "v1.2", V1_2_COMMIT, "v1.2")
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S3],
+        classification="flaky",
+        justification="Failed at the first attempt and passed in both reruns.",
+        triaged_by="none",
+    )
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S4],
+        classification="pre_existing",
+        justification="Failed against the baseline in " + baseline + ".",
+        triaged_by="none",
+        base_commit=CANDIDATE_COMMIT,
+    )
+    interpretation.close_defect(
+        conn,
+        scenario.defect_id,
+        closed_by="run",
+        close_reason="The test case of the defect passed in " + evaluated + ".",
+        closed_run_id=evaluated,
+    )
+    return Cycle2(session_id, suite_id, baseline, evaluated)

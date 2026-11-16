@@ -109,7 +109,7 @@ The digest has a fixed set of lines and no free text. It tells the model where t
 - `RETRO.md` is read from the root of the working copy at the start of every turn, not of every call, so that the system context does not change inside a turn.
 - When it has more than 200 lines, only the first 200 are included, followed by a notice that the file was truncated.
 - When it does not exist, the section says so and suggests running `/init`.
-- It is presented as information about the project, never as rules (ADR-0021).
+- It is presented as information about the project, never as rules (ADR-0021). Its text is placed between the lines `<project-context>` and `</project-context>`, so that its own headings cannot be taken for sections of the system context; a line of the file equal to one of those two is removed.
 
 ## Skills
 
@@ -202,7 +202,7 @@ Before each call, when the conversation exceeds 80% of the variable space, the r
 
 - Never replaced: the system context, the loaded skill, the user message of the current turn, and the results of the current model message.
 - Freeing happens in batches, from 80% down to 50%, on purpose: each freeing changes the middle of the context, and a server that reuses the beginning has to read again from that point.
-- When freeing is not enough, the call is not made. An interactive session suggests `/clear`; in non-interactive mode it is a runtime error.
+- The 50% is a target, not a condition: when everything that may be replaced was replaced, the call is made if the conversation fits in the variable space, whatever its share. Only when it does not fit, the call is not made. An interactive session suggests `/clear`; in non-interactive mode it is a runtime error.
 - The conversation is never summarized by a model: a summary could state results that no tool returned. The digest of the state message is the only summary, and code writes it.
 
 ## Testing

@@ -62,7 +62,7 @@ Defined only at user level, under `models.<profile>`.
 | `provider` | enum | required | `anthropic`, `openai`, `xai`, `google`, `ollama`, `openai_compatible`. |
 | `name` | string | required | Model identifier as the provider expects it. |
 | `base_url` | string | provider default | Endpoint. Required for `ollama` and `openai_compatible`. |
-| `api_key_env` | string | none | Name of the environment variable that holds the API key. The key itself is never stored in configuration. |
+| `api_key_env` | string | none | Name of the environment variable that holds the API key. The key itself is never stored in configuration. Required for hosted providers, not accepted for `ollama`, optional for `openai_compatible`. |
 | `tool_calling` | enum | `auto` | `auto` detects support, `native` forces tool calling, `json` forces the JSON fallback mode. |
 | `temperature` | number | `0` | Sampling temperature. Low values favor reproducible behavior. |
 | `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). |

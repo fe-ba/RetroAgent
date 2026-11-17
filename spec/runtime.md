@@ -160,7 +160,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | `implement` | Model, skill `test-design` | Read tools, `test_runner__write_test`, `test_runner__get_evidence`, `memory__update_test_case`, `memory__retire_test_case` | None: test cases left `designed` become a condition of the decision. |
 | `run` | Direct: the suite against the baseline, then against the candidate | — | Both runs are `completed`. |
 | `triage` | Model, skill `failure-triage` | Read tools, `test_runner__get_evidence`, `memory__save_triage`, `memory__register_defect`, `memory__link_defect` | No failed execution of the candidate run is left without triage. |
-| `report` | Model, skill `test-reporting` | Read tools of `memory`, the tools of `reports` | A `completion` report is `rendered`. |
+| `report` | Model, skill `test-reporting` | Read tools, the tools of `reports` | A `completion` report is `rendered`. |
 
 - "Read tools" are the tools of `runtime` and every tool of `git` and `memory` whose access is `read` (`mcp-tools.md`, Summary). Each step can write only what its own step records, so that a step never redoes or undoes another one, for example by creating a new analysis during triage. A free message exposes every tool the mode allows.
 - When the outcome of a step is missing, the step runs once more with a message that states what is missing. If it is still missing, the cycle stops with a runtime error that names the step.
@@ -183,6 +183,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | `reports` | IDs and paths of the reports rendered in the session. |
 | `decision` | Decision of the latest evaluation of the session, or null. |
 | `denied` | Number of tool calls refused. |
+| `recorded` | Write tools that succeeded in the turns of the model, with how many times each, such as `{"memory__save_triage": 4}`. Empty when nothing was recorded; null when no turn of the model ran. |
 | `exit_code` | Exit code of the session. |
 
 - Exit code, by precedence: `1` if a runtime error occurred; otherwise `4` if a tool call was refused for lack of permission; otherwise `3` if the latest evaluation of the session decided `do_not_release`; otherwise `0`. Configuration errors before the session starts exit with `2`.

@@ -138,13 +138,13 @@ def test_ask_without_anyone_to_ask_is_denied(agent):
 
 
 @pytest.mark.parametrize("mode", ["default", "auto"])
-def test_run_tests_without_trusted_commands_is_denied_before_any_question(agent, mode):
+def test_run_tests_without_approved_commands_and_no_one_to_ask_is_denied(agent, mode):
+    """The approval of the project commands, non-interactive row; the other rows are in test_sc03_approval.py."""
     agent.mode, agent.trust_commands = mode, False
-    set_permissions(agent, "ask")
-    answers = Answers(permissions.ONCE)
-    error, row, provider = run_tests_once(agent, ask=answers)
+    set_permissions(agent, "allow")
+    error, row, provider = run_tests_once(agent, ask=None)
     assert error == {"code": "denied", "message": permissions.COMMANDS_NOT_APPROVED}
-    assert row["outcome"] == "denied" and answers.questions == []
+    assert row["outcome"] == "denied" and agent.permission_refusals == 1
     assert "Project commands: not approved" in provider.requests[0].messages[-1].content
 
 

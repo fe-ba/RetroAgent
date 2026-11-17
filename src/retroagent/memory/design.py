@@ -181,24 +181,29 @@ def update_test_case(conn: sqlite3.Connection, test_case_id: str, fields: dict) 
                 else ""
             )
             raise InvariantViolation(f"invalid_state: {', '.join(refused)} cannot change for {test_case_id}{why}")
-        for requirement_id in fields.get("requirement_ids", []):
-            require_exists(conn, "requirement", "id", requirement_id, "requirement")
-        for name, value in fields.items():
-            if name == "requirement_ids":
-                # The one exception to INV-11: design links are replaced; name links are never deleted.
-                conn.execute(
-                    "DELETE FROM test_case_requirement WHERE test_case_id = ? AND link = 'design'", (test_case_id,)
-                )
-                for requirement_id in dict.fromkeys(value):
-                    conn.execute(
-                        "INSERT INTO test_case_requirement (test_case_id, requirement_id, link)"
-                        " VALUES (?, ?, 'design')",
-                        (test_case_id, requirement_id),
-                    )
-            else:
-                stored = json.dumps(value) if name in _JSON_FIELDS else value
-                conn.execute(f"UPDATE test_case SET {name} = ? WHERE id = ?", (stored, test_case_id))
+        _write_fields(conn, test_case_id, fields)
         conn.execute("UPDATE test_case SET updated_at = ? WHERE id = ?", (utc_now(), test_case_id))
+
+
+def _write_fields(conn: sqlite3.Connection, test_case_id: str, fields: dict) -> None:
+    """Write design fields of a test case, inside the caller's transaction. ``requirement_ids`` replaces the design
+    links and keeps the links found in the test name."""
+    for requirement_id in fields.get("requirement_ids", []):
+        require_exists(conn, "requirement", "id", requirement_id, "requirement")
+    for name, value in fields.items():
+        if name == "requirement_ids":
+            # The one exception to INV-11: design links are replaced; name links are never deleted.
+            conn.execute(
+                "DELETE FROM test_case_requirement WHERE test_case_id = ? AND link = 'design'", (test_case_id,)
+            )
+            for requirement_id in dict.fromkeys(value):
+                conn.execute(
+                    "INSERT INTO test_case_requirement (test_case_id, requirement_id, link) VALUES (?, ?, 'design')",
+                    (test_case_id, requirement_id),
+                )
+        else:
+            stored = json.dumps(value) if name in _JSON_FIELDS else value
+            conn.execute(f"UPDATE test_case SET {name} = ? WHERE id = ?", (stored, test_case_id))
 
 
 def _split_implementation(implementation: str) -> tuple[str, str]:
@@ -227,6 +232,8 @@ def mark_implemented(conn: sqlite3.Connection, test_case_id: str, implementation
         row = _generated(conn, test_case_id)
         if row["status"] == "implemented":
             raise InvariantViolation(f"{test_case_id} is already implemented; use a rewrite")
+        if row["retired_at"] is not None:
+            raise InvariantViolation(f"invalid_state: test case {test_case_id} is retired")
         for other_id, other in conn.execute(
             "SELECT id, implementation FROM test_case WHERE origin = 'designed' AND implementation IS NOT NULL"
         ):
@@ -242,16 +249,33 @@ def mark_implemented(conn: sqlite3.Connection, test_case_id: str, implementation
         )
 
 
-def rewrite_generated_test(conn: sqlite3.Connection, test_case_id: str, implementation: str) -> int:
-    """A new revision of the code of a generated test. It keeps the function name and the file (INV-17)."""
+# Design fields that describe the code of a generated test: they change only together with it (mcp-tools.md,
+# ``test_runner.write_test``).
+REWRITE_FIELDS = ("preconditions", "input_data", "steps", "expected_result", "requirement_ids")
+
+
+def rewrite_generated_test(
+    conn: sqlite3.Connection, test_case_id: str, implementation: str, fields: dict | None = None
+) -> int:
+    """A new revision of the code of a generated test, with the design fields that change with it, in one
+    transaction. It keeps the function name and the file (INV-17). Returns the new revision."""
+    fields = fields or {}
     with transaction(conn):
         row = _generated(conn, test_case_id)
         if row["status"] != "implemented":
             raise InvariantViolation(f"{test_case_id} has no generated test to rewrite")
+        if row["retired_at"] is not None:
+            raise InvariantViolation(f"invalid_state: test case {test_case_id} is retired")
         if implementation != row["implementation"]:
             raise InvariantViolation(
                 f"INV-17: a rewrite keeps the function name and the file of {test_case_id}: {row['implementation']!r}"
             )
+        refused = [name for name in fields if name not in REWRITE_FIELDS]
+        if refused:
+            raise InvariantViolation(
+                f"invalid_argument: {', '.join(refused)} cannot change with the code; use memory.update_test_case"
+            )
+        _write_fields(conn, test_case_id, fields)
         revision = row["revision"] + 1
         conn.execute(
             "UPDATE test_case SET revision = ?, updated_at = ? WHERE id = ?", (revision, utc_now(), test_case_id)

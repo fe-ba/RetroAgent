@@ -1,7 +1,7 @@
 """Modes and permissions of runtime.md as a decision: both tables, per mode, and the order of the checks.
 
-``test_runner.write_test`` does not exist yet, so its rows are tested here; the rows of ``test_runner.run_tests``
-also run through the turn in ``tests/integration/test_turn_permissions.py``.
+The rows of ``test_runner.run_tests`` also run through the turn in ``tests/integration/test_turn_permissions.py``,
+and the approval of the project commands in ``tests/integration/test_sc03_approval.py``.
 """
 
 import pytest
@@ -152,14 +152,62 @@ def test_deny_is_checked_before_the_approval_of_the_project_commands():
     assert decision.message == "the permission run_tests is deny"
 
 
-@pytest.mark.parametrize(("mode", "value"), [("default", "ask"), ("default", "allow"), ("auto", "ask")])
-def test_run_tests_without_approved_commands_is_denied_before_any_question(mode, value):
+@pytest.mark.parametrize(
+    ("mode", "value", "action"), [("default", "ask", "ask"), ("default", "allow", "run"), ("auto", "ask", "run")]
+)
+def test_run_tests_without_approved_commands_needs_the_approval_first_whatever_the_mode(mode, value, action):
+    """The approval does not depend on the mode or on permissions.*: auto never approves the commands."""
     decision = decide(RUN_TESTS, mode=mode, value=value, approved=False)
-    assert (decision.action, decision.code, decision.message) == ("refuse", "denied", permissions.COMMANDS_NOT_APPROVED)
+    assert (decision.action, decision.approve_commands) == (action, True)
+
+
+@pytest.mark.parametrize("mode", ["default", "auto"])
+def test_run_tests_with_approved_commands_needs_no_approval(mode):
+    assert decide(RUN_TESTS, mode=mode, approved=True).approve_commands is False
 
 
 def test_write_test_does_not_need_the_approval_of_the_project_commands():
     assert decide(WRITE_TEST, approved=False) == permissions.RUN
+
+
+def test_the_approval_shows_every_command_and_variable_in_full():
+    request = permissions.ApprovalRequest(
+        project="/work/shop",
+        commands=(("tests.setup", "make deps"), ("tests.command", "pytest --junitxml={junit}"), ("tests.select", None)),
+        env=(("SHOP_MODE", "test"),),
+        stored_in="/home/me/.retro/approvals.json",
+    )
+    assert request.details == (
+        "Project: /work/shop",
+        "They run on this machine with your privileges; RetroAgent is not a sandbox.",
+        "  tests.setup: make deps",
+        "  tests.command: pytest --junitxml={junit}",
+        "  tests.select: (not set)",
+        "  tests.env:",
+        "    SHOP_MODE=test",
+        "An approval is stored in /home/me/.retro/approvals.json; a command that changes is asked again.",
+    )
+
+
+def test_the_question_of_a_rewrite_shows_the_difference_with_the_current_code():
+    arguments = {"test_case_id": "TC-027", "file": "test_a.py", "test_name": "test_a", "code": "x = 1\ny = 3\n"}
+    details = permissions.write_test_details(arguments, (1, "x = 1\ny = 2\n"))
+    assert details[:4] == (
+        "Test case: TC-027",
+        "File: .retro/tests/test_a.py",
+        "Test: test_a",
+        "Rewrite: revision 2. Changes to the code:",
+    )
+    assert details[4].splitlines() == [
+        "--- test_a.py (revision 1)",
+        "+++ test_a.py (revision 2)",
+        "@@ -1,2 +1,2 @@",
+        " x = 1",
+        "-y = 2",
+        "+y = 3",
+    ]
+    first = permissions.write_test_details(arguments)
+    assert first[3:] == ("Code:", "x = 1\ny = 3\n")
 
 
 # Effective values and session grants.

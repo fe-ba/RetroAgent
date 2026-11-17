@@ -491,6 +491,38 @@ def test_inv_16_retired_test_case_is_never_added_to_a_suite(conn, build):
     assert row["retired_at"] and row["retire_reason"] == "obsolete" and row["retired_by"] == "fake/model"
 
 
+def test_a_rewrite_changes_the_code_fields_with_the_revision_in_one_transaction(conn, build):
+    """mcp-tools.md, ``test_runner.write_test``: the design fields that describe the code change with it; the others
+    belong to ``memory.update_test_case``. A refused rewrite changes nothing."""
+    build.requirement("REQ-001")
+    build.requirement("REQ-002")
+    test_case = build.test_case(implemented=False, requirement_ids=["REQ-001"])
+    design.mark_implemented(conn, test_case, "test_a.py::test_req_001_a")
+    fields = {"steps": ["Add 6 units"], "expected_result": "Refused with 409.", "requirement_ids": ["REQ-002"]}
+    assert design.rewrite_generated_test(conn, test_case, "test_a.py::test_req_001_a", fields) == 2
+    row = design.get_test_case(conn, test_case)
+    assert (row["steps"], row["expected_result"]) == ('["Add 6 units"]', "Refused with 409.")
+    assert [link["requirement_id"] for link in design.test_case_requirements(conn, test_case)] == ["REQ-002"]
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation, match="invalid_argument: title cannot change with the code"):
+        design.rewrite_generated_test(conn, test_case, "test_a.py::test_req_001_a", {"title": "new"})
+    with pytest.raises(InvariantViolation, match="INV-13"):
+        design.rewrite_generated_test(conn, test_case, "test_a.py::test_req_001_a", {"requirement_ids": ["REQ-404"]})
+    assert count_rows(conn) == before
+    assert design.get_test_case(conn, test_case)["revision"] == 2
+
+
+def test_a_retired_test_case_is_neither_implemented_nor_rewritten(conn, build):
+    designed = build.test_case(implemented=False)
+    implemented = build.test_case(implemented=True)
+    for test_case in (designed, implemented):
+        design.retire_test_case(conn, test_case, reason="obsolete", retired_by="fake/model")
+    with pytest.raises(InvariantViolation, match="invalid_state: .* is retired"):
+        design.mark_implemented(conn, designed, "test_r.py::test_r")
+    with pytest.raises(InvariantViolation, match="invalid_state: .* is retired"):
+        design.rewrite_generated_test(conn, implemented, design.get_test_case(conn, implemented)["implementation"])
+
+
 def test_inv_17_generated_test_name_and_file_are_unique_and_kept(conn, build):
     first = build.test_case(implemented=False)
     second = build.test_case(implemented=False)

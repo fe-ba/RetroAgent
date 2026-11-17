@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from retroagent.config import Config, ConfigError, load_config
+from retroagent.config import Config, ConfigError, approvals, load_config
 from retroagent.config.schema import HOSTED_PROVIDERS
 from retroagent.context import budget, skills, state, system, tools
 from retroagent.llm.provider import LLMProvider, Message, MissingCredential, ProviderNotice, ToolDefinition, Wait
@@ -95,6 +95,24 @@ class Conversation:
 
     def clear(self) -> None:
         self.messages, self.loaded_skill, self.loaded_skill_call = [], None, None
+
+
+@dataclass(frozen=True)
+class CommandsState:
+    """The project commands as the working copy configures them now, and whether they are approved in that content
+    (runtime.md, Project commands)."""
+
+    config: Config | None  # None when the configuration cannot be read now
+    approved: bool  # --trust-commands, or the stored approval covers this content
+    needs_approval: bool = True  # False when no tests.command is configured: nothing runs, nothing is asked
+    digest: str | None = None
+    config_error: str | None = None  # the configuration cannot be read: the call is invalid_state
+    approvals_error: str | None = None  # approvals.json cannot be read: the call is denied
+
+    @property
+    def ready(self) -> bool:
+        """Whether a run may go on without asking for an approval."""
+        return self.approved or not self.needs_approval
 
 
 @dataclass
@@ -171,6 +189,23 @@ class Session:
     def permissions(self) -> dict[str, str]:
         return permissions.effective(self.config, self.grants)
 
+    def commands_state(self) -> CommandsState:
+        """The project commands read again from the working copy, and whether they are approved: before every
+        ``run_tests`` the runtime checks the content that the run will read (runtime.md, Project commands)."""
+        try:
+            config = load_config(self.project_dir)
+        except ConfigError as error:
+            return CommandsState(None, self.trust_commands, config_error=str(error))
+        needs = bool(config["tests.command"])
+        if self.trust_commands:
+            return CommandsState(config, True, needs)
+        digest = approvals.digest(config)
+        try:
+            approved = approvals.is_approved(self.project_dir, digest)
+        except approvals.ApprovalsError as error:
+            return CommandsState(config, False, needs, digest, approvals_error=str(error))
+        return CommandsState(config, approved, needs, digest)
+
     def state_message(self, cycle_step: state.CycleStep | None = None) -> Message:
         versions = self.versions()
         base, candidate = versions["base"], versions["candidate"]
@@ -182,7 +217,7 @@ class Session:
             candidate=state.Version(candidate.ref, candidate.commit) if candidate else None,
             mode=self.mode,
             permissions=self.permissions(),
-            commands_approved=self.trust_commands,
+            commands_approved=self.commands_state().approved,
             model=self.model,
             language=self.config["language"],
             cycle_step=cycle_step,

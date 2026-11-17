@@ -5,8 +5,8 @@ same checks, question and ``tool_call`` row as a call of the model, dispatched t
 its output are not added to the conversation.
 
 **Model** commands empty the conversation and send a fixed template with the tool set of their step. This build
-has ``/analyze``, ``/select`` and ``/design``; the other commands of cli.md are parsed and answered as not available
-yet.
+has ``/analyze``, ``/select``, ``/design`` and ``/implement``; the other commands of cli.md are parsed and answered
+as not available yet.
 
 Counts and statuses come from stored records; no function here takes or computes a test result.
 """
@@ -38,6 +38,11 @@ DESIGN_DEFAULT = (
     "Load the skill `test-design` and design test cases for the impacted areas not covered by the current suite."
 )
 DESIGN_TOOL_SET = "design"
+IMPLEMENT = (
+    "Load the skill `test-design` and implement the test cases `{ids}`; rewrite those that are already `implemented`."
+)
+IMPLEMENT_DEFAULT = "Load the skill `test-design` and implement all designed test cases of the current suite."
+IMPLEMENT_TOOL_SET = "implement"
 
 # Every slash command of cli.md: usage, description, and whether this build has it.
 HELP = (
@@ -48,7 +53,7 @@ HELP = (
     ("/select", "Select and prioritize the regression suite for the current change.", True),
     ("/design [scope]", "Design test cases for the impacted areas, or for scope (requirement IDs, modules or free"
      " text).", True),
-    ("/implement [ids]", "Write executable test code for designed test cases.", False),
+    ("/implement [ids]", "Write executable test code for designed test cases.", True),
     ("/run [target] [--on <version>]", "Execute tests. target: suite (default), all, or test case IDs separated by"
      " spaces. --on: base, candidate (default) or both.", True),
     ("/triage [run_id]", "Classify the failures of a run. Default: last run.", False),
@@ -68,7 +73,7 @@ HELP = (
 )  # fmt: skip
 COMMANDS = tuple(usage.split()[0] for usage, _, _ in HELP)
 AVAILABLE = tuple(usage.split()[0] for usage, _, available in HELP if available)
-MODEL_COMMANDS = ("/analyze", "/select", "/design")
+MODEL_COMMANDS = ("/analyze", "/select", "/design", "/implement")
 
 
 class CommandError(Exception):
@@ -88,6 +93,7 @@ class Command:
     argument: str | None = None  # /model, /mode, /help
     refs: tuple[str, ...] = ()  # /analyze: () or (base, candidate)
     scope: str | None = None  # /design: the words after the command, joined by one space
+    ids: tuple[str, ...] = ()  # /implement: test case IDs, once each, in order
 
 
 def is_command(line: str) -> bool:
@@ -120,6 +126,8 @@ def parse(line: str) -> Command:
         return Command(name, refs=tuple(args))
     if name == "/design":
         return Command(name, scope=" ".join(args) or None)
+    if name == "/implement":
+        return Command(name, ids=tuple(dict.fromkeys(args)))
     if name in ("/model", "/mode", "/help"):
         if len(args) > 1:
             raise CommandError(f"usage: {name} [{'name' if name == '/model' else name[1:]}]")
@@ -406,6 +414,24 @@ def design_tests(
     """``/design [scope]``: an empty conversation, then the template with the tools of the step ``design``."""
     message = design_message(scope)
     return _model_command(session, message, DESIGN_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
+def implement_message(ids: Sequence[str] = ()) -> str:
+    """The message of ``/implement [ids]``."""
+    return IMPLEMENT.format(ids=", ".join(ids)) if ids else IMPLEMENT_DEFAULT
+
+
+def implement(
+    session: Session,
+    ids: Sequence[str] = (),
+    *,
+    ask: turn.Ask | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> turn.TurnResult:
+    """``/implement [ids]``: an empty conversation, then the template with the tools of the step ``implement``."""
+    message = implement_message(ids)
+    return _model_command(session, message, IMPLEMENT_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
 
 
 def _model_command(session: Session, message: str, tool_set: str, *, ask, listener, interrupt) -> turn.TurnResult:

@@ -44,6 +44,9 @@ UNKNOWN_REFERENCES = [
     ("memory", "get_executions", {"run_id": "RUN-9999"}),
     ("memory", "get_test_case_history", {"test_case_id": "TC-999"}),
     ("test_runner", "run_tests", {"version": "base", "scope": "selected", "test_case_ids": ["TC-999"]}),
+    ("test_runner", "write_test",
+     {"test_case_id": "TC-999", "file": "test_x.py", "test_name": "test_x", "code": "x = 1\n"}),
+    ("test_runner", "get_evidence", {"run_id": "RUN-9999"}),
 ]  # fmt: skip
 WITHOUT_REFERENCES = {"git.analyze_changes", "memory.sync_requirements", "memory.get_risks", "memory.get_runs"}
 

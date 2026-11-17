@@ -69,3 +69,22 @@ def test_the_permission_question_shows_the_details_and_the_three_answers():
         "Allow for the rest of the session",
         "Deny",
     ]
+
+
+def test_the_approval_question_shows_every_command_and_the_two_answers():
+    from retroagent.runtime.permissions import ApprovalRequest
+
+    request = ApprovalRequest("/work/shop", (("tests.command", "pytest"),), (), "/home/me/.retro/approvals.json")
+    assert display.question(request) == (
+        "The project commands are not approved in their current content.\n"
+        "Project: /work/shop\n"
+        "They run on this machine with your privileges; RetroAgent is not a sandbox.\n"
+        "  tests.command: pytest\n"
+        "  tests.env: (none)\n"
+        "An approval is stored in /home/me/.retro/approvals.json; a command that changes is asked again.\n"
+        "\n"
+        "  1. Approve these commands\n"
+        "  2. Deny (Esc)"
+    )
+    assert [display.answer_line(a, request) for a in ("approve", "deny")] == ["Approve these commands", "Deny"]
+    assert [value for _, value, _ in display.choices(request)] == ["approve", "deny"]

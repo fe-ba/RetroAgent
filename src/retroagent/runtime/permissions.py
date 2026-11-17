@@ -1,10 +1,12 @@
-"""Modes and permissions of spec/runtime.md: the order of the checks, the two tables, the question to the user and
-the session grants.
+"""Modes and permissions of spec/runtime.md: the order of the checks, the two tables, the question to the user, the
+session grants, and the approval of the project commands.
 
-``check`` decides a tool call before dispatch. It reads nothing and asks nothing: the turn asks the user when the
-decision is ``ask``, and stores a grant when the answer is ``session``.
+``check`` decides a tool call before dispatch. It reads nothing and asks nothing: the turn asks the user to approve
+the project commands when the decision says ``approve_commands``, asks about the permissions when the decision is
+``ask``, and stores a grant when the answer is ``session``.
 """
 
+import difflib
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
@@ -21,10 +23,16 @@ RUN_TESTS, WRITE_TEST = "test_runner__run_tests", "test_runner__write_test"
 ONCE, SESSION = "once", "session"
 ANSWERS = (ONCE, SESSION, DENY)
 
+# The approval of the project commands (runtime.md, Project commands): approve, which is stored, or deny.
+APPROVE = "approve"
+APPROVAL_ANSWERS = (APPROVE, DENY)
+
+PROJECT_COMMANDS = "the project commands (tests.setup, tests.command, tests.select, service.start and tests.env)"
 COMMANDS_NOT_APPROVED = (
-    "the project commands (tests.setup, tests.command, tests.select, service.start and tests.env) are not approved;"
-    " start the session with --trust-commands to approve them for this session"
+    f"{PROJECT_COMMANDS} are not approved in their current content, and there is no one to ask in non-interactive"
+    " mode; approve them in an interactive session, or start the session with --trust-commands"
 )
+COMMANDS_REFUSED = f"the user did not approve {PROJECT_COMMANDS}"
 
 
 # Why a call is refused. Only the refusals of the mode, of a permission and of the approval of the project commands
@@ -43,6 +51,7 @@ class Decision:
     code: str | None = None  # not_found or denied
     message: str | None = None
     reason: str | None = None  # a refusal: one of the reasons above
+    approve_commands: bool = False  # the project commands must be approved before the question and the dispatch
 
 
 RUN = Decision("run")
@@ -59,6 +68,28 @@ class PermissionRequest:
     tool: str
     permissions: tuple[str, ...]
     details: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ApprovalRequest:
+    """The approval of the project commands: every command and every variable of ``tests.env``, in full. Answered
+    with one of ``APPROVAL_ANSWERS``."""
+
+    project: str
+    commands: tuple[tuple[str, str | None], ...]  # (key, command), None when not set
+    env: tuple[tuple[str, str], ...]  # tests.env
+    stored_in: str  # where an approval is stored
+
+    @property
+    def details(self) -> tuple[str, ...]:
+        return (
+            f"Project: {self.project}",
+            "They run on this machine with your privileges; RetroAgent is not a sandbox.",
+            *(f"  {key}: {command if command is not None else '(not set)'}" for key, command in self.commands),
+            "  tests.env:" + ("" if self.env else " (none)"),
+            *(f"    {name}={value}" for name, value in self.env),
+            f"An approval is stored in {self.stored_in}; a command that changes is asked again.",
+        )
 
 
 def needed(name: str, service_configured: bool) -> tuple[str, ...]:
@@ -98,6 +129,8 @@ def check(
 ) -> Decision:
     """Decide a tool call, in the order of runtime.md: the tool exists, is not user only, is in the tool set of the
     step, is allowed by the mode and is not ``deny``; then the approval of the project commands; then the question.
+    A ``run_tests`` whose commands are not approved is flagged ``approve_commands``, whatever the mode: the turn asks
+    for the approval, or refuses the call when there is no one to ask.
 
     ``known`` holds the exposed name of every existing tool; ``permissions`` the effective value of each permission.
     """
@@ -117,12 +150,11 @@ def check(
     denied = [p for p in required if permissions[p] == DENY]
     if denied:
         return refuse("denied", f"the permission {' and '.join(denied)} is deny", BY_PERMISSION)
-    if name == RUN_TESTS and not commands_approved:
-        return refuse("denied", COMMANDS_NOT_APPROVED, BY_APPROVAL)
+    approve = name == RUN_TESTS and not commands_approved
     to_ask = tuple(p for p in required if permissions[p] == ASK)
     if to_ask and mode != AUTO:
-        return Decision("ask", permissions=to_ask)
-    return RUN
+        return Decision("ask", permissions=to_ask, approve_commands=approve)
+    return Decision("run", approve_commands=approve)
 
 
 def no_one_to_ask(permissions: tuple[str, ...]) -> str:
@@ -136,15 +168,31 @@ def refused_by_user(permissions: tuple[str, ...]) -> str:
     return f"the user denied the permission {' and '.join(permissions)}"
 
 
-def write_test_details(arguments: Mapping[str, object]) -> tuple[str, ...]:
-    """What ``test_runner.write_test`` will do: the file, the test and the full code."""
-    return (
+def write_test_details(arguments: Mapping[str, object], previous: tuple[int, str] | None = None) -> tuple[str, ...]:
+    """What ``test_runner.write_test`` will do: the file, the test and the full code; in a rewrite, ``previous`` is
+    the revision and the code written now, and the question shows the difference with it (ADR-0024)."""
+    file, code = arguments.get("file"), str(arguments.get("code", ""))
+    lines = [
         f"Test case: {arguments.get('test_case_id')}",
-        f"File: .retro/tests/{arguments.get('file')}",
+        f"File: .retro/tests/{file}",
         f"Test: {arguments.get('test_name')}",
-        "Code:",
-        str(arguments.get("code", "")),
+    ]
+    if previous is None:
+        return (*lines, "Code:", code)
+    revision, current = previous
+    diff = difflib.unified_diff(
+        current.splitlines(keepends=True),
+        code.splitlines(keepends=True),
+        fromfile=f"{file} (revision {revision})",
+        tofile=f"{file} (revision {revision + 1})",
     )
+    text = "".join(line if line.endswith("\n") else line + "\n" for line in diff).rstrip("\n")
+    lines.append(f"Rewrite: revision {revision + 1}. Changes to the code:")
+    lines.append(text or "(the code does not change)")
+    fields = arguments.get("fields")
+    if isinstance(fields, Mapping) and fields:
+        lines.append(f"Design fields that change with it: {', '.join(sorted(map(str, fields)))}")
+    return tuple(lines)
 
 
 def run_tests_details(

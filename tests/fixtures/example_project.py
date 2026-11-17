@@ -32,10 +32,11 @@ def example_project(tmp_path_factory, pip_cache):
 
 
 @contextmanager
-def project_copy(tmp_path_factory, source: Path):
+def project_copy(tmp_path_factory, source: Path, pip_cache: Path | None = None):
     """A copy of a project made with ``example_project``, with its git repository and project memory, under the same
     conditions: its own ``RETRO_HOME`` with the model profile of the tests, and no model key in the environment. For
-    tests that change a project whose runs are already stored, such as ``shop_after_both_runs``."""
+    tests that change a project whose runs are already stored, such as ``shop_after_both_runs``. With ``pip_cache``,
+    runs of the copy reuse the downloads of the pytest session."""
     with pytest.MonkeyPatch.context() as patch:
         home = tmp_path_factory.mktemp("retro-home")
         write_user_config(home)
@@ -44,6 +45,10 @@ def project_copy(tmp_path_factory, source: Path):
             patch.delenv(name, raising=False)
         path = tmp_path_factory.mktemp("copy") / source.name
         shutil.copytree(source, path, symlinks=True)
+        if pip_cache is not None:
+            cache = cache_dir(path)
+            cache.mkdir(parents=True)
+            (cache / "pip").symlink_to(pip_cache, target_is_directory=True)
         yield path
 
 

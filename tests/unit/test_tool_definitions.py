@@ -46,7 +46,7 @@ def test_the_bundled_tools_built_so_far():
             "save_suite", "get_suite", "design_test_case", "update_test_case", "retire_test_case", "get_test_cases",
             "get_runs", "get_executions", "get_test_case_history",
         ],
-        "test_runner": ["run_tests"],
+        "test_runner": ["run_tests", "write_test", "get_evidence"],
     }  # fmt: skip
 
 

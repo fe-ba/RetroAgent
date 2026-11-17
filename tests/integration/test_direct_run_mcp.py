@@ -93,13 +93,11 @@ def test_no_one_to_ask_is_a_refusal_for_lack_of_permission(agent, dispatched):
     assert dispatched == [] and agent.permission_refusals == 1
 
 
-def test_without_trusted_commands_it_is_refused_before_any_question(agent_project):
+def test_without_approved_commands_and_no_one_to_ask_it_is_refused(agent_project):
     with start(agent_project) as session:
-        answers = Answers()
-        outcome = commands.run(session, MISSING, ask=answers)
+        outcome = commands.run(session, MISSING, ask=None)
         assert outcome.error.code == "denied"
         assert outcome.error.message == permissions.COMMANDS_NOT_APPROVED
-        assert answers.questions == []
         row = tool_rows(session.conn, session.id)[-1]
         assert (row["tool"], row["outcome"]) == ("run_tests", "denied")
         assert session.permission_refusals == 1

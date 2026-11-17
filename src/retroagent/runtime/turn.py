@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
+from retroagent.config import approvals
 from retroagent.context import budget, state, tools
 from retroagent.llm.provider import (
     ContextWindowExceeded,
@@ -41,9 +42,10 @@ from retroagent.mcp_client.client import run_tests_timeout
 from retroagent.memory import design, sessions
 from retroagent.runtime import permissions
 from retroagent.runtime import tools as runtime_tools
-from retroagent.runtime.permissions import PermissionRequest
-from retroagent.runtime.session import Session
+from retroagent.runtime.permissions import ApprovalRequest, PermissionRequest
+from retroagent.runtime.session import CommandsState, Session
 from retroagent.servers.errors import ToolError
+from retroagent.servers.test_runner import generated
 from retroagent.servers.test_runner.process import WELL_KNOWN_KEYS
 
 BRIEFLY = (
@@ -54,7 +56,9 @@ NOT_COMPLETED = "not completed: interrupted by the user"
 SECRET = "***"
 POLL_SECONDS = 0.05
 
-Ask = Callable[[PermissionRequest], str]
+# Asks the user: a permission, answered with one of ``permissions.ANSWERS``, or the approval of the project commands,
+# answered with one of ``permissions.APPROVAL_ANSWERS``.
+Ask = Callable[[PermissionRequest | ApprovalRequest], str]
 
 
 # Events -------------------------------------------------------------------------------------------------------------
@@ -369,21 +373,28 @@ class _Turn:
             )
         if call.invalid_arguments is not None:
             raise ToolError("invalid_argument", f"the arguments are not a valid JSON object: {call.invalid_arguments}")
+        # The project commands are read again before every run: the content checked is the content the run reads.
+        commands = session.commands_state() if name == permissions.RUN_TESTS else None
+        config = commands.config if commands is not None and commands.config is not None else session.config
         decision = permissions.check(
             name,
             known=session.known_tools(),
             tool_set=self.tool_set,
             mode=session.mode,
             permissions=session.permissions(),
-            service_configured=bool(session.config["service.start"]),
-            commands_approved=session.trust_commands,
+            service_configured=bool(config["service.start"]),
+            commands_approved=commands is None or commands.ready,
         )
         if decision.action == "refuse":
             if decision.reason in permissions.PERMISSION_REFUSALS:
                 session.permission_refusals += 1
             raise ToolError(decision.code, decision.message)
+        if commands is not None and commands.config_error is not None:
+            raise ToolError("invalid_state", f"the configuration cannot be read: {commands.config_error}")
+        if decision.approve_commands:
+            self._approve(commands)
         if decision.action == "ask":
-            self._ask(name, call.arguments, decision.permissions)
+            self._ask(name, call.arguments, decision.permissions, config)
         if server == tools.RUNTIME:
             return runtime_tools.call(session, tool, call.arguments, call.id)
         timeout = run_tests_timeout(session.config) if name == permissions.RUN_TESTS else None
@@ -392,11 +403,42 @@ class _Turn:
             on_interrupt=lambda: self._interrupt_server(server),
         )
 
-    def _ask(self, name: str, arguments: Mapping[str, object], asked: tuple[str, ...]) -> None:
+    def _approve(self, commands: CommandsState) -> None:
+        """Ask the user to approve the project commands in their current content, and store the approval (runtime.md,
+        Project commands). Raises ``ToolError`` ``denied`` when there is no one to ask, the user does not approve, or
+        ``approvals.json`` cannot be read."""
+        session = self.session
+        if commands.approvals_error is not None:
+            session.permission_refusals += 1
+            raise ToolError("denied", f"{permissions.PROJECT_COMMANDS} cannot be checked: {commands.approvals_error}")
+        if self.ask is None:
+            session.permission_refusals += 1
+            raise ToolError("denied", permissions.COMMANDS_NOT_APPROVED)
+        values = approvals.project_commands(commands.config)
+        env = values.pop("tests.env") or {}
+        request = ApprovalRequest(
+            project=str(session.project_dir),
+            commands=tuple((key, value) for key, value in values.items()),
+            env=tuple((str(key), str(value)) for key, value in env.items()),
+            stored_in=str(approvals.approvals_path()),
+        )
+        answer = self.ask(request)
+        if answer not in permissions.APPROVAL_ANSWERS:
+            raise ValueError(f"the answer to an approval is one of {', '.join(permissions.APPROVAL_ANSWERS)}")
+        if answer != permissions.APPROVE:
+            session.permission_refusals += 1
+            raise ToolError("denied", permissions.COMMANDS_REFUSED)
+        try:
+            approvals.store(session.project_dir, commands.digest)
+        except approvals.ApprovalsError as error:
+            session.permission_refusals += 1
+            raise ToolError("denied", f"the approval was not stored: {error}") from error
+
+    def _ask(self, name: str, arguments: Mapping[str, object], asked: tuple[str, ...], config) -> None:
         if self.ask is None:
             self.session.permission_refusals += 1
             raise ToolError("denied", permissions.no_one_to_ask(asked))
-        answer = self.ask(PermissionRequest(name, asked, self._details(name, arguments)))
+        answer = self.ask(PermissionRequest(name, asked, self._details(name, arguments, config)))
         if answer not in permissions.ANSWERS:
             raise ValueError(f"the answer to a permission is one of {', '.join(permissions.ANSWERS)}, not {answer!r}")
         if answer == permissions.DENY:
@@ -405,16 +447,30 @@ class _Turn:
         if answer == permissions.SESSION:
             self.session.grants.update(asked)
 
-    def _details(self, name: str, arguments: Mapping[str, object]) -> tuple[str, ...]:
+    def _details(self, name: str, arguments: Mapping[str, object], config) -> tuple[str, ...]:
         if name == permissions.WRITE_TEST:
-            return permissions.write_test_details(arguments)
+            return permissions.write_test_details(arguments, self._previous_code(arguments))
         session = self.session
         role = arguments.get("version")
         version = session.versions().get(role) if role in ("base", "candidate") else None
         described = f"{role} {version.ref} ({version.commit})" if version else f"{role} (not set)"
         return permissions.run_tests_details(
-            arguments, version=described, test_cases=self._test_cases(arguments), config=session.config
+            arguments, version=described, test_cases=self._test_cases(arguments), config=config
         )
+
+    def _previous_code(self, arguments: Mapping[str, object]) -> tuple[int, str] | None:
+        """The revision and the code of a generated test that a ``write_test`` call rewrites; None for a first
+        write, or when the code cannot be read (the server then decides the call)."""
+        test_case_id = arguments.get("test_case_id")
+        row = design.get_test_case(self.session.conn, test_case_id) if isinstance(test_case_id, str) else None
+        if row is None or row["origin"] != "designed" or row["status"] != "implemented":
+            return None
+        try:
+            path = generated.target(self.session.project_dir, row["implementation"].rpartition("::")[0])
+            code = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        except (generated.GeneratedError, OSError):
+            return None
+        return row["revision"], code
 
     def _test_cases(self, arguments: Mapping[str, object]) -> str:
         """How many test cases the scope of a ``run_tests`` call has, from project memory."""

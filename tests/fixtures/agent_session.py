@@ -138,3 +138,68 @@ def analyze_script(text: str = "The impact is recorded.") -> list:
         ),
         answer(text),
     ]
+
+
+# /select and /design as the reference scenario makes them (ORACLE.md): the suite holds every project test traced to
+# an impacted requirement, and one test case is designed for the gap of REQ-002. Its code is the generated test of
+# the oracle, which passes against both versions.
+
+GENERATED_FILE = "test_req_002_quantity_above_stock_is_rejected.py"
+GENERATED_NAME = "test_req_002_quantity_above_stock_is_rejected"
+REQ_002_DESIGN = {
+    "title": "A quantity above the stock is rejected",
+    "objective": "Verify that adding more units than in stock is refused and the cart does not change.",
+    "priority": "high",
+    "preconditions": ["Product p-102 has stock 5", "A new cart"],
+    "input_data": [{"name": "product", "value": "p-102"}, {"name": "quantities", "value": "3, then 3"}],
+    "steps": ["Add 3 units of p-102", "Add 3 more units of p-102", "Read the cart"],
+    "expected_result": "The second addition raises InsufficientStock and the cart keeps 3 units.",
+    "requirement_ids": ["REQ-002"],
+    "selection_reason": "Covers the gap of REQ-002.",
+}
+
+
+def generated_code() -> str:
+    """The generated test of the oracle (``expected/``)."""
+    from pathlib import Path
+
+    from retroagent.resources import __file__ as resources_file
+
+    path = Path(resources_file).parent / "examples" / "shop-api" / "expected" / GENERATED_FILE
+    return path.read_text(encoding="utf-8")
+
+
+def select_script(text: str = "Suite saved.") -> list:
+    """A model that follows the skill ``test-selection``: every test case traced to an impacted requirement."""
+    analysis, test_cases = call("memory__get_analysis"), call("memory__get_test_cases")
+
+    def save_suite(request) -> Response:
+        impacted = {r["requirement_id"] for r in result_in(request, analysis.id)["requirements"]}
+        selected = [
+            tc["id"]
+            for tc in result_in(request, test_cases.id)["test_cases"]
+            if any(r["requirement_id"] in impacted for r in tc["requirements"])
+        ]
+        items = [
+            {"test_case_id": test_case_id, "position": position, "selection_reason": "Traced to an impacted one."}
+            for position, test_case_id in enumerate(selected, start=1)
+        ]
+        analysis_id = result_in(request, analysis.id)["analysis_id"]
+        return calls(call("memory__save_suite", {"analysis_id": analysis_id, "items": items}))
+
+    return [
+        calls(call("runtime__load_skill", {"name": "test-selection"})),
+        calls(analysis, test_cases),
+        save_suite,
+        answer(text),
+    ]
+
+
+def design_script(text: str = "TC designed; designed, not implemented, not executed.") -> list:
+    """A model that follows the skill ``test-design`` (Design) for the gap of REQ-002."""
+    return [
+        calls(call("runtime__load_skill", {"name": "test-design"})),
+        calls(call("memory__get_suite")),
+        calls(call("memory__design_test_case", REQ_002_DESIGN)),
+        answer(text),
+    ]

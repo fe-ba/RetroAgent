@@ -126,6 +126,29 @@ def test_a_question_of_the_worker_is_answered_in_the_main_thread(terminal, key, 
     assert not interrupt.is_set()  # Esc at a question denies; it does not interrupt
 
 
+APPROVAL = permissions.ApprovalRequest(
+    "/work/shop", (("tests.command", "pytest"),), (), "/home/me/.retro/approvals.json"
+)
+
+
+@pytest.mark.parametrize(
+    "key, answer", [("1", permissions.APPROVE), ("2", permissions.DENY), (ESC, permissions.DENY), ("3", None)]
+)
+def test_the_approval_of_the_project_commands_is_answered_with_its_two_keys(terminal, key, answer):
+    out = console()
+
+    def work(ask, interrupt):
+        threading.Timer(0.3, terminal.send_text, [key]).start()
+        if answer is None:  # 3 is not an answer to an approval: the question waits for one
+            threading.Timer(0.6, terminal.send_text, ["2"]).start()
+        return ask(APPROVAL)
+
+    assert Keys(terminal).watch(work, threading.Event(), out) == (answer or permissions.DENY)
+    text = out.export_text()
+    assert "The project commands are not approved in their current content." in text
+    assert "tests.command: pytest" in text and "1. Approve these commands" in text and "2. Deny (Esc)" in text
+
+
 def test_an_error_of_the_work_is_raised_in_the_main_thread(terminal):
     def work(ask, interrupt):
         raise ValueError("broken")

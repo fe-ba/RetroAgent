@@ -17,6 +17,7 @@ from retroagent.runtime.commands import (
     Status,
     design_message,
     help_rows,
+    implement_message,
     parse,
 )
 from retroagent.runtime.session import Version
@@ -52,6 +53,9 @@ from retroagent.servers.errors import ToolError
         ("/design REQ-002", Command("/design", scope="REQ-002")),
         ("/design REQ-002   REQ-004", Command("/design", scope="REQ-002 REQ-004")),
         ('/design "the coupon rules"', Command("/design", scope="the coupon rules")),
+        ("/implement", Command("/implement")),
+        ("/implement TC-027", Command("/implement", ids=("TC-027",))),
+        ("/implement TC-027 TC-028 TC-027", Command("/implement", ids=("TC-027", "TC-028"))),
     ],
 )
 def test_parse(line, command):
@@ -97,7 +101,7 @@ def row(status="completed", **counts):
     )
 
 
-@pytest.mark.parametrize("name", ["/cycle", "/implement", "/triage", "/report", "/defects"])
+@pytest.mark.parametrize("name", ["/cycle", "/triage", "/report", "/defects"])
 def test_the_commands_of_later_sessions_are_known_and_not_available(name):
     with pytest.raises(NotAvailable, match="is not available yet"):
         parse(name)
@@ -117,6 +121,18 @@ def test_the_templates_of_select_and_design():
     )
     for name in ("/select", "/design"):
         assert not help_rows(name)[0][1].endswith("Not available yet in this build.")
+
+
+def test_the_templates_of_implement():
+    """runtime.md, Model commands: with IDs, the rewrite clause; without, every designed test case of the suite."""
+    assert implement_message() == (
+        "Load the skill `test-design` and implement all designed test cases of the current suite."
+    )
+    assert implement_message(["TC-027", "TC-028"]) == (
+        "Load the skill `test-design` and implement the test cases `TC-027, TC-028`; rewrite those that are already"
+        " `implemented`."
+    )
+    assert not help_rows("/implement")[0][1].endswith("Not available yet in this build.")
 
 
 def test_help_lists_every_command():

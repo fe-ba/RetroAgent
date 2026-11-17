@@ -104,6 +104,10 @@ class Shell:
             return self._model(lambda ask, interrupt: commands.design_tests(
                 self.session, command.scope, ask=ask, listener=self._listener, interrupt=interrupt
             ))  # fmt: skip
+        if name == "/implement":
+            return self._model(lambda ask, interrupt: commands.implement(
+                self.session, command.ids, ask=ask, listener=self._listener, interrupt=interrupt
+            ))  # fmt: skip
         if name == "/run":
             return self._run(command)
         try:
@@ -270,7 +274,7 @@ class Keys:
             target=self._watch, args=(questions, interrupt, stop, out), name="retro-keys", daemon=True
         )
 
-        def ask(request: permissions.PermissionRequest) -> str:
+        def ask(request: permissions.PermissionRequest | permissions.ApprovalRequest) -> str:
             reply: queue.Queue = queue.Queue(maxsize=1)
             questions.put((request, reply))
             while True:
@@ -295,12 +299,12 @@ class Keys:
                 if pending is None:
                     with contextlib.suppress(queue.Empty):
                         pending = questions.get_nowait()
-                        out.print(display.permission_question(pending[0]), markup=False, highlight=False)
+                        out.print(display.question(pending[0]), markup=False, highlight=False)
                 for press in self._read():
                     if pending is not None:
-                        answer = _answer(press.key, Key)
+                        answer = _answer(press.key, Key, pending[0])
                         if answer is not None:
-                            out.print(display.answer_line(answer), markup=False, highlight=False)
+                            out.print(display.answer_line(answer, pending[0]), markup=False, highlight=False)
                             pending[1].put(answer)
                             pending = None
                     elif press.key in (Key.Escape, Key.ControlC) and not interrupt.is_set():
@@ -315,10 +319,10 @@ class Keys:
         return self.input.flush_keys()
 
 
-def _answer(key, Key) -> str | None:
+def _answer(key, Key, request) -> str | None:
     if key in (Key.Escape, Key.ControlC):
         return permissions.DENY
-    for choice, value, _ in display.ANSWER_CHOICES:
+    for choice, value, _ in display.choices(request):
         if key == choice:
             return value
     return None

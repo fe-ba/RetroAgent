@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from fixtures.example_project import example_project, start
+from fixtures.agent_session import Scripted, analyze_script, design_script, select_script
+from fixtures.example_project import example_project, project_copy, start
 from fixtures.reference_scenario import load_reference_scenario
 from fixtures.report_session import open_project
 
@@ -40,6 +41,23 @@ def shop_after_both_runs(tmp_path_factory, pip_cache) -> BothRuns:
         with start(path, trust_commands=True, mode="auto") as started:
             outcome = commands.run(started, "all", "both")
     return BothRuns(path, outcome)
+
+
+@pytest.fixture(scope="session")
+def shop_after_design(tmp_path_factory, pip_cache, shop_after_both_runs) -> Path:
+    """An example project after ``/run all --on both``, ``/analyze``, ``/select`` and ``/design``, with the
+    reference scripts: its current suite has one ``designed`` test case, for REQ-002 (``fixtures.agent_session``).
+
+    For tests that copy it with ``project_copy``; nobody changes it.
+    """
+    with project_copy(tmp_path_factory, shop_after_both_runs.path) as path:
+        script = Scripted([*analyze_script(), *select_script(), *design_script()])
+        with start(path, script, trust_commands=True) as session:
+            commands.analyze(session)
+            commands.select(session)
+            commands.design_tests(session)
+        assert script.remaining == 0
+    return path
 
 
 @pytest.fixture

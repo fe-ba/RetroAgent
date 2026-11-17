@@ -27,7 +27,7 @@ Long-term memory of a target project, stored in `.retro/retro.db` (SQLite, ADR-0
 |---|---|
 | Sessions and audit | `schema_info`, `session`, `tool_call` |
 | Requirements | `requirement`, `requirement_change` |
-| Impact analysis | `analysis`, `analysis_file`, `analysis_module`, `analysis_requirement`, `risk`, `risk_requirement` |
+| Impact analysis | `analysis`, `analysis_file`, `analysis_module`, `analysis_requirement`, `analysis_requirement_not_impacted`, `risk`, `risk_requirement` |
 | Test design and selection | `test_case`, `test_case_requirement`, `suite`, `suite_test_case` |
 | Execution | `run`, `test_execution`, `attempt` |
 | Interpretation | `triage`, `defect`, `defect_execution` |
@@ -158,6 +158,16 @@ Writer: memory server, from the impact analysis proposed by the model. The impac
 | `reason` | text | not null | model | Why the requirement is impacted. |
 
 Writer: memory server.
+
+### `analysis_requirement_not_impacted`
+
+| Column | Type | Constraints | Source | Description |
+|---|---|---|---|---|
+| `analysis_id` | integer | references `analysis` | code | — |
+| `requirement_id` | text | references `requirement` | model | Must exist. |
+| `reason` | text | not null | model | Why the requirement is not impacted. |
+
+Writer: memory server, in the same transaction as `analysis_requirement`. A requirement appears in at most one of the two tables for an analysis. Metrics read only `analysis_requirement`; this table makes the decisions on the other requirements reviewable.
 
 ### `risk`
 

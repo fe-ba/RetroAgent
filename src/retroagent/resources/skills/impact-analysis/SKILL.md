@@ -30,7 +30,7 @@ Find what the change between the session versions can break, and record it so th
    - it is new in the candidate version. Say so in the reason.
 
    When in doubt, mark it impacted: a requirement left out is not tested, and one too many only adds tests. Leave out only the requirements whose behavior no changed file takes part in, and name them in the answer with that reason.
-7. **Record.** Call `memory__save_impact` with the analysis ID, the modules (files exactly as in the change set) and the impacted requirements with their reasons. An empty list of requirements is valid.
+7. **Record.** Call `memory__save_impact` with the analysis ID, the modules (files exactly as in the change set), the impacted requirements in `requirements` and the other requirements in `not_impacted`, each with its reason. Every requirement must be in one of the two lists: the tool refuses a call that leaves one out and names it. Then decide that one and call again.
 8. **Risks.** Call `memory__add_risk` for each distinct way the change could harm the product, linked to its requirements. Consolidate: one risk per failure scenario, not one per file. Also register a risk when an impacted area has no requirement or no test case.
 9. **Answer** with:
    - the analysis ID and the counts of changed files;

@@ -46,7 +46,7 @@ Every error returns a code and a message.
 | `memory.sync_requirements` | write | — | allowed | `requirement`, `requirement_change`, `test_case_requirement` |
 | `memory.get_requirements` | read | — | allowed | — |
 | `memory.get_analysis` | read | — | allowed | — |
-| `memory.save_impact` | write | — | allowed | `analysis_module`, `analysis_requirement` |
+| `memory.save_impact` | write | — | allowed | `analysis_module`, `analysis_requirement`, `analysis_requirement_not_impacted` |
 | `memory.add_risk` | write | — | allowed | `risk`, `risk_requirement` |
 | `memory.get_risks` | read | — | allowed | — |
 | `memory.save_suite` | write | — | allowed | `suite`, `suite_test_case` |
@@ -169,7 +169,7 @@ Returns each requirement with its fields and its changes.
 |---|---|---|---|
 | `analysis_id` | integer | no | Default: the latest analysis of the session versions. |
 
-Returns the change set, the impacted modules and the impacted requirements. Errors: `not_found`.
+Returns the change set, the impacted modules, the impacted requirements and the requirements judged not impacted, each with its reason. Errors: `not_found`.
 
 ### `memory.save_impact`
 
@@ -179,9 +179,12 @@ Records the impact analysis proposed by the model for an analysis.
 |---|---|---|---|
 | `analysis_id` | integer | yes | — |
 | `modules` | list | yes | Each: `module`, `files` (from the change set), `risk_level`, `reason`. |
-| `requirements` | list | yes | Each: `requirement_id`, `reason`. May be empty. |
+| `requirements` | list | yes | Impacted requirements. Each: `requirement_id`, `reason`. May be empty. |
+| `not_impacted` | list | yes | Requirements judged not impacted. Each: `requirement_id`, `reason`. May be empty. |
 
-Returns the number of modules and requirements recorded. The impact of an analysis is recorded once. Errors: `not_found` for an unknown file or requirement; `invalid_state` when the analysis already has an impact: a corrected impact needs a new analysis from `git.analyze_changes`.
+Every requirement in effect at the candidate must be decided: it appears exactly once, in `requirements` or in `not_impacted`. A requirement is in effect when it has no `removed` version, or when its `removed` version is the candidate ref of the analysis. A project without requirements sends two empty lists. The decision is checked by code, so that a requirement is never left out in silence.
+
+Returns the number of modules, impacted requirements and requirements judged not impacted. The impact of an analysis is recorded once. Errors: `not_found` for an unknown file or requirement; `invalid_argument` when a requirement in effect is missing, naming every one, or appears more than once; `invalid_state` when the analysis already has an impact: a corrected impact needs a new analysis from `git.analyze_changes`.
 
 ### `memory.add_risk`
 

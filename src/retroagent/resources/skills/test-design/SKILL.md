@@ -40,9 +40,9 @@ Three tasks: **design** creates test case specifications with status `designed`;
 ## Implement
 
 1. **Targets.** The IDs given by the user, or every test case of the current suite with status `designed` (`memory__get_suite`, `memory__get_test_cases` with status `designed`).
-2. **Conventions.** Read the test conventions in `RETRO.md`, and one or two existing tests of the project (`git__list_files` and `git__read_file` at `candidate`): framework, imports, fixtures, how the service is reached.
+2. **Conventions.** Read the test conventions in `RETRO.md`, and one or two existing tests of the project (`git__list_files` and `git__read_file` at `candidate`): framework, imports, fixtures, how the service is reached. Then read, at `base` and at `candidate`, every module the test will import: each function, class and exception it uses must exist with that name in both versions. Never guess a name; a test that imports a name that does not exist fails before it runs.
 3. **Write the code**, one file per test case, with one test function:
-   - Name the function `test_req_<NNN>_<description>`, with the number of the first traced requirement and a short description in lowercase with underscores. Without requirements, `test_<description>`. Name the file as the framework requires to discover it.
+   - Name the function `test_req_<NNN>_<description>`, with the number of the first traced requirement and a short description in lowercase with underscores. Without requirements, `test_<description>`. Name the file as the framework requires to discover it, without directories: generated tests are copied into the test folder of the project.
    - Mention the test case ID in a comment or docstring.
    - One test function per test case, never parametrized. Its name and its file must not be used by another generated test.
    - Implement the steps and assert the expected result exactly. An assertion that would hold even if the behavior broke is not acceptable.

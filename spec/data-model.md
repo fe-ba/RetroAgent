@@ -270,7 +270,7 @@ Writer of both tables: memory server. Test cases designed for the change are add
 | `exit_code` | integer | | code | Exit code of the test command of the first attempt. Null when it did not run. |
 | `junit_path` | text | | code | JUnit XML of the first attempt in the run directory, relative to the project. Null when none was produced. |
 | `evidence_dir` | text | not null | code | `.retro/runs/<run_id>/`. |
-| `error` | text | | code | Failed step and message when `status` is `error` or `interrupted`. |
+| `error` | text | | code | Failed step and message when `status` is `error` or `interrupted`. On a `completed` run, the test files of the project that could not be loaded (`project-contract.md`, Generated tests). |
 | `session_id` | integer | not null, references `session` | code | — |
 | `started_at` | text | not null | code | — |
 | `ended_at` | text | | code | — |

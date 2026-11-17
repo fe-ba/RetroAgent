@@ -27,21 +27,29 @@ COMMANDS_NOT_APPROVED = (
 )
 
 
+# Why a call is refused. Only the refusals of the mode, of a permission and of the approval of the project commands
+# make the exit code 4 and are counted in ``denied`` (cli.md, Exit codes); the model can correct the others.
+NOT_FOUND, USER_ONLY_TOOL, NOT_IN_STEP = "not_found", "user_only", "not_in_step"
+BY_MODE, BY_PERMISSION, BY_APPROVAL = "mode", "permission", "approval"
+PERMISSION_REFUSALS = frozenset({BY_MODE, BY_PERMISSION, BY_APPROVAL})
+
+
 @dataclass(frozen=True)
 class Decision:
-    """``run``, ``ask`` (the permissions to ask for), or a refusal with its error code and message."""
+    """``run``, ``ask`` (the permissions to ask for), or a refusal with its error code, message and reason."""
 
     action: str  # run, ask, refuse
     permissions: tuple[str, ...] = ()
     code: str | None = None  # not_found or denied
     message: str | None = None
+    reason: str | None = None  # a refusal: one of the reasons above
 
 
 RUN = Decision("run")
 
 
-def refuse(code: str, message: str) -> Decision:
-    return Decision("refuse", code=code, message=message)
+def refuse(code: str, message: str, reason: str) -> Decision:
+    return Decision("refuse", code=code, message=message, reason=reason)
 
 
 @dataclass(frozen=True)
@@ -94,22 +102,23 @@ def check(
     ``known`` holds the exposed name of every existing tool; ``permissions`` the effective value of each permission.
     """
     if name not in known:
-        return refuse("not_found", f"there is no tool {name}")
+        return refuse("not_found", f"there is no tool {name}", NOT_FOUND)
     if name in USER_ONLY:
-        return refuse("denied", f"{name} is called only by the user, with a direct command")
+        return refuse("denied", f"{name} is called only by the user, with a direct command", USER_ONLY_TOOL)
     if tool_set is not None and not in_tool_set(name, STEP_TOOLS[tool_set]):
         has = ", ".join(step_tools(known, mode=mode, tool_set=tool_set))
-        return refuse("denied", f"{name} is not a tool of the step {tool_set}; this step has: {has}")
+        return refuse("denied", f"{name} is not a tool of the step {tool_set}; this step has: {has}", NOT_IN_STEP)
     required = needed(name, service_configured)
     if not required:
         return RUN
     if mode == PLAN:
-        return refuse("denied", f"plan mode does not allow {name}: it needs the permission {' and '.join(required)}")
+        message = f"plan mode does not allow {name}: it needs the permission {' and '.join(required)}"
+        return refuse("denied", message, BY_MODE)
     denied = [p for p in required if permissions[p] == DENY]
     if denied:
-        return refuse("denied", f"the permission {' and '.join(denied)} is deny")
+        return refuse("denied", f"the permission {' and '.join(denied)} is deny", BY_PERMISSION)
     if name == RUN_TESTS and not commands_approved:
-        return refuse("denied", COMMANDS_NOT_APPROVED)
+        return refuse("denied", COMMANDS_NOT_APPROVED, BY_APPROVAL)
     to_ask = tuple(p for p in required if permissions[p] == ASK)
     if to_ask and mode != AUTO:
         return Decision("ask", permissions=to_ask)

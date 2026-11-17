@@ -64,3 +64,63 @@ def tool_rows(conn, session_id: int) -> list[dict]:
 def tool_results(conversation) -> dict[str, str]:
     """The content of each tool message of a conversation, by the ID of the call it answers."""
     return {m.tool_call_id: m.content for m in conversation.messages if m.role == "tool"}
+
+
+class Scripted(FakeProvider):
+    """A ``FakeProvider`` whose script may hold functions: ``step(request)`` returns the response, so a later answer
+    can use a result the model read before, such as the analysis ID of ``git__analyze_changes``."""
+
+    def complete(self, request):
+        if self.remaining and callable(self._script[0]) and not isinstance(self._script[0], BaseException):
+            step = self._script.pop(0)
+            self._script.insert(0, step(request))
+        return super().complete(request)
+
+
+def result_in(request, call_id: str) -> dict:
+    """The result of a tool call as the model received it in ``request``."""
+    import json
+
+    return json.loads(next(m.content for m in request.messages if m.role == "tool" and m.tool_call_id == call_id))
+
+
+def analyze_script(text: str = "The impact is recorded.") -> list:
+    """A model that follows the skill ``impact-analysis`` on shop-api: it loads the skill, synchronizes the
+    requirements, computes the change set, reads one diff and the requirements, records the impact with every file of
+    the change set, registers one risk and answers."""
+    changes = call("git__analyze_changes")
+
+    def save_impact(request) -> Response:
+        result = result_in(request, changes.id)
+        modules: dict[str, list[str]] = {}
+        for changed in result["files"]:
+            modules.setdefault(changed["path"].split("/")[0], []).append(changed["path"])
+        return calls(
+            call(
+                "memory__save_impact",
+                {
+                    "analysis_id": result["analysis_id"],
+                    "modules": [
+                        {"module": name, "files": files, "risk_level": "high", "reason": "Changed in the diff."}
+                        for name, files in sorted(modules.items())
+                    ],
+                    "requirements": [{"requirement_id": "REQ-004", "reason": "Documented change in v1.1."}],
+                },
+            )
+        )
+
+    return [
+        calls(call("runtime__load_skill", {"name": "impact-analysis"})),
+        calls(call("memory__sync_requirements")),
+        calls(changes),
+        calls(call("git__get_diff", {"path": "src/shop/pricing.py"})),
+        calls(call("memory__get_requirements")),
+        save_impact,
+        calls(
+            call(
+                "memory__add_risk",
+                {"description": "Two coupons give a wrong total.", "level": "high", "requirement_ids": ["REQ-004"]},
+            )
+        ),
+        answer(text),
+    ]

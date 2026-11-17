@@ -1,7 +1,8 @@
 """The effective configuration of a project: defaults, then user level, then project level.
 
-Each level overrides the previous one; maps are merged key by key and lists are replaced. The environment
-(``RETRO_MODEL``, ``RETRO_LANG``) and CLI levels are not built yet: no key of slice 1 uses them.
+Each level overrides the previous one; maps are merged key by key and lists are replaced. Of the environment level,
+``RETRO_LANG`` is read here and ``RETRO_MODEL`` where the session resolves its model profile; the CLI level is applied
+by the session (``--lang``, ``-m``).
 """
 
 import copy
@@ -90,11 +91,14 @@ def load_config(project_dir: str | Path) -> Config:
                 values[key] = value
             source[key] = f"{level}-level"
         models.update(level_models)
+    if os.environ.get(LANGUAGE_VARIABLE):
+        values["language"] = os.environ[LANGUAGE_VARIABLE]
     if values["project.name"] is None:
         values["project.name"] = project_dir.name
     return Config(project_dir=project_dir, values=values, models=models, warnings=tuple(warnings))
 
 
+LANGUAGE_VARIABLE = "RETRO_LANG"
 PERMISSIONS = "permissions."
 STRICTNESS = ("allow", "ask", "deny")  # from the loosest to the strictest
 

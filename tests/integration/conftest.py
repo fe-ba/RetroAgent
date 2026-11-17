@@ -37,7 +37,7 @@ def shop_after_both_runs(tmp_path_factory, pip_cache) -> BothRuns:
     For tests that only read its memory and evidence; a test that changes the project needs its own copy.
     """
     with example_project(tmp_path_factory, pip_cache) as path:
-        with start(path, trust_commands=True) as started:
+        with start(path, trust_commands=True, mode="auto") as started:
             outcome = commands.run(started, "all", "both")
     return BothRuns(path, outcome)
 
@@ -78,3 +78,15 @@ def agent(agent_project):
     and the real bundled servers. Its provider is an empty FakeProvider: tests pass their own to the turn."""
     with start(agent_project, trust_commands=True) as session:
         yield session
+
+
+@pytest.fixture
+def fake_model(monkeypatch):
+    """Every session started by ``main`` gets the provider given to this fixture instead of LiteLLM."""
+    from retroagent.runtime import session as session_module
+
+    def use(provider):
+        monkeypatch.setattr(session_module, "_make_provider", lambda profile, on_wait, factory: provider)
+        return provider
+
+    return use

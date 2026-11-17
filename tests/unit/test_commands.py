@@ -1,4 +1,4 @@
-"""Parsing of the direct commands, their exit codes and their tables."""
+"""Parsing of the slash commands, the exit code of /run and the tables."""
 
 import re
 
@@ -6,8 +6,17 @@ import pytest
 from rich.console import Console
 
 from retroagent.cli import tables
-from retroagent.cli.interactive import exit_code
-from retroagent.runtime.commands import Command, CommandError, RunOutcome, RunRow, Status, parse
+from retroagent.cli.interactive import run_failed
+from retroagent.runtime.commands import (
+    Command,
+    CommandError,
+    NotAvailable,
+    RunOutcome,
+    RunRow,
+    Status,
+    help_rows,
+    parse,
+)
 from retroagent.runtime.session import Version
 from retroagent.servers.errors import ToolError
 
@@ -26,6 +35,16 @@ from retroagent.servers.errors import ToolError
         ("/history 3", Command("/history", limit=3)),
         ("  /help  ", Command("/help")),
         ("/exit", Command("/exit")),
+        ("/analyze", Command("/analyze")),
+        ("/analyze v1.0 v1.1", Command("/analyze", refs=("v1.0", "v1.1"))),
+        ("/mode", Command("/mode")),
+        ("/mode plan", Command("/mode", argument="plan")),
+        ("/model gemini", Command("/model", argument="gemini")),
+        ("/help run", Command("/help", argument="run")),
+        ("/clear", Command("/clear")),
+        ("/skills", Command("/skills")),
+        ("/mcp", Command("/mcp")),
+        ("/init", Command("/init")),
     ],
 )
 def test_parse(line, command):
@@ -42,9 +61,11 @@ def test_parse(line, command):
         ("/history x", "usage: /history [n]"),
         ("/history 1 2", "usage: /history [n]"),
         ("/status now", "usage: /status"),
-        ("/analyze v1.0 v1.1", "not available yet"),
-        ("/defects", "not available yet"),
-        ("what changed?", "not available yet"),
+        ("/analyze v1.0", "give both refs, or none"),
+        ("/mode fast", "unknown mode fast"),
+        ("/clear all", "usage: /clear"),
+        ("/nowhere", "unknown command /nowhere"),
+        ("what changed?", "not a command"),
     ],
 )
 def test_parse_refuses(line, message):
@@ -68,18 +89,30 @@ def row(status="completed", **counts):
     )
 
 
+@pytest.mark.parametrize("name", ["/cycle", "/select", "/design", "/implement", "/triage", "/report", "/defects"])
+def test_the_commands_of_slice_4_are_known_and_not_available(name):
+    with pytest.raises(NotAvailable, match="is not available yet"):
+        parse(name)
+    assert help_rows(name)[0][1].endswith("Not available yet in this build.")
+
+
+def test_help_lists_every_command():
+    usages = [usage for usage, _ in help_rows()]
+    assert len(usages) == 19 and usages[1] == "/analyze [base] [candidate]"
+
+
 @pytest.mark.parametrize(
-    "outcome, code",
+    "outcome, failed",
     [
-        (RunOutcome([row(executed=22, passed=20, failed=2)]), 0),  # failed tests are not an error of /run
-        (RunOutcome([], error=ToolError("denied", "not approved")), 4),
-        (RunOutcome([], error=ToolError("invalid_state", "no suite")), 1),
-        (RunOutcome([row("error", blocked=26)], not_run="the candidate was not run"), 1),
-        (RunOutcome([row("interrupted")], interrupted=True), 1),
+        (RunOutcome([row(executed=22, passed=20, failed=2)]), False),  # failed tests are not an error of /run
+        (RunOutcome([], error=ToolError("denied", "not approved")), False),  # exit 4, counted by the session
+        (RunOutcome([], error=ToolError("invalid_state", "no suite")), True),
+        (RunOutcome([row("error", blocked=26)], not_run="the candidate was not run"), True),
+        (RunOutcome([row("interrupted")], interrupted=True), True),
     ],
 )
-def test_exit_code_of_run(outcome, code):
-    assert exit_code(outcome) == code
+def test_run_failed(outcome, failed):
+    assert run_failed(outcome) is failed
 
 
 def render(*renderables):
@@ -123,4 +156,4 @@ def test_the_status_tables_show_every_row():
         "Latest run",
     ):
         assert expected in text
-    assert [line.split()[-2] for line in text.splitlines() if "Model calls" in line or "Tokens" in line] == ["0"] * 2
+    assert "0 input, 0 output" in text

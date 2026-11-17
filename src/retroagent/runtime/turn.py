@@ -8,6 +8,9 @@ checked, asked about when needed, dispatched, and answered in the conversation.
 The turn prints nothing. It returns a ``TurnResult`` and reports events to a listener: ``ModelCalled``,
 ``ToolCalled``, ``Retried``, ``Warned``, and the ``Wait`` of the provider adapter.
 
+``call_tool`` runs one tool call of the user, for a direct command, through the same path: recorded, checked, asked
+about and dispatched, but not added to the conversation (runtime.md, Slash commands).
+
 Interruption: the caller sets ``interrupt``, a ``threading.Event``. Model calls and tool calls of MCP servers then
 run in a worker thread; the turn stops waiting for a model call, and stops the server of a tool call, which ends
 its work through its stop path and is started again (runtime.md, Interruption).
@@ -106,8 +109,8 @@ class TurnError(Exception):
         self.ends_session = ends_session
 
 
-class _Interrupted(Exception):
-    pass
+class Interrupted(Exception):
+    """The user interrupted a tool call of a direct command; the call is recorded as not completed."""
 
 
 class _LimitReached(Exception):
@@ -119,6 +122,27 @@ def limit_message(calls: int) -> str:
         f"The turn stopped after {calls} model calls, the limit set by agent.max_iterations. The work done is in"
         " project memory; send a message to continue."
     )
+
+
+def call_tool(
+    session: Session,
+    name: str,
+    arguments: Mapping[str, object],
+    *,
+    ask: Ask | None,
+    client: Client | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> object:
+    """A tool call of the user, for a direct command: the checks of a free message (no tool set), the question when
+    the permission is ``ask``, the dispatch and the ``tool_call`` row. Returns the result of the tool. Raises
+    ``ToolError``, or ``Interrupted`` when ``interrupt`` is set during the call."""
+    turn = _Turn(session, None, client or session.client, ask, listener, None, None, interrupt)
+    call = ToolCall(id="user", name=name, arguments=dict(arguments))
+    outcome, code, result = turn.run_call(call, deferred=False)
+    if code is not None:
+        raise ToolError(code, result["error"]["message"])
+    return result
 
 
 def run_turn(
@@ -162,7 +186,7 @@ class _Turn:
         while True:
             try:
                 response, variable_space = self._model_step(system_context)
-            except _Interrupted:
+            except Interrupted:
                 return TurnResult("", interrupted=True)
             except _LimitReached:
                 return TurnResult(limit_message(self.calls), limit_reached=True)
@@ -264,18 +288,30 @@ class _Turn:
             deferred = budget.defer_remaining(results, variable_space, self.session.calibration.ratio)
             try:
                 content = self._tool_call(call, deferred)
-            except _Interrupted:
+            except Interrupted:
                 self._not_completed(calls[index + 1 :])
                 return False
             results += len(content)
         return True
 
     def _tool_call(self, call: ToolCall, deferred: bool) -> str:
-        """Record, check, ask, dispatch, record the outcome, and answer the call in the conversation. Returns the
-        content added to the conversation. Raises ``_Interrupted`` after answering the call as not completed."""
+        """Run the call and answer it in the conversation. Returns the content added to the conversation. Raises
+        ``Interrupted`` after answering the call as not completed."""
+        try:
+            _, _, result = self.run_call(call, deferred)
+        except Interrupted:
+            self._add_result(call, NOT_COMPLETED)
+            raise
+        content = result if isinstance(result, str) else _json(result)
+        self._add_result(call, content)
+        return content
+
+    def run_call(self, call: ToolCall, deferred: bool) -> tuple[str, str | None, object]:
+        """Record, check, ask, dispatch and record the outcome. Returns the outcome, the error code and the result,
+        which is the error object of mcp-tools.md when there is a code. Raises ``Interrupted`` after recording the
+        call as not completed."""
         name, server, tool = _names(call.name)
-        arguments = call.invalid_arguments if call.invalid_arguments is not None else _json(dict(call.arguments))
-        recorded = self._redact(arguments)
+        recorded = self._recorded_arguments(call)
         row = sessions.start_tool_call(
             self.session.conn, session_id=self.session.id, server=server, tool=tool, arguments=recorded
         )
@@ -287,33 +323,41 @@ class _Turn:
             code = error.code
             outcome = "denied" if code == "denied" else "error"
             result = {"error": {"code": code, "message": error.message}}
-        except _Interrupted:
-            self._answer(call, row, name, recorded, "error", None, NOT_COMPLETED, time.monotonic() - started)
+        except Interrupted:
+            self._finish(row, name, recorded, "error", None, NOT_COMPLETED, time.monotonic() - started)
             raise
-        content = result if isinstance(result, str) else _json(result)
-        message = f"{code}: {result['error']['message']}" if code is not None else None
-        self._answer(call, row, name, recorded, outcome, code, content, time.monotonic() - started, message)
-        return content
+        if code is not None:
+            error = f"{code}: {result['error']['message']}"
+        elif outcome == "error":
+            error = result if isinstance(result, str) else _json(result)
+        else:
+            error = None
+        self._finish(row, name, recorded, outcome, code, error, time.monotonic() - started)
+        return outcome, code, result
 
-    def _answer(self, call, row, name, recorded, outcome, code, content, seconds, error=None) -> None:
-        if outcome == "error" and error is None:
-            error = content
+    def _recorded_arguments(self, call: ToolCall) -> str:
+        arguments = call.invalid_arguments if call.invalid_arguments is not None else _json(dict(call.arguments))
+        return self._redact(arguments)
+
+    def _finish(self, row, name, recorded, outcome, code, error, seconds) -> None:
         sessions.finish_tool_call(
             self.session.conn, row, outcome=outcome, error=self._redact(error) if error is not None else None
         )
-        self.session.conversation.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
         self.report(ToolCalled(name, recorded, outcome, code, seconds))
+
+    def _add_result(self, call: ToolCall, content: str) -> None:
+        self.session.conversation.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
 
     def _not_completed(self, calls: Sequence[ToolCall]) -> None:
         """The calls after an interrupted one: recorded and answered as not completed, so every call has a result."""
         for call in calls:
             name, server, tool = _names(call.name)
-            arguments = call.invalid_arguments if call.invalid_arguments is not None else _json(dict(call.arguments))
-            recorded = self._redact(arguments)
+            recorded = self._recorded_arguments(call)
             row = sessions.start_tool_call(
                 self.session.conn, session_id=self.session.id, server=server, tool=tool, arguments=recorded
             )
-            self._answer(call, row, name, recorded, "error", None, NOT_COMPLETED, 0.0)
+            self._finish(row, name, recorded, "error", None, NOT_COMPLETED, 0.0)
+            self._add_result(call, NOT_COMPLETED)
 
     def _decide_and_dispatch(self, call: ToolCall, name: str, server: str, tool: str, deferred: bool):
         session = self.session
@@ -335,6 +379,8 @@ class _Turn:
             commands_approved=session.trust_commands,
         )
         if decision.action == "refuse":
+            if decision.reason in permissions.PERMISSION_REFUSALS:
+                session.permission_refusals += 1
             raise ToolError(decision.code, decision.message)
         if decision.action == "ask":
             self._ask(name, call.arguments, decision.permissions)
@@ -348,11 +394,13 @@ class _Turn:
 
     def _ask(self, name: str, arguments: Mapping[str, object], asked: tuple[str, ...]) -> None:
         if self.ask is None:
+            self.session.permission_refusals += 1
             raise ToolError("denied", permissions.no_one_to_ask(asked))
         answer = self.ask(PermissionRequest(name, asked, self._details(name, arguments)))
         if answer not in permissions.ANSWERS:
             raise ValueError(f"the answer to a permission is one of {', '.join(permissions.ANSWERS)}, not {answer!r}")
         if answer == permissions.DENY:
+            self.session.permission_refusals += 1
             raise ToolError("denied", permissions.refused_by_user(asked))
         if answer == permissions.SESSION:
             self.session.grants.update(asked)
@@ -396,11 +444,11 @@ class _Turn:
     def _wait(self, function: Callable[[], object], on_interrupt: Callable[[], None] | None = None):
         """Run ``function`` and return its result. With an ``interrupt`` event, it runs in a worker thread: when the
         event is set first, ``on_interrupt`` runs, the worker is waited for when there is an ``on_interrupt`` and
-        abandoned otherwise, and ``_Interrupted`` is raised."""
+        abandoned otherwise, and ``Interrupted`` is raised."""
         if self.interrupt is None:
             return function()
         if self.interrupt.is_set():
-            raise _Interrupted
+            raise Interrupted
         outcome: dict = {}
         done = threading.Event()
 
@@ -418,7 +466,7 @@ class _Turn:
                 if on_interrupt is not None:
                     on_interrupt()
                     done.wait()
-                raise _Interrupted
+                raise Interrupted
         if "error" in outcome:
             raise outcome["error"]
         return outcome["value"]

@@ -44,7 +44,7 @@ def test_no_command_and_no_runner_function_accepts_a_result():
 
 def test_run_refuses_a_designed_test_case_and_stores_nothing(shop):
     path, designed = shop
-    with start(path, trust_commands=True) as session:
+    with start(path, trust_commands=True, mode="auto") as session:
         outcome = commands.run(session, [designed], "both")
         assert outcome.runs == []
         assert (outcome.error.code, outcome.error.message) == (

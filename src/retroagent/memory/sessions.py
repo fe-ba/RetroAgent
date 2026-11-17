@@ -58,6 +58,12 @@ def set_versions(
         )
 
 
+def set_model(conn: sqlite3.Connection, session_id: int, model: str) -> None:
+    """The model in use, ``<provider>/<model name>``, after ``/model`` switched it."""
+    with transaction(conn):
+        conn.execute("UPDATE session SET model = ? WHERE id = ?", (model, session_id))
+
+
 def set_result_limit(conn: sqlite3.Connection, session_id: int, result_char_limit: int) -> None:
     """The largest tool result of the session, once the context window of the model is known."""
     with transaction(conn):

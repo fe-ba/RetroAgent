@@ -55,7 +55,7 @@ def status_tables(status: Status) -> list[Table]:
     session.add_row("Candidate", _version(status.candidate))
     session.add_row("Mode", status.mode)
     session.add_row("Model calls", str(status.model_calls))
-    session.add_row("Tokens", str(status.tokens))
+    session.add_row("Tokens", f"{status.input_tokens:,} input, {status.output_tokens:,} output")
 
     test_cases = Table(title="Test cases", show_header=False)
     test_cases.add_column("Status")

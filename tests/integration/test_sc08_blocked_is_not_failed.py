@@ -16,13 +16,13 @@ pytestmark = pytest.mark.network
 @pytest.fixture(scope="module")
 def shop(tmp_path_factory, pip_cache):
     with example_project(tmp_path_factory, pip_cache) as path:
-        with start(path, trust_commands=True) as session:
+        with start(path, trust_commands=True, mode="auto") as session:
             discovery = commands.run(session, "all")
         config_path = path / ".retro" / "config.yaml"
         config = yaml.safe_load(config_path.read_text())
         config["tests"]["setup"] = "exit 3"
         config_path.write_text(yaml.safe_dump(config))
-        exit_code = main(["-C", str(path), "--trust-commands", "-p", "/run all"])
+        exit_code = main(["-C", str(path), "--trust-commands", "--mode", "auto", "-p", "/run all"])
         yield path, discovery, exit_code
 
 

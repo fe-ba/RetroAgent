@@ -47,14 +47,10 @@ def test_version(capsys):
     assert __version__ == "0.1.0"
 
 
-def test_help_lists_only_what_exists(capsys):
-    with pytest.raises(SystemExit) as exit_info:
-        main(["--help"])
-    assert exit_info.value.code == 0
-    out = capsys.readouterr().out
-    assert "example" in out
-    for missing in ("init", "config", "defects"):
-        assert missing not in out
+@pytest.mark.parametrize("argv", [["config", "list"], ["defects", "close", "DEF-001", "--reason", "fixed"]])
+def test_the_commands_of_slice_5_say_so_and_exit_2(argv, capsys):
+    assert main(argv) == 2
+    assert "is not available yet in this build" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -64,9 +60,10 @@ def test_help_lists_only_what_exists(capsys):
         ["example", "list", "extra"],
         ["example", "shop-api"],
         ["-p"],
-        ["-p", "hello"],
-        ["-p", "/help"],
-        ["-p", "/analyze v1.0 v1.1"],
+        ["-p", "/cycle"],
+        ["-p", "/analyze v1.0"],
+        ["-p", "/nowhere"],
+        ["--output-format", "json"],
         ["-p", "/run all --on nowhere"],
         ["-p", "/history 0"],
         ["--mode", "nowhere", "-p", "/status"],
@@ -151,6 +148,6 @@ def test_run_without_trusted_commands_exits_4(repo, capsys):
 def test_run_without_the_version_it_needs_exits_1(repo, capsys):
     (repo / ".retro").mkdir()
     (repo / ".retro" / "config.yaml").write_text("tests:\n  command: pytest --junitxml={junit}\n")
-    assert main(["-C", str(repo), "--trust-commands", "-p", "/run all"]) == 1
+    assert main(["-C", str(repo), "--trust-commands", "--mode", "auto", "-p", "/run all"]) == 1
     err = capsys.readouterr().err
     assert "invalid_state: the candidate version of the session is not set" in err

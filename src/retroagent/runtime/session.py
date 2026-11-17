@@ -8,8 +8,12 @@ calling) only chooses the JSON fallback mode, which is not built either: ``tool_
 that needs the fallback cannot start a session.
 
 End stops the MCP servers, removes leftover worktrees, sets ``ended_at`` and releases the lock.
+
+When no model is set, an interactive session asks for a profile with ``choose_profile`` (configuration.md, ``model``).
+``switch_model`` is ``/model <name>``: it keeps the conversation.
 """
 
+import dataclasses
 import datetime
 import ipaddress
 import os
@@ -39,6 +43,8 @@ MODEL_VARIABLE = "RETRO_MODEL"
 ROLES = ("base", "candidate")
 
 ProviderFactory = Callable[[Mapping[str, object], Callable[[Wait], None]], LLMProvider]
+# Asked when no model is set: receives the names of the profiles, returns the one chosen, or None.
+ChooseProfile = Callable[[list[str]], str | None]
 
 
 class SessionError(Exception):
@@ -69,6 +75,7 @@ class Options:
     candidate: str | None = None
     model: str | None = None  # -m: a model profile
     mode: str = "default"  # --mode
+    language: str | None = None  # --lang
 
 
 @dataclass(frozen=True)
@@ -126,7 +133,11 @@ class Session:
         self.calibration = budget.Calibration()
         self.usage = Usage()
         self.warned_no_usage = False
+        # Tool calls refused by the mode, a permission or the approval of the project commands: exit code 4 and the
+        # field denied of non-interactive mode (cli.md, Exit codes).
+        self.permission_refusals = 0
         self.listener: Callable[[object], None] | None = None  # set by the turn; receives the waits of the adapter
+        self.provider_factory: ProviderFactory | None = None
 
     def versions(self) -> dict[str, Version | None]:
         """The session versions, as written in the session record."""
@@ -179,6 +190,40 @@ class Session:
         digest = state.read_digest(self.conn, base.commit if base else None, candidate.commit if candidate else None)
         return state.state_message(session_state, digest)
 
+    def switch_model(self, name: str) -> list[str]:
+        """``/model <name>``: use another model profile from now on, keeping the conversation. Returns the statement of
+        the model and the warning of the budget, if any. Raises ``SessionError`` and keeps the current model when the
+        profile does not exist, its credential is missing, it needs the JSON fallback, or its context window is too
+        small for the fixed part of the context."""
+        profile = self.config.models.get(name)
+        if profile is None:
+            profiles = ", ".join(sorted(self.config.models)) or "none"
+            raise SessionError(f"there is no model profile {name!r} in the user configuration. Profiles: {profiles}.")
+        check_credential(profile)
+        provider = _make_provider(profile, self.on_wait, self.provider_factory)
+        capabilities = provider.capabilities()
+        check_tool_calling(profile, capabilities.tool_calling)
+        model = f"{profile['provider']}/{profile['name']}"
+        try:
+            new_budget = budget.budget(profile, capabilities)
+            current = self.model
+            self.model = model  # the state message names the model
+            try:
+                fixed = budget.fixed_characters(
+                    self.system_context(), self.definitions(mode="default"), self.state_message()
+                )
+            finally:
+                self.model = current
+            warning = budget.check_start(new_budget, budget.estimate(fixed, budget.INITIAL_RATIO))
+        except budget.ContextBudgetError as error:
+            raise SessionError(str(error)) from error
+        self.profile_name, self.profile, self.model, self.provider = name, profile, model, provider
+        self.budget, self.calibration = new_budget, budget.Calibration()
+        sessions.set_model(self.conn, self.id, model)
+        sessions.set_result_limit(self.conn, self.id, budget.result_limit(new_budget))
+        self.statement = statement(profile)
+        return [self.statement, *([warning] if warning else [])]
+
     def on_wait(self, wait: Wait) -> None:
         """A wait of the provider adapter (a retry or pacing), reported to the listener of the current turn."""
         if self.listener is not None:
@@ -210,12 +255,18 @@ class Session:
         self.end()
 
 
-def start(options: Options, *, provider_factory: ProviderFactory | None = None) -> Session:
+def start(
+    options: Options,
+    *,
+    provider_factory: ProviderFactory | None = None,
+    choose_profile: ChooseProfile | None = None,
+) -> Session:
     """Start a session. Raises ``SessionError`` for every condition of exit code 2 and ``StartFailed`` when a bundled
     server does not start.
 
     ``provider_factory(profile, on_wait)`` builds the provider of the model profile; the default is
-    ``LiteLLMProvider``. Tests pass one that returns a ``FakeProvider``.
+    ``LiteLLMProvider``. Tests pass one that returns a ``FakeProvider``. ``choose_profile`` is asked when no model is
+    set; without it, that is an error.
     """
     if options.mode not in tools.MODES:
         raise SessionError(f"unknown mode {options.mode!r}; use one of {', '.join(tools.MODES)}")
@@ -225,7 +276,9 @@ def start(options: Options, *, provider_factory: ProviderFactory | None = None) 
         config = load_config(project_dir)
     except ConfigError as error:
         raise SessionError(str(error)) from error
-    profile_name, profile = resolve_profile(config, options)
+    if options.language:
+        config = dataclasses.replace(config, values={**config.values, "language": options.language})
+    profile_name, profile = resolve_profile(config, options, choose_profile)
     try:
         held = lock.acquire(project_dir / ".retro" / "retro.lock")
     except lock.LockHeld as error:
@@ -233,6 +286,7 @@ def start(options: Options, *, provider_factory: ProviderFactory | None = None) 
     # Nothing of project memory is read or written before the lock is held.
     session = Session(project_dir, config, options, held)
     session.profile_name, session.profile = profile_name, profile
+    session.provider_factory = provider_factory
     session.model = f"{profile['provider']}/{profile['name']}"
     try:
         try:
@@ -286,10 +340,22 @@ def start(options: Options, *, provider_factory: ProviderFactory | None = None) 
     return session
 
 
-def resolve_profile(config: Config, options: Options) -> tuple[str, Mapping[str, object]]:
-    """Start step 7, without the credential: ``-m``, then ``RETRO_MODEL``, then ``model`` (configuration.md)."""
+def resolve_profile(
+    config: Config, options: Options, choose: ChooseProfile | None = None
+) -> tuple[str, Mapping[str, object]]:
+    """Start step 7, without the credential: ``-m``, then ``RETRO_MODEL``, then ``model`` (configuration.md). When
+    none is set, ``choose`` asks the user among the profiles of the user configuration."""
     name = options.model or os.environ.get(MODEL_VARIABLE) or config["model"]
     profiles = ", ".join(sorted(config.models)) or "none"
+    if not name and choose is not None:
+        if not config.models:
+            raise SessionError(
+                "no model is set and the user configuration defines no model profile: add one under models in"
+                " ~/.retro/config.yaml (docs/how-to/configure-models.md)"
+            )
+        name = choose(sorted(config.models))
+        if not name:
+            raise SessionError("no model was chosen")
     if not name:
         raise SessionError(
             f"no model is set: use -m <profile>, {MODEL_VARIABLE} or the key model. Profiles of the user"

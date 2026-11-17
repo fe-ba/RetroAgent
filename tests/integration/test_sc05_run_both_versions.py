@@ -48,9 +48,9 @@ class Shop:
 @pytest.fixture(scope="module")
 def shop(tmp_path_factory, pip_cache):
     with example_project(tmp_path_factory, pip_cache) as path:
-        with start(path, trust_commands=True, base="v1.0", candidate="v1.1") as first:
+        with start(path, trust_commands=True, mode="auto", base="v1.0", candidate="v1.1") as first:
             by_tags = commands.run(first, "all", "both")
-        with start(path, trust_commands=True, base=V10, candidate=V11) as second:
+        with start(path, trust_commands=True, mode="auto", base=V10, candidate=V11) as second:
             by_hashes = commands.run(second, "all", "both")
             status, history = commands.status(second), commands.history(second)
         commits = {tag: git(path, "rev-parse", f"{tag}^{{commit}}").strip() for tag in ("v1.0", "v1.1")}
@@ -107,8 +107,8 @@ def test_status_shows_the_session_and_the_latest_run(shop):
     assert summary(shop.status.latest_run) == ("RUN-0004", "candidate", V11, "all", "completed", 26, 22, 4)
     text = render(*tables.status_tables(shop.status))
     assert cells(text, "RUN-0004")[5:12] == ["completed", "26", "26", "22", "4", "0", "0"]
-    for row in ("Model calls", "Tokens"):
-        assert next(line for line in text.splitlines() if row in line).split()[-2] == "0"
+    assert next(line for line in text.splitlines() if "Model calls" in line).split()[-2] == "0"
+    assert "0 input, 0 output" in text
 
 
 def test_history_shows_the_counts_of_every_run(shop):

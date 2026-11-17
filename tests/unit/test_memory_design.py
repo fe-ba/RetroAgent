@@ -1,12 +1,13 @@
-"""Test design functions of the data layer: ``update_test_case`` (mcp-tools.md, ``memory.update_test_case``) and
-links by name (project-contract.md, Traceability)."""
+"""Test design functions of the data layer: ``update_test_case`` (mcp-tools.md, ``memory.update_test_case``), links
+by name (project-contract.md, Traceability), the priority of discovered tests and the uncovered requirements of a
+suite."""
 
 import json
 
 import pytest
-from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, no_removal
 
-from retroagent.memory import design
+from retroagent.memory import design, impact, requirements
 from retroagent.memory.errors import InvariantViolation
 
 
@@ -183,3 +184,116 @@ def test_the_current_suite_is_the_latest_suite_of_the_latest_analysis_of_the_ver
     assert design.current_suite(conn, BASE_COMMIT, "d" * 40) is None
     build.analysis_id = build.analysis()  # a new analysis starts a new cycle without a suite
     assert design.current_suite(conn, BASE_COMMIT, CANDIDATE_COMMIT) is None
+
+
+# The priority of a discovered test (data-model.md, test_case)
+
+
+def requirement(conn, requirement_id, priority):
+    requirements.add_requirement(
+        conn, id=requirement_id, title="t", description="d", source_file="docs/req.md", priority=priority
+    )
+
+
+def priority_of(conn, test_case_id):
+    return design.get_test_case(conn, test_case_id)["priority"]
+
+
+def test_a_discovered_test_starts_with_the_priority_of_its_requirement(conn):
+    requirement(conn, "REQ-003", "high")
+    requirement(conn, "REQ-008", "low")
+    assert priority_of(conn, project_test(conn, "tests.test_cart::test_req_003_total")) == "high"
+    assert priority_of(conn, project_test(conn, "tests.test_orders::test_req_008_history")) == "low"
+
+
+def test_a_test_linked_to_two_requirements_takes_the_highest_priority(conn):
+    requirement(conn, "REQ-005", "medium")
+    requirement(conn, "REQ-008", "low")
+    requirement(conn, "REQ-004", "high")
+    assert priority_of(conn, project_test(conn, "tests.t::test_req_008_req_005_both")) == "medium"
+    assert priority_of(conn, project_test(conn, "tests.t::test_req_005_req_004_both")) == "high"
+
+
+def test_a_test_linked_to_no_requirement_starts_as_medium(conn):
+    requirement(conn, "REQ-001", None)  # no documented priority: it does not count
+    assert priority_of(conn, project_test(conn, "tests.t::test_health")) == "medium"
+    assert priority_of(conn, project_test(conn, "tests.t::test_req_099_not_in_memory")) == "medium"
+    assert priority_of(conn, project_test(conn, "tests.t::test_req_001_no_priority")) == "medium"
+
+
+# Uncovered requirements of a suite (mcp-tools.md, save_suite and get_suite)
+
+
+def impact_on(conn, build, *impacted):
+    impact.record_impact(
+        conn,
+        build.analysis_id,
+        modules=[{"module": "cart", "files": ["app/cart.py"], "risk_level": "high", "reason": "r"}],
+        requirements=[{"requirement_id": r, "reason": "r"} for r in impacted],
+        not_impacted=[
+            {"requirement_id": row["id"], "reason": "r"}
+            for row in conn.execute("SELECT id FROM requirement")
+            if row["id"] not in impacted
+        ],
+        removal_applies=no_removal,
+    )
+
+
+def test_no_requirement_is_uncovered_when_the_suite_traces_every_impacted_one(conn, build):
+    for requirement_id in ("REQ-001", "REQ-002"):
+        build.requirement(requirement_id)
+    impact_on(conn, build, "REQ-001", "REQ-002")
+    by_design = build.test_case(requirement_ids=["REQ-001"])
+    by_name = project_test(conn, "tests.test_cart::test_req_002_add")
+    suite_id = design.save_suite(conn, analysis_id=build.analysis_id, session_id=build.session_id, items=[
+        {"test_case_id": by_design, "position": 1, "selection_reason": "r"},
+        {"test_case_id": by_name, "position": 2, "selection_reason": "r"},
+    ])  # fmt: skip
+    assert design.uncovered_requirements(conn, suite_id) == []
+
+
+def test_an_impacted_requirement_without_a_test_case_is_uncovered_until_one_is_designed(conn, build):
+    for requirement_id in ("REQ-001", "REQ-002", "REQ-003"):
+        build.requirement(requirement_id)
+    impact_on(conn, build, "REQ-001", "REQ-002")  # REQ-003 is not impacted: never a gap
+    traced = build.test_case(requirement_ids=["REQ-001", "REQ-003"])
+    elsewhere = build.test_case(requirement_ids=["REQ-002"])  # traced to REQ-002, but not in the suite
+    suite_id = design.save_suite(conn, analysis_id=build.analysis_id, session_id=build.session_id,
+                                 items=[{"test_case_id": traced, "position": 1, "selection_reason": "r"}])  # fmt: skip
+    assert elsewhere and design.uncovered_requirements(conn, suite_id) == ["REQ-002"]
+    designed, _ = design.design_test_case(
+        conn, suite_id=suite_id, selection_reason="Gap of REQ-002.", designed_by="fake/model", title="t",
+        priority="high", steps=["s"], requirement_ids=["REQ-002"],
+    )  # fmt: skip
+    assert design.uncovered_requirements(conn, suite_id) == []
+    design.retire_test_case(conn, designed, reason="Obsolete.", retired_by="fake/model")
+    assert design.uncovered_requirements(conn, suite_id) == ["REQ-002"]  # a retired test case covers nothing
+
+
+def test_the_first_name_links_of_a_synchronization_set_the_priority_again(conn):
+    discovered = project_test(conn, "tests.test_cart::test_req_003_total")  # before the requirements are known
+    unlinked = project_test(conn, "tests.t::test_health")
+    assert priority_of(conn, discovered) == "medium"
+    requirement(conn, "REQ-003", "high")
+    assert design.link_tests_by_name(conn) == 1
+    assert priority_of(conn, discovered) == "high"
+    assert priority_of(conn, unlinked) == "medium"  # no link: nothing to set
+
+
+def test_a_second_synchronization_changes_no_priority(conn):
+    requirement(conn, "REQ-008", "low")
+    discovered = project_test(conn, "tests.t::test_req_008_history")
+    before = conn.execute("SELECT id, priority, updated_at FROM test_case ORDER BY id").fetchall()
+    assert design.link_tests_by_name(conn) == 0
+    assert conn.execute("SELECT id, priority, updated_at FROM test_case ORDER BY id").fetchall() == before
+    assert priority_of(conn, discovered) == "low"
+
+
+def test_a_priority_changed_after_the_links_is_kept_when_more_links_come(conn):
+    requirement(conn, "REQ-005", "medium")
+    discovered = project_test(conn, "tests.t::test_req_005_req_004_both")  # linked to REQ-005 only, for now
+    design.update_test_case(conn, discovered, {"priority": "low"})  # a change of the model
+    requirement(conn, "REQ-004", "high")
+    assert design.link_tests_by_name(conn) == 1  # its link to REQ-004, but not its first name link
+    assert priority_of(conn, discovered) == "low"
+    assert links(conn, discovered) == [("REQ-004", "name"), ("REQ-005", "name")]

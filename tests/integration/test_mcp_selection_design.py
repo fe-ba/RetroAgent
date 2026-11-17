@@ -5,7 +5,7 @@ impact analysis: the result of each tool, and one test for each error code it ca
 from types import SimpleNamespace
 
 import pytest
-from fixtures.example_project import project_copy
+from fixtures.example_project import example_project, project_copy
 from fixtures.mcp_project import dump, error_of, open_session
 
 from retroagent.mcp_client import Client
@@ -111,23 +111,43 @@ def failure_or_none(shop, tool, arguments=None):
 def test_save_suite_becomes_the_current_suite_and_get_suite_returns_it_in_order(shop):
     items = [item(tc(shop, SHIPPING), 2, "Shipping changed."), item(tc(shop, SECOND_COUPON), 1, "REQ-004 changed.")]
     saved = call(shop, "save_suite", {"analysis_id": shop.analysis_id, "items": items})
-    assert saved == {"suite_id": saved["suite_id"], "analysis_id": shop.analysis_id, "test_cases": 2}
+    uncovered = ["REQ-002", "REQ-003", "REQ-006", "REQ-007", "REQ-008"]  # impacted, and not REQ-004 or REQ-005
+    assert saved == {"suite_id": saved["suite_id"], "analysis_id": shop.analysis_id, "test_cases": 2,
+                     "uncovered_requirements": uncovered}  # fmt: skip
     current = call(shop, "get_suite")
     assert current["suite_id"] == saved["suite_id"] and current["analysis_id"] == shop.analysis_id
+    assert current["uncovered_requirements"] == uncovered
     assert [(i["position"], i["test_case_id"], i["selection_reason"]) for i in current["items"]] == [
         (1, tc(shop, SECOND_COUPON), "REQ-004 changed."),
         (2, tc(shop, SHIPPING), "Shipping changed."),
     ]
     first = current["items"][0]
     assert (first["title"], first["priority"], first["status"], first["origin"]) == (
-        SECOND_COUPON, "medium", "implemented", "project_suite",
-    )  # fmt: skip
+        SECOND_COUPON,
+        "high",
+        "implemented",
+        "project_suite",
+    )  # fmt: skip  high: REQ-004 is high, and the synchronization gave the test its first name link
     assert call(shop, "get_suite", {"suite_id": saved["suite_id"]}) == current
 
 
-def test_an_empty_suite_is_valid(shop):
+def test_an_empty_suite_is_valid_and_leaves_every_impacted_requirement_uncovered(shop):
     saved = call(shop, "save_suite", {"analysis_id": shop.analysis_id, "items": []})
     assert saved["test_cases"] == 0 and call(shop, "get_suite")["items"] == []
+    assert saved["uncovered_requirements"] == [f"REQ-00{n}" for n in range(2, 9)]
+
+
+def test_uncovered_requirements_follow_the_traces_and_a_designed_test_case_removes_one(shop):
+    # One project test per impacted requirement that has one, traced by its name: REQ-002 has none (ORACLE.md, S5).
+    # TC-002, test_req_003_api_cart_shows_totals, is traced to REQ-003, not to REQ-002, whatever its title says.
+    names = [SECOND_COUPON, SHIPPING, "test_req_003_api_cart_shows_totals", "test_req_006_api_checkout_creates_order",
+             "test_req_007_tax_rounds_half_up", "test_req_008_api_returns_order_by_id"]  # fmt: skip
+    items = [item(tc(shop, name), position) for position, name in enumerate(names, start=1)]
+    saved = call(shop, "save_suite", {"analysis_id": shop.analysis_id, "items": items})
+    assert saved["uncovered_requirements"] == ["REQ-002"]
+    call(shop, "design_test_case", {**FIELDS, "selection_reason": "Gap of REQ-002."})
+    suite = call(shop, "get_suite")  # computed when read
+    assert suite["suite_id"] == saved["suite_id"] and suite["uncovered_requirements"] == []
 
 
 def test_save_suite_errors(shop):
@@ -448,3 +468,69 @@ def test_get_test_case_history_oldest_first(shop):
 def test_get_test_case_history_errors(shop):
     assert code(shop, "get_test_case_history", {"test_case_id": "TC-999"}) == "not_found"
     assert code(shop, "get_test_case_history", {}) == "invalid_argument"
+
+
+# The priority of discovered tests, against ORACLE.md -------------------------------------------------------------
+
+
+def test_discovery_after_synchronization_gives_the_priorities_of_the_oracle(tmp_path_factory, pip_cache):
+    """Discovered on v1.0 and v1.1 with the requirements already in memory, as in a cycle: the tests of REQ-002,
+    REQ-003, REQ-004 and REQ-006 are high. ORACLE.md counts 15 with TC-027, which is designed later: 14 here."""
+    with example_project(tmp_path_factory, pip_cache) as path:
+        with Client(path, open_session(path)) as client:
+            client.call("memory", "sync_requirements")
+            for version in ("base", "candidate"):
+                assert client.call("test_runner", "run_tests", {"version": version, "scope": "all"})["status"] == (
+                    "completed"
+                )
+            test_cases = client.call("memory", "get_test_cases")["test_cases"]
+    assert len(test_cases) == 26 and {t["origin"] for t in test_cases} == {"project_suite"}
+    by_priority: dict[str, set[str]] = {}
+    for test_case in test_cases:
+        requirement_ids = {link["requirement_id"] for link in test_case["requirements"]}
+        by_priority.setdefault(test_case["priority"], set()).update(requirement_ids)
+    high = [t for t in test_cases if t["priority"] == "high"]
+    assert len(high) == 14
+    assert by_priority == {
+        "high": {"REQ-003", "REQ-004", "REQ-006"},  # REQ-002 is high too, but no project test is traced to it
+        "medium": {"REQ-001", "REQ-005", "REQ-007"},
+        "low": {"REQ-008"},
+    }
+
+
+def test_tests_discovered_before_the_first_synchronization_get_their_priority_from_it(
+    tmp_path_factory, shop_after_both_runs
+):
+    """``/run all --on both`` before the first ``sync_requirements``: discovery finds no requirement, so every test
+    starts as medium; the synchronization that gives them their first name links sets their priority again. A second
+    synchronization changes nothing, and a priority the model changed is kept."""
+    with project_copy(tmp_path_factory, shop_after_both_runs.path) as path:
+        with Client(path, open_session(path)) as client:
+
+            def priorities() -> dict[str, tuple[str, frozenset]]:
+                return {
+                    t["id"]: (t["priority"], frozenset(link["requirement_id"] for link in t["requirements"]))
+                    for t in client.call("memory", "get_test_cases")["test_cases"]
+                }
+
+            before = priorities()
+            assert len(before) == 26 and {priority for priority, _ in before.values()} == {"medium"}
+            assert all(not requirement_ids for _, requirement_ids in before.values())  # no requirement known yet
+
+            client.call("memory", "sync_requirements")
+            synced = priorities()
+            by_requirement: dict[str, set[str]] = {}
+            for priority, requirement_ids in synced.values():
+                for requirement_id in requirement_ids:
+                    by_requirement.setdefault(requirement_id, set()).add(priority)
+            assert by_requirement == {
+                "REQ-001": {"medium"}, "REQ-003": {"high"}, "REQ-004": {"high"}, "REQ-005": {"medium"},
+                "REQ-006": {"high"}, "REQ-007": {"medium"}, "REQ-008": {"low"},
+            }  # fmt: skip
+            assert sum(priority == "high" for priority, _ in synced.values()) == 14  # as after discovery (ORACLE.md)
+
+            changed = next(test_case_id for test_case_id, (_, ids) in synced.items() if "REQ-003" in ids)
+            client.call("memory", "update_test_case", {"test_case_id": changed, "fields": {"priority": "low"}})
+            second = client.call("memory", "sync_requirements")
+            assert second["name_links_added"] == 0
+            assert priorities() == {**synced, changed: ("low", synced[changed][1])}

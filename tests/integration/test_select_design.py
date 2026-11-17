@@ -58,10 +58,12 @@ def calls_of(session) -> list[tuple[str, str]]:
     return [(row["server"], row["tool"]) for row in tool_rows(session.conn, session.id)]
 
 
-def test_select_records_a_suite_with_a_reason_for_every_test_case(project):
+def test_select_records_a_suite_with_a_reason_for_every_test_case_and_reports_the_gap_of_req_002(project):
     analysis, test_cases = call("memory__get_analysis"), call("memory__get_test_cases")
+    saved = {}
 
     def save_suite(request):
+        # Traced only by the requirements that get_test_cases lists for each test case, never by its title.
         impacted = {r["requirement_id"] for r in result_in(request, analysis.id)["requirements"]}
         selected = [
             (tc["id"], next(r["requirement_id"] for r in tc["requirements"] if r["requirement_id"] in impacted))
@@ -73,8 +75,13 @@ def test_select_records_a_suite_with_a_reason_for_every_test_case(project):
              "selection_reason": f"Traced to {requirement_id}, an impacted requirement."}
             for position, (test_case_id, requirement_id) in enumerate(selected, start=1)
         ]  # fmt: skip
-        return calls(call("memory__save_suite", {"analysis_id": result_in(request, analysis.id)["analysis_id"],
-                                                 "items": items}))  # fmt: skip
+        saved["call"] = call("memory__save_suite", {"analysis_id": result_in(request, analysis.id)["analysis_id"],
+                                                    "items": items})  # fmt: skip
+        return calls(saved["call"])
+
+    def report_gaps(request):
+        uncovered = result_in(request, saved["call"].id)["uncovered_requirements"]
+        return answer(f"Suite saved. Gaps: {', '.join(uncovered)}. Next step: /design.")
 
     script = Scripted([
         calls(call("runtime__load_skill", {"name": "test-selection"})),
@@ -82,12 +89,12 @@ def test_select_records_a_suite_with_a_reason_for_every_test_case(project):
         calls(test_cases),
         calls(call("memory__get_risks"), call("memory__get_requirements", {"ids": ["REQ-004", "REQ-005"]})),
         save_suite,
-        answer("Suite saved. Gap: REQ-002 has no test case. Next step: /design."),
+        report_gaps,
     ])  # fmt: skip
     with start(project, script, trust_commands=True) as session:
         result = commands.select(session)
 
-        assert result.text.startswith("Suite saved.") and script.remaining == 0
+        assert result.text == "Suite saved. Gaps: REQ-002. Next step: /design." and script.remaining == 0
         assert first_user_message(script.requests[0]) == commands.SELECT
         for request in script.requests:
             assert sorted(t.name for t in request.tools) == step_tools(session, "test_runner__run_tests")
@@ -110,23 +117,37 @@ def test_select_records_a_suite_with_a_reason_for_every_test_case(project):
         assert SEARCH not in names  # REQ-001 was judged not impacted
         assert [row["position"] for row in rows] == list(range(1, len(rows) + 1))
         assert all(row["selection_reason"].startswith("Traced to REQ-") for row in rows)
+        assert not any("REQ-002" in row["selection_reason"] for row in rows)
+        assert design.uncovered_requirements(session.conn, suite_id) == ["REQ-002"]
         assert session.conversation.loaded_skill == "test-selection"
 
 
-def test_design_adds_a_designed_test_case_to_the_current_suite(project):
+def test_design_designs_for_every_uncovered_requirement_of_the_current_suite(project):
     suite = call("memory__get_suite")
-    designed = call(
-        "memory__design_test_case",
-        {**REQ_002_CASE, "selection_reason": "Covers the gap of REQ-002: cart.py changed, no test."},
-    )
+    designed: dict[str, object] = {}  # requirement -> the design_test_case call made for it
+
+    def read_scope(request):
+        uncovered = result_in(request, suite.id)["uncovered_requirements"]
+        return calls(call("memory__get_analysis"), call("memory__get_requirements", {"ids": uncovered}),
+                     *(call("memory__get_test_cases", {"requirement_id": r}) for r in uncovered))  # fmt: skip
+
+    def design_each(request):
+        for requirement_id in result_in(request, suite.id)["uncovered_requirements"]:
+            fields = REQ_002_CASE if requirement_id == "REQ-002" else {
+                **REQ_002_CASE, "title": f"Main rule of {requirement_id}", "requirement_ids": [requirement_id],
+            }  # fmt: skip
+            designed[requirement_id] = call(
+                "memory__design_test_case", {**fields, "selection_reason": f"Covers the gap of {requirement_id}."}
+            )
+        return calls(*designed.values())
+
     script = Scripted([
         calls(call("runtime__load_skill", {"name": "test-design"})),
         calls(suite),
-        calls(call("memory__get_analysis"), call("memory__get_requirements", {"ids": ["REQ-002"]})),
+        read_scope,
         calls(call("git__read_file", {"path": "src/shop/cart.py", "version": "candidate"})),
-        calls(call("memory__get_test_cases", {"requirement_id": "REQ-002"})),
-        calls(designed),
-        answer("TC designed for REQ-002. It is designed, not implemented, not executed. Next step: /implement."),
+        design_each,
+        answer("Test cases designed for every gap. They are designed, not implemented, not executed."),
     ])  # fmt: skip
     with start(project, script, trust_commands=True) as session:
         base, candidate = session.versions()["base"], session.versions()["candidate"]
@@ -135,6 +156,8 @@ def test_design_adds_a_designed_test_case_to_the_current_suite(project):
             analysis_id = impact.latest_analysis(session.conn, base.commit, candidate.commit)
             suite_id = design.save_suite(session.conn, analysis_id=analysis_id, session_id=session.id, items=[])
         size = len(design.suite_test_cases(session.conn, suite_id))
+        uncovered = design.uncovered_requirements(session.conn, suite_id)
+        assert "REQ-002" in uncovered  # after /select, the only one
 
         result = commands.design_tests(session)
 
@@ -145,9 +168,10 @@ def test_design_adds_a_designed_test_case_to_the_current_suite(project):
             assert not any(t.name.startswith("test_runner__") for t in request.tools)
         assert all(row["outcome"] == "ok" for row in tool_rows(session.conn, session.id))
         assert result_in(script.requests[2], suite.id)["suite_id"] == suite_id
+        assert sorted(designed) == uncovered
+        assert design.uncovered_requirements(session.conn, suite_id) == []
 
-        created = json.loads(next(m.content for m in session.conversation.messages
-                                  if m.role == "tool" and m.tool_call_id == designed.id))  # fmt: skip
+        created = result_in(script.requests[-1], designed["REQ-002"].id)
         row = design.get_test_case(session.conn, created["test_case_id"])
         assert (row["status"], row["origin"], row["designed_by"]) == ("designed", "designed", session.model)
         assert (row["title"], row["objective"], row["priority"], row["expected_result"]) == (
@@ -158,9 +182,9 @@ def test_design_adds_a_designed_test_case_to_the_current_suite(project):
         assert (row["implementation"], row["test_id"]) == (None, None)
         links = [tuple(r) for r in design.test_case_requirements(session.conn, created["test_case_id"])]
         assert links == [("REQ-002", "design")]
-        last = design.suite_items(session.conn, suite_id)[-1]
-        assert (last["test_case_id"], last["position"]) == (created["test_case_id"], size + 1)
-        assert created == {"test_case_id": row["id"], "suite_id": suite_id, "position": size + 1}
+        items = design.suite_items(session.conn, suite_id)
+        assert [i["position"] for i in items[size:]] == list(range(size + 1, size + len(designed) + 1))
+        assert created["suite_id"] == suite_id and created["test_case_id"] in [i["test_case_id"] for i in items]
         assert session.conversation.loaded_skill == "test-design"
 
 

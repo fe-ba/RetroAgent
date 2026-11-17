@@ -55,18 +55,43 @@ def add_test_case(
     return test_case_id
 
 
+_PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def discovered_priority(conn: sqlite3.Connection, test_id: str) -> str:
+    """The priority a discovered test starts with: the highest priority of the requirements in memory that its name
+    links it to, or ``medium`` when it has none (data-model.md, ``test_case``). A requirement without a documented
+    priority does not count."""
+    priorities = [
+        row["priority"]
+        for requirement_id in requirements_in_name(test_id)
+        if (row := conn.execute("SELECT priority FROM requirement WHERE id = ?", (requirement_id,)).fetchone())
+        and row["priority"] is not None
+    ]
+    return max(priorities, key=_PRIORITY_RANK.__getitem__) if priorities else "medium"
+
+
 def add_project_suite_test_case(conn: sqlite3.Connection, *, test_id: str, implementation: str) -> str:
     """Create a test case for a test found in the project's own tests (``<classname>::<name>``).
 
-    The requirements named in the test name that are in memory are linked by name (project-contract.md).
+    The requirements named in the test name that are in memory are linked by name (project-contract.md), and the test
+    case starts with the highest priority among them.
     """
     now = utc_now()
     with transaction(conn):
         test_case_id = next_id(conn, "TC")
         conn.execute(
             "INSERT INTO test_case (id, title, priority, status, origin, test_id, implementation, created_at,"
-            " updated_at) VALUES (?, ?, 'medium', 'implemented', 'project_suite', ?, ?, ?, ?)",
-            (test_case_id, test_id.split("::")[-1], test_id, implementation, now, now),
+            " updated_at) VALUES (?, ?, ?, 'implemented', 'project_suite', ?, ?, ?, ?)",
+            (
+                test_case_id,
+                test_id.split("::")[-1],
+                discovered_priority(conn, test_id),
+                test_id,
+                implementation,
+                now,
+                now,
+            ),
         )
         _link_by_name(conn, test_case_id, test_id)
     return test_case_id
@@ -97,11 +122,25 @@ def _link_by_name(conn: sqlite3.Connection, test_case_id: str, test_id: str) -> 
 def link_tests_by_name(conn: sqlite3.Connection) -> int:
     """Add the missing name links of every project test; returns how many were added.
 
-    Called again when requirements are synchronized, so the order of discovery and synchronization does not matter.
+    Called again when requirements are synchronized, so the order of discovery and synchronization does not matter. A
+    test that gets its first name links here gets its priority again, by the rule of discovery; a test that already
+    had name links keeps its priority, which the model may have changed (data-model.md, ``test_case.priority``).
     """
     with transaction(conn):
         rows = conn.execute("SELECT id, test_id FROM test_case WHERE origin = 'project_suite' ORDER BY id").fetchall()
-        return sum(_link_by_name(conn, row["id"], row["test_id"]) for row in rows)
+        added = 0
+        for row in rows:
+            had_links = conn.execute(
+                "SELECT 1 FROM test_case_requirement WHERE test_case_id = ? AND link = 'name' LIMIT 1", (row["id"],)
+            ).fetchone()
+            linked = _link_by_name(conn, row["id"], row["test_id"])
+            if linked and not had_links:
+                conn.execute(
+                    "UPDATE test_case SET priority = ?, updated_at = ? WHERE id = ?",
+                    (discovered_priority(conn, row["test_id"]), utc_now(), row["id"]),
+                )
+            added += linked
+        return added
 
 
 _DESIGN_FIELDS = (
@@ -426,3 +465,19 @@ def test_case_requirements(conn: sqlite3.Connection, test_case_id: str) -> list[
         "SELECT requirement_id, link FROM test_case_requirement WHERE test_case_id = ? ORDER BY requirement_id, link",
         (test_case_id,),
     ).fetchall()
+
+
+def uncovered_requirements(conn: sqlite3.Connection, suite_id: int) -> list[str]:
+    """The impacted requirements of the analysis of a suite that no active test case of the suite is traced to, by a
+    design or a name link. Computed from the records, never stored (mcp-tools.md, save_suite and get_suite)."""
+    return [
+        row["requirement_id"]
+        for row in conn.execute(
+            "SELECT ar.requirement_id FROM analysis_requirement ar JOIN suite s ON s.analysis_id = ar.analysis_id"
+            " WHERE s.id = ? AND NOT EXISTS (SELECT 1 FROM suite_test_case st"
+            " JOIN test_case tc ON tc.id = st.test_case_id AND tc.retired_at IS NULL"
+            " JOIN test_case_requirement tr ON tr.test_case_id = tc.id AND tr.requirement_id = ar.requirement_id"
+            " WHERE st.suite_id = s.id) ORDER BY ar.requirement_id",
+            (suite_id,),
+        )
+    ]

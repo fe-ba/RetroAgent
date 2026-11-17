@@ -209,7 +209,13 @@ def save_suite(context: Context, analysis_id: int, items: list[dict]) -> dict:
                 f" ({latest if latest is not None else 'there is none'}); a suite is saved for the latest one",
             )
         suite_id = design.save_suite(conn, analysis_id=analysis_id, session_id=context.session_id, items=items)
-    return {"suite_id": suite_id, "analysis_id": analysis_id, "test_cases": len(items)}
+        uncovered = design.uncovered_requirements(conn, suite_id)
+    return {
+        "suite_id": suite_id,
+        "analysis_id": analysis_id,
+        "test_cases": len(items),
+        "uncovered_requirements": uncovered,
+    }
 
 
 def get_suite(context: Context, suite_id: int | None = None) -> dict:
@@ -222,11 +228,13 @@ def get_suite(context: Context, suite_id: int | None = None) -> dict:
         if suite is None:
             raise ToolError("not_found", f"suite {suite_id} does not exist")
         items = [_without_nulls(dict(row)) for row in design.suite_items(conn, suite_id)]
+        uncovered = design.uncovered_requirements(conn, suite_id)
     return {
         "suite_id": suite_id,
         "analysis_id": suite["analysis_id"],
         "created_at": suite["created_at"],
         "items": items,
+        "uncovered_requirements": uncovered,
     }
 
 
@@ -529,7 +537,8 @@ TOOLS = [
     Tool(
         "save_suite",
         "Save the regression suite selected for the latest analysis; it becomes the current suite. Each item: an "
-        "existing, not retired test case, its position and why it was selected. May be empty. Returns the suite ID.",
+        "active test case, its position and why it was selected. Returns the suite ID and uncovered_requirements: "
+        "impacted requirements without a traced test case.",
         schema(
             {
                 "analysis_id": {"type": "integer", "description": "The latest analysis of the session versions."},
@@ -559,8 +568,8 @@ TOOLS = [
     ),
     Tool(
         "get_suite",
-        "Get a suite with each test case: position, title, priority, status, origin and selection reason. Default: "
-        "the current suite of the session versions.",
+        "Get a suite with each test case: position, title, priority, status, origin and selection reason, and its "
+        "uncovered_requirements: impacted requirements no test case of it is traced to. Default: the current suite.",
         schema({"suite_id": {"type": "integer", "description": "Default: the current suite."}}),
         get_suite,
     ),

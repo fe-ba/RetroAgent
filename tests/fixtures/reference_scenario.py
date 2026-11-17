@@ -24,6 +24,9 @@ REQUIREMENTS = {
     "REQ-007": "Tax",
     "REQ-008": "Order history",
 }
+# The priorities of docs/requirements.md. Discovered tests start with the highest priority of the requirements their
+# name links them to, so the tests of REQ-002, REQ-003, REQ-004 and REQ-006 are high (ORACLE.md, Priorities).
+PRIORITIES = {"REQ-002": "high", "REQ-003": "high", "REQ-004": "high", "REQ-006": "high", "REQ-008": "low"}
 
 # The tests of v1.0 in the order of the JUnit XML: TC-001 to TC-022.
 V1_0_TESTS = [
@@ -207,6 +210,7 @@ def load_reference_scenario(conn) -> ReferenceScenario:
             title=title,
             description=title,
             source_file="docs/requirements.md",
+            priority=PRIORITIES.get(requirement_id, "medium"),
             since="v1.1" if requirement_id == "REQ-008" else None,
         )
     requirements.add_requirement_change(
@@ -298,10 +302,6 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         expected_result="The request is rejected with not found.",
         requirement_ids=["REQ-002"],
     )
-    for test_id in V1_1_TESTS:
-        if any(f"test_req_00{n}_" in test_id for n in (2, 3, 4, 6)):
-            design.update_test_case(conn, test_cases[test_id], {"priority": "high"})
-
     suite_id = design.add_suite(conn, analysis_id=analysis_id, session_id=session_id)
     ordered = [test_cases[t] for t in V1_0_TESTS + V1_1_NEW_TESTS] + [tc_027, tc_028]
     for position, test_case_id in enumerate(ordered, start=1):

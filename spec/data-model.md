@@ -407,7 +407,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 |---|---|---|
 | INV-01 | A test execution has a `result` if and only if its `status` is `executed`. | `CHECK` constraint |
 | INV-02 | A test execution with status `executed` belongs to a run whose `junit_path` is not null. | Trigger |
-| INV-03 | Test executions and attempts are created only by the test runner server; no MCP tool accepts an execution status or result as input. | Tool contracts |
+| INV-03 | Test executions and attempts are created only by the test runner server; no MCP tool that writes accepts an execution status or result as input. Read tools may filter by them. | Tool contracts |
 | INV-04 | The `result` of a test execution equals the result of its first attempt. Later attempts exist only when that result is not `passed`. | Trigger |
 | INV-05 | A test case with status `implemented` has an `implementation`; a `designed` one has neither an `implementation`, a `test_id` nor a `revision`. | `CHECK` constraint |
 | INV-06 | A test case with status `designed` has no test executions. | Trigger |

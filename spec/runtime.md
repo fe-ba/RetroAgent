@@ -190,7 +190,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 - Answers of the model are rendered as Markdown in the terminal.
 - Runs, status, history and defects are shown as tables (FR-30).
-- Verbose mode also shows each tool call with its arguments, outcome and duration, each model call with its token usage, and each retry.
+- Verbose mode also shows each tool call with its arguments, outcome and duration, each model call with its token usage, each retry, and the notices that the provider library writes, such as deprecation warnings. Outside verbose mode those notices are not shown.
 
 ## Robustness
 

@@ -11,7 +11,7 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Internal servers | The bundled servers are components of RetroAgent, not a public integration: they need a session created by the runtime, which also enforces modes, permissions and approvals. Using them from another MCP client is not supported (ADR-0026). |
 | Identifiers | Tools that create records return their new identifiers. No tool accepts an identifier for a record it creates. |
 | References | Every identifier, path or ref given by the model must exist; otherwise the call fails with `not_found` and nothing is written (INV-13). |
-| Execution results | No tool accepts an execution status or result as input (INV-03). Arguments are validated against the schema of the tool, which accepts no other property: an unknown argument is an `invalid_argument`. |
+| Execution results | No tool that writes accepts an execution status or result as input (INV-03); read tools may filter by them. Arguments are validated against the schema of the tool, which accepts no other property: an unknown argument is an `invalid_argument`. |
 | Large output | Tools that return file content, diffs or evidence return at most the result limit of the session, cut at a line boundary. The limit is 20,000 characters, or less with a small context window (`context-loading.md`); tools read it from the `session` record. When they cut, they set `truncated` to `true` and return `next_line`; calling the tool again with `start_line` set to that value returns what follows. |
 | Models | No MCP tool calls a model (ADR-0020). Text written by the model reaches the servers only as tool arguments. |
 | Mode, permissions and approvals | Enforced by the runtime before dispatch, including the approval of the project commands before `test_runner.run_tests` (`configuration.md`). A refused call is recorded with outcome `denied`. |
@@ -182,7 +182,7 @@ Records the impact analysis proposed by the model for an analysis.
 | `requirements` | list | yes | Impacted requirements. Each: `requirement_id`, `reason`. May be empty. |
 | `not_impacted` | list | yes | Requirements judged not impacted. Each: `requirement_id`, `reason`. May be empty. |
 
-Every requirement in effect at the candidate must be decided: it appears exactly once, in `requirements` or in `not_impacted`. A requirement is in effect when it has no `removed` version, or when its `removed` version is the candidate ref of the analysis. A project without requirements sends two empty lists. The decision is checked by code, so that a requirement is never left out in silence.
+Every requirement in effect at the candidate must be decided: it appears exactly once, in `requirements` or in `not_impacted`. A requirement is in effect when it has no `removed` version, or when its removal applies to the change of the analysis, by the same rule as a `Changed` entry (`project-contract.md`). A project without requirements sends two empty lists. The decision is checked by code, so that a requirement is never left out in silence.
 
 Returns the number of modules, impacted requirements and requirements judged not impacted. The impact of an analysis is recorded once. Errors: `not_found` for an unknown file or requirement; `invalid_argument` when a requirement in effect is missing, naming every one, or appears more than once; `invalid_state` when the analysis already has an impact: a corrected impact needs a new analysis from `git.analyze_changes`.
 

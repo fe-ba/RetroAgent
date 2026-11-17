@@ -30,6 +30,14 @@ class Entry:
         return f"{self.classname}::{self.name}"
 
     @property
+    def is_load_error(self) -> bool:
+        """Whether the entry is an error of a file that could not be loaded, not of a test: pytest reports a file it
+        cannot collect as an ``error`` entry with an empty ``classname`` and the module path of the file as ``name``
+        (project-contract.md, Generated tests). Only the pytest form is recognized; a real pytest test always has a
+        classname."""
+        return self.outcome == "error" and not self.classname
+
+    @property
     def implementation(self) -> str:
         """For a project test: the ``file`` attribute when there is one, otherwise the classname, ``::<name>``."""
         return f"{self.file or self.classname}::{self.name}"

@@ -4,6 +4,13 @@ Results come only from the JUnit XML of the run (ADR-0010). A step that ends the
 gives blocked executions with its reason. The first attempt gives the result (INV-04), and reruns never change
 the outcome of the run. Evidence is kept in ``.retro/runs/<run_id>/``: ``run.log``, ``service.log`` and one
 JUnit XML per round, ``junit-<n>.xml``, where ``n`` is also the number of the attempts of that round.
+
+A generated test that cannot be loaded (project-contract.md, Generated tests): when the JUnit XML of round 1 reports
+a generated file as a load error, its test cases get attempt 1 with result ``error`` and the message of the entry,
+the file is removed from the worktree for the rest of the run, the XML is kept as ``junit-1.load-error-<k>.xml``, and
+the command of round 1 runs once more; at most as many times as there are generated files. Those test cases are not
+rerun. A load error of a file that is not generated is never registered as a test case; the ``error`` of the run
+names the file.
 """
 
 import shutil
@@ -176,6 +183,9 @@ class _Run:
         self.timeout = config["tests.timeout"]
         self.service: object | None = None
         self.step = "start"
+        self.generated_files: dict[str, list[sqlite3.Row]] = {}  # generated files in the worktree, with their rows
+        self.broken: dict[str, junit.Entry] = {}  # test case ID -> the load error of its generated file
+        self.project_load_errors: dict[str, str] = {}  # module path -> first line of the message
 
     def execute(self, scope_cases: list[sqlite3.Row] | None, suite_id: int | None) -> RunSummary:
         self.scope_cases = scope_cases
@@ -266,6 +276,10 @@ class _Run:
         )
         for file in missing:
             self._note(f"generated test {file} is missing from .retro/tests/")
+        for row in self.generated_rows:
+            file = row["implementation"].rpartition("::")[0]
+            if file not in missing:
+                self.generated_files.setdefault(file, []).append(row)
         if self.config["service.start"]:
             self.step = "service"
             command = expand(self.config["service.start"], self.values)
@@ -276,7 +290,7 @@ class _Run:
                 message = f"service: {url} did not answer within {ready_timeout} seconds"
                 raise _Stop("error", "service_not_ready", message)
         self.step = "test command"
-        outcome, entries, problem = self._round(1, self.first_names)
+        outcome, entries, problem = self._first_round_loading()
         if outcome.timed_out:
             raise _Stop("interrupted", "timeout", f"test command: stopped after {self.timeout} seconds")
         if entries is None:
@@ -317,8 +331,62 @@ class _Run:
         except junit.JunitError as error:
             return outcome, None, f"no valid JUnit XML: {error}"
 
+    def _first_round_loading(self):
+        """Round 1, run again without each generated test that could not be loaded (project-contract.md, Generated
+        tests). Returns what ``_round`` returns for the last command of the round."""
+        remaining = dict(self.generated_files)
+        repeats = 0
+        while True:
+            outcome, entries, problem = self._round(1, self.first_names)
+            if entries is None:
+                return outcome, None, problem
+            broken: dict[str, junit.Entry] = {}
+            for entry in entries:
+                if not entry.is_load_error:
+                    continue
+                file = generated.load_error_file(entry.name, remaining, self.config["tests.generated_dir"])
+                if file is None:
+                    self._project_load_error(entry)
+                else:
+                    broken.setdefault(file, entry)
+            if not broken or repeats >= len(self.generated_files):
+                return outcome, entries, None
+            repeats += 1
+            kept = self._keep_junit(1, repeats)
+            for file, entry in broken.items():
+                generated.remove_generated(self.worktree, self.config["tests.generated_dir"], file)
+                cases = [row["id"] for row in remaining.pop(file)]
+                for test_case_id in cases:
+                    self.broken[test_case_id] = entry
+                self._note(
+                    f"round 1: generated test {file} ({', '.join(cases)}) could not be loaded; it is removed for the"
+                    f" rest of the run, {kept} is kept, and the command runs again"
+                )
+
+    def _project_load_error(self, entry: junit.Entry) -> None:
+        """Name a test file of the project that could not be loaded, with the line of the message that says why: the
+        last exception line of pytest (``E   ImportError: ...``), or else the first line."""
+        lines = [line.strip() for line in (entry.message or "no message").splitlines() if line.strip()]
+        raised = [line.removeprefix("E").strip() for line in lines if line.startswith("E ")]
+        self.project_load_errors.setdefault(entry.name, raised[-1] if raised else lines[0])
+
+    def _keep_junit(self, number: int, repeat: int) -> str:
+        """Rename the JUnit XML of round ``number`` before its command runs again; returns the name it is kept as."""
+        suffix = ".xml" if self.config["tests.junit"] == "{junit}" else ""
+        source = self.run_dir / f"junit-{number}{suffix}"
+        target = self.run_dir / f"junit-{number}.load-error-{repeat}{suffix}"
+        if source.exists():
+            source.rename(target)
+        return target.name
+
     def _match(self, entries: list[junit.Entry]) -> list[_Item]:
-        """Test cases of the run and their entries (project-contract.md, Test identity and Discovery)."""
+        """Test cases of the run and their entries (project-contract.md, Test identity and Discovery). A load-error
+        entry is not a test: a generated test case of a file that could not be loaded gets that entry; other load
+        errors are named in the ``error`` of the run."""
+        for entry in entries:
+            if entry.is_load_error:  # the generated files that could not be loaded are no longer in the worktree
+                self._project_load_error(entry)
+        entries = [entry for entry in entries if not entry.is_load_error]
         known = {row["test_id"]: row for row in self.conn.execute("SELECT * FROM test_case WHERE test_id IS NOT NULL")}
         generated_names = {
             row["implementation"].rpartition("::")[2]
@@ -338,6 +406,9 @@ class _Run:
         if self.scope_cases is not None:
             reported = {entry.test_id: entry for entry in entries}  # entries outside the scope are ignored
             for row in self.scope_cases:
+                if row["id"] in self.broken:
+                    items.append(_Item(row["id"], self.broken[row["id"]], _revision(row)))
+                    continue
                 test_id = row["test_id"] or bound_ids.get(row["id"])
                 items.append(_Item(row["id"], reported.get(test_id), _revision(row), bound_ids.get(row["id"])))
         else:
@@ -354,7 +425,7 @@ class _Run:
                 seen.add(row["id"])
             for row in self.generated_rows:
                 if row["id"] not in seen:
-                    items.append(_Item(row["id"], None, _revision(row)))
+                    items.append(_Item(row["id"], self.broken.get(row["id"]), _revision(row)))
         for item in items:
             if item.entry is not None and item.entry.outcome != "skipped":
                 item.attempts.append(_attempt(1, item.entry))
@@ -362,7 +433,14 @@ class _Run:
 
     def _reruns(self, items: list[_Item]) -> bool:
         """Rerun the test cases whose first attempt did not pass. True when the user interrupted a round."""
-        rerun = [item for item in items if item.entry is not None and item.entry.outcome in ("failed", "error")]
+        # A test case whose file could not be loaded is not rerun: it would give the same error every time.
+        rerun = [
+            item
+            for item in items
+            if item.entry is not None
+            and item.entry.outcome in ("failed", "error")
+            and item.test_case_id not in self.broken
+        ]
         if not rerun:
             return False
         names = [item.entry.name for item in rerun] if self.config["tests.select"] else None
@@ -376,7 +454,10 @@ class _Run:
             if entries is None:
                 self._note(f"round {number}: {problem}; no attempt is stored for it and no further round runs")
                 return False
-            reported = {entry.test_id: entry for entry in entries}
+            for entry in entries:
+                if entry.is_load_error:
+                    self._project_load_error(entry)
+            reported = {entry.test_id: entry for entry in entries if not entry.is_load_error}
             for item in rerun:
                 entry = reported.get(item.entry.test_id)
                 if entry is not None and entry.outcome != "skipped":
@@ -410,7 +491,17 @@ class _Run:
                         duration=item.entry.duration,
                         attempts=item.attempts,
                     )
-            execution.finish_run(self.conn, self.run_id, status="completed", exit_code=exit_code)
+            execution.finish_run(
+                self.conn, self.run_id, status="completed", exit_code=exit_code, error=self._load_errors()
+            )
+
+    def _load_errors(self) -> str | None:
+        """The ``error`` of a completed run: the test files of the project that could not be loaded."""
+        if not self.project_load_errors:
+            return None
+        return "; ".join(
+            f"test file {name} could not be loaded: {line}" for name, line in self.project_load_errors.items()
+        )
 
     def _store_blocked(self, status: str, reason: str, error: str, exit_code: int | None = None) -> None:
         if hasattr(self, "log"):

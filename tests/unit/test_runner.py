@@ -513,3 +513,106 @@ def test_a_commit_that_cannot_be_checked_out_fails_without_a_run(project):
         )
     assert caught.value.code == "execution_failed"
     assert run_count(project) == 0
+
+
+# A generated test that cannot be loaded (project-contract.md, Generated tests). The fake reports it as pytest does:
+# an error entry with an empty classname and the module path of the file as name.
+
+LOAD_ERROR = "::tests.retro.test_bad"
+GOOD = "tests.retro.test_gen::test_gen_one"
+
+
+def test_a_generated_test_that_cannot_be_loaded_gets_an_error_and_round_1_runs_again(project):
+    good = generated_test(project)
+    broken = generated_test(project, "test_bad.py", "test_bad_one")
+    project.plan({LOAD_ERROR: "error"}, {A: "failed", GOOD: "passed"}, {A: "failed"}, {A: "failed"})
+
+    summary = project.run()
+
+    assert summary.status == "completed"
+    executions = project.executions(summary.run_id)
+    assert executions[broken] == ("executed", "error", None, 1, [(1, "error")])  # not rerun
+    assert executions[good] == ("executed", "passed", None, 1, [(1, "passed")])
+    assert executions[project.case(A)["id"]][4] == [(1, "failed"), (2, "failed"), (3, "failed")]
+    message = project.conn.execute(
+        "SELECT a.failure_message FROM attempt a JOIN test_execution e ON e.id = a.execution_id"
+        " WHERE e.run_id = ? AND e.test_case_id = ?",
+        (summary.run_id, broken),
+    ).fetchone()[0]
+    assert message == "crash\nTraceback"
+    assert project.test_case_count() == 3  # the load error is not a test of the project
+    assert design.get_test_case(project.conn, broken)["test_id"] is None
+
+    calls = project.calls
+    assert [call["generated"] for call in calls[:2]] == [
+        ["tests/retro/test_bad.py", "tests/retro/test_gen.py"],
+        ["tests/retro/test_gen.py"],  # removed for the rest of the run
+    ]
+    assert [call["generated"] for call in calls[2:]] == [["tests/retro/test_gen.py"]] * 2
+    assert [call["names"] for call in calls] == [[], [], ["test_a"], ["test_a"]]
+    run = execution.get_run(project.conn, summary.run_id)
+    assert (run["exit_code"], run["error"], run["junit_path"]) == (1, None, f".retro/runs/{summary.run_id}/junit-1.xml")
+    run_dir = project.path / run["evidence_dir"]
+    assert sorted(p.name for p in run_dir.glob("junit-*")) == [
+        "junit-1.load-error-1.xml",
+        "junit-1.xml",
+        "junit-2.xml",
+        "junit-3.xml",
+    ]
+    assert "test_bad" in (run_dir / "junit-1.load-error-1.xml").read_text()
+    log = (run_dir / "run.log").read_text()
+    assert f"round 1: generated test test_bad.py ({broken}) could not be loaded" in log
+
+
+def test_a_file_of_the_project_that_cannot_be_loaded_is_named_in_the_error_of_the_run(project):
+    good = generated_test(project)
+    project.plan({"::tests.test_broken": "error"}, {A: "passed"}, {A: "passed"})
+
+    summary = project.run()
+
+    assert summary.status == "completed" and len(project.calls) == 1  # nothing runs again
+    run = execution.get_run(project.conn, summary.run_id)
+    assert run["error"] == "test file tests.test_broken could not be loaded: crash"
+    assert project.executions(summary.run_id) == {good: ("blocked", None, "not_reported", 1, [])}
+    assert project.test_case_count() == 1
+
+
+def test_the_rule_is_applied_once_per_generated_file(project):
+    broken = generated_test(project, "test_bad.py", "test_bad_one")
+    # The second command reports the same file again: it is no longer in the worktree, so it is not applied again,
+    # and it is named in the error of the run like any other file.
+    project.plan({LOAD_ERROR: "error"}, {LOAD_ERROR: "error", A: "passed"})
+
+    summary = project.run()
+
+    assert len(project.calls) == 2
+    assert project.executions(summary.run_id)[broken] == ("executed", "error", None, 1, [(1, "error")])
+    run = execution.get_run(project.conn, summary.run_id)
+    assert run["error"] == "test file tests.retro.test_bad could not be loaded: crash"
+
+
+def test_a_selected_run_of_only_broken_generated_tests_completes_with_their_errors(project):
+    broken = generated_test(project, "test_bad.py", "test_bad_one")
+    project.plan({LOAD_ERROR: "error"}, {})
+
+    summary = project.run("selected", [broken])
+
+    assert summary.status == "completed"
+    assert project.executions(summary.run_id) == {broken: ("executed", "error", None, 1, [(1, "error")])}
+    assert len(project.calls) == 2
+
+
+def test_when_the_repeated_command_gives_no_junit_xml_every_execution_is_blocked(project):
+    broken = generated_test(project, "test_bad.py", "test_bad_one")
+    good = generated_test(project)
+    project.plan({LOAD_ERROR: "error"}, "no_xml")
+
+    summary = project.run()
+
+    assert summary.status == "error"
+    assert {case: e[:3] for case, e in project.executions(summary.run_id).items()} == {
+        broken: ("blocked", None, "no_junit"),
+        good: ("blocked", None, "no_junit"),
+    }
+    run_dir = project.path / ".retro" / "runs" / summary.run_id
+    assert (run_dir / "junit-1.load-error-1.xml").exists() and not (run_dir / "junit-1.xml").exists()

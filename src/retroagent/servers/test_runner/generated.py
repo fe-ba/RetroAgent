@@ -89,6 +89,27 @@ def write(path: Path, code: str) -> None:
         raise
 
 
+def module_name(generated_dir: str, file: str) -> str:
+    """The module path of a generated test in the worktree, as pytest names a file it cannot load:
+    ``tests/retro`` and ``cart/test_a.py`` give ``tests.retro.cart.test_a``."""
+    return ".".join((PurePosixPath(generated_dir) / file).with_suffix("").parts)
+
+
+def load_error_file(name: str, files: Iterable[str], generated_dir: str) -> str | None:
+    """The generated file that a load-error entry named ``name`` belongs to: its module path is ``name``, or ends
+    with ``.<name>`` when the rootdir of the framework is deeper than the worktree. None when no file, or more than
+    one, matches."""
+    matches = [
+        file for file in files if (module := module_name(generated_dir, file)) == name or module.endswith("." + name)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def remove_generated(worktree: str | Path, generated_dir: str, file: str) -> None:
+    """Remove a generated test from the worktree, for the rest of the run."""
+    (Path(worktree) / generated_dir / file).unlink(missing_ok=True)
+
+
 def bind(entries: Iterable[Entry], implementation: str) -> Entry | None:
     """The entry of a generated test (project-contract.md, Test identity).
 

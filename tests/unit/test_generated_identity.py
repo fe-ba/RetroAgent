@@ -2,7 +2,14 @@
 
 import pytest
 
-from retroagent.servers.test_runner.generated import bind, copy_generated, names, select_name
+from retroagent.servers.test_runner.generated import (
+    bind,
+    copy_generated,
+    load_error_file,
+    module_name,
+    names,
+    select_name,
+)
 from retroagent.servers.test_runner.junit import Entry
 
 IMPLEMENTATION = "test_req_002_quantity_above_stock_is_rejected.py::test_req_002_quantity_above_stock_is_rejected"
@@ -82,3 +89,24 @@ def test_copy_generated_refuses_paths_outside_retro_tests(tmp_path):
     (tmp_path / ".retro" / "tests").mkdir(parents=True)
     with pytest.raises(ValueError, match="not inside"):
         copy_generated(tmp_path, tmp_path / "wt", "tests/retro", ["../config.yaml::x"])
+
+
+def test_the_module_path_of_a_generated_test_in_the_worktree():
+    assert module_name("tests/retro", "test_a.py") == "tests.retro.test_a"
+    assert module_name("tests/retro", "tests/test_req_002_x.py") == "tests.retro.tests.test_req_002_x"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("tests.retro.tests.test_req_002_x", "tests/test_req_002_x.py"),  # rootdir at the worktree
+        ("retro.tests.test_req_002_x", "tests/test_req_002_x.py"),  # a deeper rootdir
+        ("tests.retro.test_b", "test_b.py"),
+        ("tests.test_cart", None),  # a file of the project
+        ("test_a", None),  # ends two generated files
+        ("tests.retro.tests.test_req_002", None),  # a prefix is not the file
+    ],
+)
+def test_a_load_error_is_bound_to_one_generated_file(name, expected):
+    files = ["tests/test_req_002_x.py", "test_b.py", "test_a.py", "cart/test_a.py"]
+    assert load_error_file(name, files, "tests/retro") == expected

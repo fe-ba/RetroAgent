@@ -122,3 +122,39 @@ def test_a_missing_file_raises(tmp_path):
 def test_no_file_at_all_raises():
     with pytest.raises(JunitError, match="no JUnit XML"):
         parse([])
+
+
+# The JUnit XML that pytest 9 wrote for a generated test it could not load (RUN-0003 of a manual run with a real
+# model): an error of the file, with an empty classname and the module path of the file as name.
+LOAD_ERROR_XML = """<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" \
+errors="1" failures="0" skipped="0" tests="1" time="0.111" timestamp="2026-11-17T15:14:46.276466-05:00" \
+hostname="arch"><testcase classname="" name="tests.retro.tests.test_req_002_add_exceeding_stock_rejected" \
+time="0.000"><error message="collection failure">ImportError while importing test module \
+'/home/u/.retro/worktrees/shop-4b-ffe808875317/c7d45ada468e-745_63vj/tests/retro/tests/\
+test_req_002_add_exceeding_stock_rejected.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/retro/tests/test_req_002_add_exceeding_stock_rejected.py:2: in &lt;module&gt;
+    from shop.cart import OutOfStock
+E   ImportError: cannot import name 'OutOfStock' from 'shop.cart' (/home/u/src/shop/cart.py)</error></testcase>\
+</testsuite></testsuites>"""
+
+
+def test_a_file_that_pytest_could_not_load_is_a_load_error(tmp_path):
+    path = tmp_path / "junit.xml"
+    path.write_text(LOAD_ERROR_XML, encoding="utf-8")
+    (entry,) = parse([path])
+    assert (entry.classname, entry.name, entry.outcome) == (
+        "",
+        "tests.retro.tests.test_req_002_add_exceeding_stock_rejected",
+        "error",
+    )
+    assert entry.is_load_error
+    assert entry.message.startswith("collection failure\nImportError while importing test module")
+    assert "E   ImportError: cannot import name 'OutOfStock' from 'shop.cart'" in entry.message
+
+
+def test_a_test_with_an_error_is_not_a_load_error(tmp_path):
+    path = tmp_path / "junit.xml"
+    path.write_text(PYTEST_XML, encoding="utf-8")
+    assert not any(entry.is_load_error for entry in parse([path]))

@@ -315,17 +315,18 @@ Returns every execution of the test case, oldest first, with run, version, statu
 
 With `replace`, a new triage is added and becomes the current one; the earlier ones are kept and the execution is listed for review.
 
-Three classifications are accepted only when code finds their evidence (INV-15):
+Four classifications are accepted only when code finds their evidence (INV-15):
 
 | Classification | Evidence required |
 |---|---|
 | `expected_change` | The execution belongs to a run against the candidate, and a requirement traced to the test case has a `Changed` or `Removed` entry that applies to the change between the session versions (`project-contract.md`). |
 | `flaky` | At least one rerun of the execution passed, or an earlier execution of the same test case against the same commit has a different verdict (`passed` against `failed` or `error`; see `metrics.md`). |
 | `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run on the baseline commit of the session versions that executed the test case has it with result `failed` or `error`. |
+| `regression` | That same baseline execution, when it exists, did not fail: a failure that the baseline already had is not caused by the change. A test case that the baseline never executed, such as a new or generated one, may be a `regression`. |
 
 "A run against the candidate" means a run whose commit is the candidate commit of the session versions; `expected_change` and `pre_existing` are refused with `invalid_state` while the session versions are not set.
 
-`regression`, `environment` and `test_defect` are judgments of the model and are not validated.
+`environment` and `test_defect` are judgments of the model and are not validated.
 
 Errors: `invalid_state` when the execution did not fail, is already triaged and `replace` is not `true`, or lacks the evidence its classification requires; the message names the missing evidence.
 

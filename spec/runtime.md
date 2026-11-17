@@ -153,15 +153,16 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 | Step | Kind | Tools exposed | Outcome checked by code |
 |---|---|---|---|
-| `analyze` | Model, skill `impact-analysis` | `runtime`, `git`, `memory` | An analysis of the session versions has an impact. |
+| `analyze` | Model, skill `impact-analysis` | Read tools, `memory__sync_requirements`, `git__analyze_changes`, `memory__save_impact`, `memory__add_risk` | An analysis of the session versions has an impact. |
 | `discover` | Direct: full run against the baseline | — | The run is `completed`. Skipped when project tests are already known. |
-| `select` | Model, skill `test-selection` | `runtime`, `git`, `memory`, `test_runner__run_tests` | The analysis has a suite. |
-| `design` | Model, skill `test-design` | `runtime`, `git`, `memory` | None: gaps may remain, and the step says so. |
-| `implement` | Model, skill `test-design` | `runtime`, `git`, `memory`, `test_runner__write_test`, `test_runner__get_evidence` | None: test cases left `designed` become a condition of the decision. |
+| `select` | Model, skill `test-selection` | Read tools, `memory__save_suite`, `test_runner__run_tests` | The analysis has a suite. |
+| `design` | Model, skill `test-design` | Read tools, `memory__design_test_case`, `memory__update_test_case`, `memory__retire_test_case` | None: gaps may remain, and the step says so. |
+| `implement` | Model, skill `test-design` | Read tools, `test_runner__write_test`, `test_runner__get_evidence`, `memory__update_test_case`, `memory__retire_test_case` | None: test cases left `designed` become a condition of the decision. |
 | `run` | Direct: the suite against the baseline, then against the candidate | — | Both runs are `completed`. |
-| `triage` | Model, skill `failure-triage` | `runtime`, `git`, `memory`, `test_runner__get_evidence` | No failed execution of the candidate run is left without triage. |
-| `report` | Model, skill `test-reporting` | `runtime`, `memory`, `reports` | A `completion` report is `rendered`. |
+| `triage` | Model, skill `failure-triage` | Read tools, `test_runner__get_evidence`, `memory__save_triage`, `memory__register_defect`, `memory__link_defect` | No failed execution of the candidate run is left without triage. |
+| `report` | Model, skill `test-reporting` | Read tools of `memory`, the tools of `reports` | A `completion` report is `rendered`. |
 
+- "Read tools" are the tools of `runtime` and every tool of `git` and `memory` whose access is `read` (`mcp-tools.md`, Summary). Each step can write only what its own step records, so that a step never redoes or undoes another one, for example by creating a new analysis during triage. A free message exposes every tool the mode allows.
 - When the outcome of a step is missing, the step runs once more with a message that states what is missing. If it is still missing, the cycle stops with a runtime error that names the step.
 - The cycle also stops when a tool call is refused, when a run ends with status `error` or `interrupted`, and when the model ends a step with a question for the user. In an interactive session the user can answer and continue with `/cycle`; steps whose outcome is already in project memory for the session versions are not repeated.
 - In plan mode the cycle runs `analyze`, `select` and `design`, and stops before `implement`.
@@ -190,6 +191,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 
 - Answers of the model are rendered as Markdown in the terminal.
 - Runs, status, history and defects are shown as tables (FR-30).
+- After every turn of the model, a line computed from `tool_call` lists the write tools that succeeded in the turn and how many times, or says that nothing was recorded. The answer of the model can claim an action; this line shows what was actually recorded.
 - Verbose mode also shows each tool call with its arguments, outcome and duration, each model call with its token usage, each retry, and the notices that the provider library writes, such as deprecation warnings. Outside verbose mode those notices are not shown.
 
 ## Robustness

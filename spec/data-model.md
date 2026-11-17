@@ -419,7 +419,7 @@ Enforced by the data layer, not by prompts. Each one must have a unit test.
 | INV-12 | A defect with status `closed` has a `closed_at`, a `closed_by` and a `close_reason`; an `open` one has none. A defect closed by a run has a `closed_run_id`. | `CHECK` constraint |
 | INV-13 | Every reference made by the model (requirement, test case, file, execution) must exist; otherwise the tool call fails and nothing is written. | Data layer API |
 | INV-14 | A defect is closed only by a run that verifies the fix or by the user. No tool exposed to the model closes a defect. | Tool contracts |
-| INV-15 | A triage with classification `expected_change`, `flaky` or `pre_existing` is stored only when the data layer finds the evidence that `mcp-tools.md` requires. | Data layer API |
+| INV-15 | A triage with classification `expected_change`, `flaky`, `pre_existing` or `regression` is stored only when the data layer finds the evidence that `mcp-tools.md` requires. | Data layer API |
 | INV-16 | A retired test case is never added to a suite. | Data layer API |
 | INV-17 | The function name and the file of a generated test are unique among generated tests, and a rewrite keeps both. | Data layer API |
 

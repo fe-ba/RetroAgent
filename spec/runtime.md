@@ -95,7 +95,7 @@ Kept by the runtime for the duration of the session, never by the model. The ver
 
 ## Slash commands
 
-Slash commands are of three kinds: direct commands, model commands and the cycle command (see Cycle command). **Direct** commands are executed by the runtime without calling the model, because they need no judgment. **Model** commands become a message to the model built from a fixed template. In both cases, tool calls go through the same permission checks and are recorded in `tool_call`.
+Slash commands are of three kinds: direct commands, model commands and the cycle command (see Cycle command). **Direct** commands are executed by the runtime without calling the model, because they need no judgment. **Model** commands become a message to the model built from a fixed template. In both cases, tool calls go through the same permission checks and are recorded in `tool_call`. A direct command and its output are not added to the conversation: the model learns what it did from the state message and from project memory.
 
 ### Direct commands
 

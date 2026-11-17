@@ -91,8 +91,8 @@ Available inside an interactive session. Every slash command is a shortcut: the 
 
 | Key | Action |
 |---|---|
-| `Esc` | Interrupt the current agent action. |
-| `Shift+Tab` | Cycle permission modes. |
+| `Esc` | Interrupt the current agent action. `Ctrl+C` does the same while a turn is running. At a permission prompt, it denies. |
+| `Shift+Tab` | Cycle permission modes at the prompt: `default`, `plan`, `auto`. |
 | `Ctrl+C` twice | Exit. |
 | `Ctrl+D` | Exit. |
 
@@ -107,6 +107,8 @@ Apply to commands and to non-interactive mode.
 | `2` | Invalid usage or invalid configuration. |
 | `3` | Completed with release decision `do_not_release`. |
 | `4` | An action required a permission or an approval that could not be granted. |
+
+Code `4` counts the calls refused by the mode, by a permission or by a missing approval. A call refused because the tool is user only or outside the tools of the step does not count: the model can correct it, and the session may still complete. When several codes apply, the order is `1`, `4`, `3`, `0`.
 
 A direct command that starts a run exits with `1` when the run ends with status `error` or `interrupted`. Failed tests in a completed run are not an error: without a release decision the exit code is `0`.
 

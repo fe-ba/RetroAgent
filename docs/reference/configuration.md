@@ -19,7 +19,7 @@ Each level overrides the previous one. Maps are merged key by key; lists are rep
 The project configuration belongs to the target project, which may come from an untrusted source (ADR-0014). To prevent a project from taking control of the agent:
 
 - `models` can only be defined at user level. A project can only select a profile by name with `model`.
-- `permissions` at project level can only make actions stricter (`allow` to `ask` or `deny`, `ask` to `deny`), never looser.
+- `permissions` at project level can only make actions stricter (`allow` to `ask` or `deny`, `ask` to `deny`), never looser. A looser value is ignored, with a warning at start that names the key: a project cannot stop RetroAgent from starting, and cannot give itself a permission.
 - The commands a project defines (`tests.setup`, `tests.command`, `tests.select`, `service.start`) and `tests.env` run only after the user approved their exact content. See Project commands.
 - MCP servers declared by a project require user approval the first time they are used. Approvals are stored in `~/.retro/approvals.json`.
 - Every approval covers the exact content approved: a command, a server declaration, a steering file or a skill that changes is asked again.

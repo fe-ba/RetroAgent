@@ -15,10 +15,10 @@ The runtime runs a session: it loads configuration, builds the context (`context
 7. Resolve the model profile and its credentials (`llm-providers.md`). A missing credential exits with code `2`.
 8. Resolve the session versions: `--base` and `--candidate`, then `versions.*` from the configuration. Each ref is resolved to its commit here, and both are written to the `session` record; a ref that does not resolve exits with code `2`. A version may stay unset; a command that needs it then fails with `invalid_state`.
 9. Resolve approvals for project MCP servers, steering and skills (ADR-0021). In an interactive session, the user is asked once for each item not yet approved. In non-interactive mode, unapproved items are not loaded and a warning is printed. The mode `auto` never approves them. Project commands are approved at the first run, not here (see Project commands).
-10. Start the bundled MCP servers and the approved ones, with the cleaned environment of `configuration.md`, and read their tools.
+10. Start the bundled MCP servers and the approved ones, with the cleaned environment of `configuration.md`, and read their tools. A bundled server that does not start is a runtime error, exit code `1`.
 11. When `tool_calling` is `auto` and the capability is unknown, run the probe call.
 12. Check the context budget: the context window must be known and large enough for the fixed part of the context (`context-loading.md`). Otherwise exit with code `2`.
-13. State the model in use and whether it is hosted or local.
+13. State the model in use and whether it is hosted or local. `ollama` is local; an `openai_compatible` server is local when its address is a loopback address; every other provider is hosted.
 
 ### End
 
@@ -43,9 +43,11 @@ A turn starts with a user message and ends when the model answers without tool c
    5. Record the outcome and add the result to the conversation. When the results of this model message already fill their share of the context, the remaining calls are not executed and return `deferred`.
 4. Go back to step 1 until the model answers without tool calls, then show the answer.
 
-**Iteration limit.** A turn makes at most `agent.max_iterations` model calls. When the limit is reached, the turn stops with a message; in non-interactive mode this is a runtime error.
+**Order of the checks.** The tool exists (`not_found`), is not user only, is in the tool set of the step, is allowed by the mode and is not `deny`; then the approval of the project commands; then the question to the user. A call that will be refused never asks for anything. When `test_runner.run_tests` needs two permissions, one question names both.
 
-**Interruption.** `Esc` cancels the current model call or tool call. A cancelled run ends with status `interrupted`. Results of completed tool calls stay in the conversation.
+**Iteration limit.** A turn makes at most `agent.max_iterations` model calls, counting the retries of the turn and not the waiting retries of the provider. The tool calls of the last allowed call are still executed, so that every call has a result. When the limit is reached, the turn stops with a message; in non-interactive mode this is a runtime error.
+
+**Interruption.** `Esc` cancels the current model call or tool call. A cancelled run ends with status `interrupted`. Results of completed tool calls stay in the conversation; the cancelled call and the ones after it are answered as not completed. A server stopped to cancel its call is started again. The same holds when a model error ends the turn.
 
 ## Modes and permissions
 

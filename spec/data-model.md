@@ -72,7 +72,7 @@ Audit trail of every tool call (NFR-04).
 | `server` | text | not null | code | MCP server name, or `runtime` for runtime tools. |
 | `tool` | text | not null | code | Tool name. |
 | `arguments` | text | not null | model | JSON arguments as received. Values of known secret variables are replaced by `***`. |
-| `outcome` | text | not null, `ok`, `error` or `denied` | code | `denied` when a permission was refused or the mode forbids the tool. |
+| `outcome` | text | not null, `ok`, `error` or `denied` | code | `denied` when the runtime refused the call: mode, permission, user-only tool, tool outside the step, or missing approval. `error` for every other call without a result, including `deferred`, invalid arguments, an unknown tool and an interrupted call. The row is written before dispatch as `error` with the message that the session ended during the call, and updated when the call is answered. |
 | `error` | text | | code | Error message when `outcome` is `error` or `denied`. |
 | `started_at` | text | not null | code | — |
 | `ended_at` | text | | code | — |

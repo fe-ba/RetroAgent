@@ -31,7 +31,7 @@ The project configuration belongs to the target project, which may come from an 
 `tests.setup`, `tests.command`, `tests.select`, `service.start` and `tests.env` are written in the project and run on the user's machine with the user's privileges. They run only after the user approved them (ADR-0024).
 
 - The approval covers the five values together. It is stored in `~/.retro/approvals.json` as a hash of their content, for the path of the project. When any value changes, the approval is asked again.
-- In an interactive session, the first run shows every command and every variable in full, and asks. This is separate from the permission `run_tests`, which decides whether the agent may start a run.
+- In an interactive session, a run whose commands are not approved shows every command and every variable in full, and asks: approve or deny. A file `approvals.json` that cannot be read is never overwritten; the run is refused and the message names the file. This is separate from the permission `run_tests`, which decides whether the agent may start a run.
 - In non-interactive mode there is no one to ask: without a stored approval, running tests is refused and the session exits with code `4`. `--trust-commands` approves them for that session only; it is meant for CI on a repository of the user's own.
 - The mode `auto` never approves commands.
 - Commands are read from the configuration in the working copy, never from the versions under test.

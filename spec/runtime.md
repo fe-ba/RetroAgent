@@ -72,7 +72,7 @@ In non-interactive mode there is no one to ask: a permission `ask` in mode `defa
 
 ### Project commands
 
-Before the first `test_runner.run_tests` of a session, the runtime checks that the project commands are approved in their current content (`configuration.md`, ADR-0024). This check does not depend on the mode or on `permissions.*`.
+Before every `test_runner.run_tests`, direct `/run` included, the runtime reads the project commands again from the working copy and checks that they are approved in that content (`configuration.md`, ADR-0024). A command edited during the session is therefore asked again before it runs. This check does not depend on the mode or on `permissions.*`.
 
 | Situation | Behavior |
 |---|---|

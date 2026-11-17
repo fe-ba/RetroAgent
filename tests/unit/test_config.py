@@ -256,6 +256,43 @@ def test_invalid_model_profiles_are_errors(home, project, text, key):
     assert (raised.value.level, raised.value.key) == ("user", key)
 
 
+LOCAL_PROFILE = "models:\n  local:\n    provider: ollama\n    name: m\n    base_url: http://localhost:11434\n"
+
+
+@pytest.mark.parametrize(
+    ("written", "value"),
+    [
+        ("off", "off"),  # YAML reads it as the boolean false
+        ("on", "on"),  # and this one as true
+        ("Off", "off"),
+        ("false", "off"),
+        ("true", "on"),
+        ('"off"', "off"),  # quoted: a string
+        ("'on'", "on"),
+        ("default", "default"),
+    ],
+)
+def test_thinking_accepts_the_unquoted_and_the_quoted_forms(home, project, written, value):
+    user_config(home, f"{LOCAL_PROFILE}    context_window: 32768\n    thinking: {written}\n")
+    assert load_config(project).models["local"]["thinking"] == value
+
+
+@pytest.mark.parametrize("written", ["maybe", "1", "null", "[off]"])
+def test_thinking_still_refuses_other_values(home, project, written):
+    user_config(home, f"{LOCAL_PROFILE}    context_window: 32768\n    thinking: {written}\n")
+    with pytest.raises(ConfigError) as raised:
+        load_config(project)
+    assert (raised.value.level, raised.value.key) == ("user", "models.local.thinking")
+
+
+@pytest.mark.parametrize("written", ["off", "true"])
+def test_a_boolean_is_accepted_only_for_thinking(home, project, written):
+    user_config(home, f"{LOCAL_PROFILE}    context_window: 32768\n    tool_calling: {written}\n")
+    with pytest.raises(ConfigError) as raised:
+        load_config(project)
+    assert raised.value.key == "models.local.tool_calling"
+
+
 def test_valid_paths_and_urls(home, project):
     project_config(
         project,

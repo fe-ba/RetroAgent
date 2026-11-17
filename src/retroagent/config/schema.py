@@ -85,6 +85,8 @@ PROFILE_KEYS: dict[str, Key] = {
     "context_window": Key("integer", minimum=1),
 }
 _REQUIRED_FOR_LOCAL = ("base_url", "context_window")  # for ollama and openai_compatible
+# YAML reads an unquoted off or on as a boolean: both forms of thinking are accepted (configuration.md).
+THINKING_BOOLEANS = {False: "off", True: "on"}
 
 
 def validate(level: str, raw: object) -> tuple[dict[str, object], dict[str, dict]]:
@@ -135,6 +137,8 @@ def _profiles(level: str, raw: object) -> dict[str, dict]:
         for name, value in keys.items():
             if name not in PROFILE_KEYS:
                 raise ConfigError(level, f"{where}.{name}", "unknown key")
+            if name == "thinking" and isinstance(value, bool):
+                value = THINKING_BOOLEANS[value]
             values[name] = _check(level, f"{where}.{name}", PROFILE_KEYS[name], value)
         required = ["provider", "name"]
         if values["provider"] in ("ollama", "openai_compatible"):

@@ -77,7 +77,7 @@ Run with one local and one hosted model (NFR-01). Each check scores 1 when it ho
 | ID | Scenario | Steps | Checks | Covers |
 |---|---|---|---|---|
 | SC-21 | Use a local and a hosted model | The same session with each profile, changed with `--model` only. | The session states the model and whether it is hosted or local. Every later scenario runs with both without any other change. | FR-04, NFR-01 |
-| SC-22 | Impact analysis | `/analyze v1.0 v1.1`. | An impact is recorded. `pricing.py` and `discounts.py` are impacted. REQ-004 is named as a documented change. REQ-005 is impacted. REQ-008 is named as new. The answer says that REQ-002 has no test. | FR-08, FR-09, FR-10, B1 |
+| SC-22 | Impact analysis | `/analyze v1.0 v1.1`. | An impact is recorded. `pricing.py` and `discounts.py` are impacted. REQ-004 is named as a documented change. REQ-005 is impacted. REQ-008 is named as new. REQ-002 is impacted, because `cart.py` changed. | FR-08, FR-09, FR-10, B1 |
 | SC-23 | Selection | `/select`. | TC-020 and TC-014 are in the suite (inclusiveness 1.0). Every test case has a reason. The gap of REQ-002 is reported. A full run against the candidate is asked for, because the change adds tests. | FR-14 |
 | SC-24 | Design and implementation | `/design`, then `/implement`. | A test case traced to REQ-002 has every field. Its input data and its expected result are concrete values. Its test passes against both versions. The test name follows `test_req_002_<description>`. | FR-11, FR-12, FR-13, B2 |
 | SC-25 | Triage | `/run --on both`, then `/triage`. | The four failures get the classifications of the oracle. One defect is registered, for the shipping test, with a justification that cites the evidence. No defect is registered for the others. | FR-21, FR-22, B4 |

@@ -27,7 +27,7 @@ Choose the test cases that can reveal whether the change broke something, order 
    2. test cases of requirements with a documented change;
    3. the rest by risk level, then by priority;
    4. within each group, test cases with recent failures first.
-6. **Justify.** Each `selection_reason` names the link that justifies it: the requirement, module or risk, and what changed. Example: "Traced to REQ-004; coupon calculation changed in `cart/discounts.py` (high risk)."
+6. **Justify.** A test case is traced to a requirement only when `memory__get_test_cases` lists that requirement for it; never infer a trace from its title. Each `selection_reason` names the link that justifies it: the requirement, module or risk, and what changed. Example: "Traced to REQ-004; coupon calculation changed in `cart/discounts.py` (high risk)."
 7. **Record.** Call `memory__save_suite` with the analysis ID and the items. The suite may be empty when no existing test case relates to the change; designed test cases are added to it later.
-8. **Gaps.** List the impacted requirements and modules that no selected test case covers.
+8. **Gaps.** `memory__save_suite` returns `uncovered_requirements`, computed by code from the traces. Report every one of them as a gap; never say that there are no gaps when that list is not empty. Add the impacted modules that no selected test case exercises.
 9. **Answer** with the suite ID, a table (position, test case, title, priority, status, reason), the number of test cases left out, the gaps, and the next step: `/design` when there are gaps, otherwise `/run --on both`.

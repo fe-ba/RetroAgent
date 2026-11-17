@@ -197,7 +197,7 @@ Writer of both tables: memory server.
 | `id` | text | primary key, `TC-NNN` | code | — |
 | `title` | text | not null | model, or code for discovered tests | Discovered tests use their test name. |
 | `objective` | text | | model | Null for discovered tests until described. |
-| `priority` | text | `high`, `medium` or `low` | model | Discovered tests start as `medium`. |
+| `priority` | text | `high`, `medium` or `low` | model | A discovered test starts with the highest priority of the requirements its name links it to, or `medium` when it has none; the model may change it afterwards. |
 | `status` | text | `designed` or `implemented` | code | — |
 | `origin` | text | `designed` or `project_suite` | code | `designed` when created by the agent; `project_suite` when discovered in the project's tests. |
 | `designed_by` | text | | code | Model that designed it. Null for `project_suite`. |

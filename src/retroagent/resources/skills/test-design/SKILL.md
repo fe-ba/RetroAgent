@@ -10,7 +10,7 @@ Three tasks: **design** creates test case specifications with status `designed`;
 ## Design
 
 1. **Suite.** Call `memory__get_suite`. Test cases are added to the current suite when designed; without one, the selection comes first: load the skill `test-selection`.
-2. **Scope.** The scope given by the user (requirement IDs, modules or free text), or the impacted requirements and modules that the current suite does not cover. Read them with `memory__get_analysis` and `memory__get_requirements`, and read the code with `git__get_diff` and `git__read_file` at `candidate`.
+2. **Scope.** The scope given by the user (requirement IDs, modules or free text). Without one, the `uncovered_requirements` of the current suite, which every one needs at least one test case, and then the impacted modules that no test case of the suite exercises. Read them with `memory__get_analysis` and `memory__get_requirements`, and read the code with `git__get_diff` and `git__read_file` at `candidate`.
 3. **Avoid duplicates.** Call `memory__get_test_cases` with `requirement_id` for each requirement in scope. Do not design what an existing test case already verifies.
 4. **Derive the test cases.** For each requirement or area in scope:
    - the behavior that changed, from the diff and the documented change;

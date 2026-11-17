@@ -209,7 +209,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 | `analysis_id` | integer | yes | — |
 | `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
 
-Returns the suite ID. `position` orders the presentation of the suite; the test framework decides the execution order. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions, or for a retired test case.
+Returns the suite ID and `uncovered_requirements`: the impacted requirements of the analysis that no test case of the suite is traced to, by a design or a name link. They are computed by code, so that a gap never depends on the model reading a trace correctly. `position` orders the presentation of the suite; the test framework decides the execution order. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions, or for a retired test case.
 
 ### `memory.get_suite`
 
@@ -217,7 +217,7 @@ Returns the suite ID. `position` orders the presentation of the suite; the test 
 |---|---|---|---|
 | `suite_id` | integer | no | Default: the current suite. |
 
-Returns the suite with each test case, its position and its selection reason.
+Returns the suite with each test case, its position and its selection reason, and its `uncovered_requirements`, computed when read: a test case designed later for a requirement removes it from the list.
 
 ### `memory.design_test_case`
 

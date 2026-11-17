@@ -53,9 +53,28 @@ def local_time(monkeypatch):
 
 
 @pytest.fixture
-def reference(tmp_path, local_time):
-    """The records of the reference scenario, cycle 1, in a temporary project, and the session that reports on it."""
-    project = open_project(tmp_path)
+def reference(tmp_path, local_time, monkeypatch):
+    """The records of the reference scenario, cycle 1, in a temporary project, and the session that reports on it.
+
+    The user level is an empty temporary directory: the configuration of the person running the tests never applies.
+    """
+    monkeypatch.setenv("RETRO_HOME", str(tmp_path / "retro-home"))
+    project = open_project(tmp_path / "project")
     scenario = load_reference_scenario(project.conn)
     yield project.with_id(scenario.session_id), scenario
     project.conn.close()
+
+
+@pytest.fixture(scope="module")
+def agent_project(tmp_path_factory, pip_cache):
+    """An example project shared by the tests of one module; each test starts its own session on it."""
+    with example_project(tmp_path_factory, pip_cache) as path:
+        yield path
+
+
+@pytest.fixture
+def agent(agent_project):
+    """A non-interactive session on the shared example project, in mode default, with the project commands trusted
+    and the real bundled servers. Its provider is an empty FakeProvider: tests pass their own to the turn."""
+    with start(agent_project, trust_commands=True) as session:
+        yield session

@@ -41,6 +41,7 @@ class Config:
     project_dir: Path
     values: Mapping[str, object]  # every key of the schema, by dotted name
     models: Mapping[str, Mapping[str, object]]  # profiles of the user level
+    warnings: tuple[str, ...] = ()  # shown at session start: looser project permissions that were ignored
 
     def __getitem__(self, key: str) -> object:
         return self.values[key]
@@ -72,17 +73,35 @@ def load_config(project_dir: str | Path) -> Config:
     project_dir = Path(project_dir).resolve()
     values = {key: copy.deepcopy(spec.default) for key, spec in KEYS.items()}
     models: dict[str, dict] = {}
+    source = dict.fromkeys(values, "default")
+    warnings: list[str] = []
     for level, path in ((USER, retro_home() / "config.yaml"), (PROJECT, project_dir / ".retro" / "config.yaml")):
         level_values, level_models = validate(level, _read(level, path))
         for key, value in level_values.items():
+            if level == PROJECT and key.startswith(PERMISSIONS) and _looser(value, values[key]):
+                warnings.append(
+                    f"project configuration, key {key}: {value} is looser than {values[key]} and is ignored;"
+                    f" the {source[key]} value {values[key]} is kept. A project can only make a permission stricter."
+                )
+                continue
             if isinstance(value, dict) and isinstance(values[key], dict):
                 values[key] = {**values[key], **value}
             else:
                 values[key] = value
+            source[key] = f"{level}-level"
         models.update(level_models)
     if values["project.name"] is None:
         values["project.name"] = project_dir.name
-    return Config(project_dir=project_dir, values=values, models=models)
+    return Config(project_dir=project_dir, values=values, models=models, warnings=tuple(warnings))
+
+
+PERMISSIONS = "permissions."
+STRICTNESS = ("allow", "ask", "deny")  # from the loosest to the strictest
+
+
+def _looser(value: str, current: str) -> bool:
+    """Whether a permission value of the project would loosen the value of the levels before it."""
+    return STRICTNESS.index(value) < STRICTNESS.index(current)
 
 
 def _read(level: str, path: Path) -> object:

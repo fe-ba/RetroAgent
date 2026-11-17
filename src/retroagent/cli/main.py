@@ -39,6 +39,10 @@ def _session_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"retro {__version__}")
     parser.add_argument("-C", dest="project", metavar="<path>", help="target project; default: current directory")
     parser.add_argument("-p", "--print", action="store_true", help="non-interactive: run the prompt and exit")
+    parser.add_argument("-m", "--model", metavar="<name>", help="model profile for this session")
+    parser.add_argument(
+        "--mode", choices=("default", "plan", "auto"), default="default", help="permission mode; default: default"
+    )
     parser.add_argument(
         "--trust-commands",
         action="store_true",
@@ -105,14 +109,22 @@ def _run_session(argv: list[str]) -> int:
         trust_commands=args.trust_commands,
         base=args.base,
         candidate=args.candidate,
+        model=args.model,
+        mode=args.mode,
     )
     try:
         started = session.start(options)
     except session.SessionError as error:
         err.print(f"retro: {error}", markup=False, highlight=False)
         return EXIT_USAGE
+    except session.StartFailed as error:
+        err.print(f"retro: {error}", markup=False, highlight=False)
+        return EXIT_RUNTIME_ERROR
     out = Console() if sys.stdout.isatty() else Console(width=OUTPUT_WIDTH)
     with started:
+        err.print(started.statement, markup=False, highlight=False)
+        for warning in started.warnings:
+            err.print(f"warning: {warning}", markup=False, highlight=False)
         for run_id in started.recovered_runs:
             err.print(f"{run_id} was left running by an earlier session and is now interrupted", markup=False)
         if command is not None:

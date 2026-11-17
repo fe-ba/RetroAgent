@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 import pytest
+from fixtures.agent_session import write_user_config
 
 from retroagent import __version__
 from retroagent.cli.main import main
@@ -13,6 +14,7 @@ def isolated(tmp_path, monkeypatch):
     """A bare `retro` starts a session on the current directory: never let it be this repository."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RETRO_HOME", str(tmp_path / "home"))
+    write_user_config(tmp_path / "home")
 
 
 def git(repo, *args):
@@ -67,7 +69,7 @@ def test_help_lists_only_what_exists(capsys):
         ["-p", "/analyze v1.0 v1.1"],
         ["-p", "/run all --on nowhere"],
         ["-p", "/history 0"],
-        ["--mode", "auto", "-p", "/status"],
+        ["--mode", "nowhere", "-p", "/status"],
     ],
 )
 def test_invalid_usage_exits_2(argv):

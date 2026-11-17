@@ -1,32 +1,53 @@
-"""The session: Start and End of spec/runtime.md, without the model and the MCP servers.
+"""The session: Start and End of spec/runtime.md, and the session state the turn works with.
 
 Start, in order: resolve the project, load the configuration, take the lock, open memory and create the session
-record, recover from an interrupted session, and resolve the session versions. Steps 7 and 9 to 13 (model,
-approvals of project extensions, MCP servers, probe, context budget) belong to later slices. End removes leftover
-worktrees, sets ``ended_at`` and releases the lock.
+record, recover from an interrupted session, resolve the model profile and its credential, resolve the session
+versions, start the bundled MCP servers, check the context budget and state the model. Step 9 (approvals of project
+extensions) is not built: project MCP servers, steering and skills are not `Must`. Step 11 (the probe of tool
+calling) only chooses the JSON fallback mode, which is not built either: ``tool_calling`` is native, and a profile
+that needs the fallback cannot start a session.
+
+End stops the MCP servers, removes leftover worktrees, sets ``ended_at`` and releases the lock.
 """
 
+import datetime
+import ipaddress
+import os
 import sqlite3
 import subprocess
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from retroagent.config import Config, ConfigError, load_config
+from retroagent.config.schema import HOSTED_PROVIDERS
+from retroagent.context import budget, skills, state, system, tools
+from retroagent.llm.provider import LLMProvider, Message, MissingCredential, ToolDefinition, Wait
+from retroagent.mcp_client import Client
+from retroagent.mcp_client.client import ServerUnavailable
 from retroagent.memory import SchemaTooNew, connect, execution, sessions
-from retroagent.runtime import lock
+from retroagent.runtime import lock, permissions
+from retroagent.runtime import tools as runtime_tools
 from retroagent.servers.git import changes
 from retroagent.servers.test_runner import worktree
 
-# Slice 1 has no model. The session record needs one; slice 3 writes "<provider>/<model name>" (Start step 7).
-MODEL_PLACEHOLDER = "none"
-# The result limit of mcp-tools.md (Large output) before the context window of a model is known.
+# The result limit of mcp-tools.md (Large output) until the context window of the model is known (Start step 12).
 RESULT_CHAR_LIMIT = 20_000
+MODEL_VARIABLE = "RETRO_MODEL"
 
 ROLES = ("base", "candidate")
+
+ProviderFactory = Callable[[Mapping[str, object], Callable[[Wait], None]], LLMProvider]
 
 
 class SessionError(Exception):
     """The session cannot start: invalid usage, invalid configuration, the lock is held. Exit code 2."""
+
+
+class StartFailed(Exception):
+    """The session cannot start for a reason that is not configuration: a bundled server did not start. Exit code
+    1, a runtime error (runtime.md, Start step 10)."""
 
 
 class UnknownRef(Exception):
@@ -46,6 +67,8 @@ class Options:
     trust_commands: bool = False
     base: str | None = None
     candidate: str | None = None
+    model: str | None = None  # -m: a model profile
+    mode: str = "default"  # --mode
 
 
 @dataclass(frozen=True)
@@ -54,14 +77,56 @@ class Version:
     commit: str
 
 
+@dataclass
+class Conversation:
+    """Messages since the conversation started, and the skill whose body is in it (context-loading.md). Kept in
+    memory only; the state message is never part of it."""
+
+    messages: list[Message] = field(default_factory=list)
+    loaded_skill: str | None = None
+    loaded_skill_call: str | None = None  # the tool call whose result holds the body of the loaded skill
+
+    def clear(self) -> None:
+        self.messages, self.loaded_skill, self.loaded_skill_call = [], None, None
+
+
+@dataclass
+class Usage:
+    """Model calls and tokens of the session (llm-providers.md, Usage). Not stored in project memory."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class Session:
     def __init__(self, project_dir: Path, config: Config, options: Options, held: lock.Lock):
         self.project_dir, self.config = project_dir, config
         self.interactive, self.trust_commands = options.interactive, options.trust_commands
+        self.mode = options.mode
         self._lock = held
         self.conn: sqlite3.Connection | None = None
         self.id: int | None = None
         self.recovered_runs: list[str] = []
+        self.warnings: list[str] = list(config.warnings)  # shown by the CLI after start
+        # Model (Start step 7)
+        self.profile_name: str | None = None
+        self.profile: Mapping[str, object] | None = None
+        self.model: str | None = None  # <provider>/<model name>
+        self.provider: LLMProvider | None = None
+        self.statement: str | None = None  # Start step 13
+        # MCP servers (Start step 10) and the context (Start step 12)
+        self.client: Client | None = None
+        self.skills = skills.discover([skills.bundled_location()])
+        self.steering = system.bundled_steering()
+        self.budget: budget.Budget | None = None
+        # Session state of runtime.md, kept in memory for the duration of the session.
+        self.grants: set[str] = set()
+        self.conversation = Conversation()
+        self.calibration = budget.Calibration()
+        self.usage = Usage()
+        self.warned_no_usage = False
+        self.listener: Callable[[object], None] | None = None  # set by the turn; receives the waits of the adapter
 
     def versions(self) -> dict[str, Version | None]:
         """The session versions, as written in the session record."""
@@ -71,15 +136,70 @@ class Session:
             for role in ROLES
         }
 
+    # The context of a call (context-loading.md) ---------------------------------------------------------------------
+
+    def system_context(self) -> str:
+        """The system context, with ``RETRO.md`` read now: the turn calls this once, at its start."""
+        retro_md = self.project_dir / "RETRO.md"
+        text = retro_md.read_text(encoding="utf-8", errors="replace") if retro_md.is_file() else None
+        return system.system_context(
+            steering=self.steering, project_text=text, skills_index=skills.skills_index(self.skills)
+        )
+
+    def servers(self) -> dict[str, tuple[ToolDefinition, ...]]:
+        """The tools of every server, ``runtime`` included, with bare names."""
+        return {"runtime": runtime_tools.DEFINITIONS, **(self.client.tools() if self.client else {})}
+
+    def known_tools(self) -> set[str]:
+        """The exposed name of every existing tool, including those never offered to the model."""
+        return {tools.exposed_name(server, tool.name) for server, defined in self.servers().items() for tool in defined}
+
+    def definitions(self, tool_set: str | None = None, mode: str | None = None) -> tuple[ToolDefinition, ...]:
+        return tools.tool_definitions(self.servers(), mode=mode or self.mode, tool_set=tool_set)
+
+    def permissions(self) -> dict[str, str]:
+        return permissions.effective(self.config, self.grants)
+
+    def state_message(self, cycle_step: state.CycleStep | None = None) -> Message:
+        versions = self.versions()
+        base, candidate = versions["base"], versions["candidate"]
+        session_state = state.SessionState(
+            date=datetime.date.today(),
+            project_name=self.config["project.name"],
+            project_path=str(self.project_dir),
+            base=state.Version(base.ref, base.commit) if base else None,
+            candidate=state.Version(candidate.ref, candidate.commit) if candidate else None,
+            mode=self.mode,
+            permissions=self.permissions(),
+            commands_approved=self.trust_commands,
+            model=self.model,
+            language=self.config["language"],
+            cycle_step=cycle_step,
+        )
+        digest = state.read_digest(self.conn, base.commit if base else None, candidate.commit if candidate else None)
+        return state.state_message(session_state, digest)
+
+    def on_wait(self, wait: Wait) -> None:
+        """A wait of the provider adapter (a retry or pacing), reported to the listener of the current turn."""
+        if self.listener is not None:
+            self.listener(wait)
+
+    # End ----------------------------------------------------------------------------------------------------------
+
     def end(self) -> None:
-        """End steps 2 to 4. Safe to call more than once and after a partial start."""
+        """End steps 1 to 4. Safe to call more than once and after a partial start."""
         try:
-            worktree.remove_leftovers(self.project_dir)
-            if self.conn is not None:
-                if self.id is not None:
-                    sessions.end_session(self.conn, self.id)
-                self.conn.close()
-                self.conn = None
+            try:
+                if self.client is not None:
+                    self.client.stop()
+                    self.client = None
+            finally:
+                worktree.remove_leftovers(self.project_dir)
+                if self.conn is not None:
+                    if self.id is not None:
+                        sessions.end_session(self.conn, self.id)
+                    self.conn.close()
+                    self.conn = None
         finally:
             self._lock.release()
 
@@ -90,20 +210,30 @@ class Session:
         self.end()
 
 
-def start(options: Options) -> Session:
-    """Start a session. Raises ``SessionError`` for every condition of exit code 2."""
+def start(options: Options, *, provider_factory: ProviderFactory | None = None) -> Session:
+    """Start a session. Raises ``SessionError`` for every condition of exit code 2 and ``StartFailed`` when a bundled
+    server does not start.
+
+    ``provider_factory(profile, on_wait)`` builds the provider of the model profile; the default is
+    ``LiteLLMProvider``. Tests pass one that returns a ``FakeProvider``.
+    """
+    if options.mode not in tools.MODES:
+        raise SessionError(f"unknown mode {options.mode!r}; use one of {', '.join(tools.MODES)}")
     project_dir = project_top_level(Path(options.project) if options.project is not None else Path.cwd())
     (project_dir / ".retro").mkdir(exist_ok=True)
     try:
         config = load_config(project_dir)
     except ConfigError as error:
         raise SessionError(str(error)) from error
+    profile_name, profile = resolve_profile(config, options)
     try:
         held = lock.acquire(project_dir / ".retro" / "retro.lock")
     except lock.LockHeld as error:
         raise SessionError(str(error)) from error
     # Nothing of project memory is read or written before the lock is held.
     session = Session(project_dir, config, options, held)
+    session.profile_name, session.profile = profile_name, profile
+    session.model = f"{profile['provider']}/{profile['name']}"
     try:
         try:
             session.conn = connect(project_dir)
@@ -111,11 +241,17 @@ def start(options: Options) -> Session:
             raise SessionError(str(error)) from error
         session.id = sessions.start_session(
             session.conn,
-            model=MODEL_PLACEHOLDER,
+            model=session.model,
             interactive=options.interactive,
             result_char_limit=RESULT_CHAR_LIMIT,
         )
         session.recovered_runs = recover(session.conn, project_dir, session.id)
+        # 7. The model profile and its credential.
+        check_credential(profile)
+        session.provider = _make_provider(profile, session.on_wait, provider_factory)
+        capabilities = session.provider.capabilities()
+        check_tool_calling(profile, capabilities.tool_calling)
+        # 8. The session versions.
         refs = {
             "base": options.base or config["versions.base"],
             "candidate": options.candidate or config["versions.candidate"],
@@ -124,10 +260,91 @@ def start(options: Options) -> Session:
             set_versions(session.conn, session.id, project_dir, **refs)
         except UnknownRef as error:
             raise SessionError(str(error)) from error
+        # 10. The bundled MCP servers, with the environment of retro without model credentials.
+        session.client = Client(project_dir, session.id, config.credential_env_names)
+        try:
+            session.client.start()
+        except ServerUnavailable as error:
+            raise StartFailed(str(error)) from error
+        # 12. The context budget.
+        try:
+            session.budget = budget.budget(profile, capabilities)
+            fixed = budget.fixed_characters(
+                session.system_context(), session.definitions(mode="default"), session.state_message()
+            )
+            warning = budget.check_start(session.budget, budget.estimate(fixed, budget.INITIAL_RATIO))
+        except budget.ContextBudgetError as error:
+            raise SessionError(str(error)) from error
+        if warning:
+            session.warnings.append(warning)
+        sessions.set_result_limit(session.conn, session.id, budget.result_limit(session.budget))
+        # 13. The model in use, and whether it is hosted or local.
+        session.statement = statement(profile)
     except BaseException:
         session.end()
         raise
     return session
+
+
+def resolve_profile(config: Config, options: Options) -> tuple[str, Mapping[str, object]]:
+    """Start step 7, without the credential: ``-m``, then ``RETRO_MODEL``, then ``model`` (configuration.md)."""
+    name = options.model or os.environ.get(MODEL_VARIABLE) or config["model"]
+    profiles = ", ".join(sorted(config.models)) or "none"
+    if not name:
+        raise SessionError(
+            f"no model is set: use -m <profile>, {MODEL_VARIABLE} or the key model. Profiles of the user"
+            f" configuration: {profiles}."
+        )
+    if name not in config.models:
+        raise SessionError(f"there is no model profile {name!r} in the user configuration. Profiles: {profiles}.")
+    return name, config.models[name]
+
+
+def check_credential(profile: Mapping[str, object]) -> None:
+    """A profile whose variable is not set stops the session, naming the variable but not its value."""
+    variable = profile["api_key_env"]
+    if variable and not os.environ.get(variable):
+        raise SessionError(str(MissingCredential(variable)))
+
+
+def check_tool_calling(profile: Mapping[str, object], supported: bool | None) -> None:
+    """Tool calls are native in this build: the JSON fallback mode (NFR-17) is not built."""
+    if profile["tool_calling"] == "json" or (profile["tool_calling"] == "auto" and supported is False):
+        raise SessionError(
+            f"the model {profile['name']} needs the JSON fallback mode for tool calling, which is not available in"
+            " this build; use a model that supports tool calling, with tool_calling native or auto"
+        )
+
+
+def _make_provider(profile, on_wait, factory: ProviderFactory | None) -> LLMProvider:
+    if factory is not None:
+        return factory(profile, on_wait)
+    from retroagent.llm.litellm_provider import LiteLLMProvider  # loads LiteLLM only when a session needs it
+
+    return LiteLLMProvider(profile, on_wait=on_wait)
+
+
+def is_local(profile: Mapping[str, object]) -> bool:
+    """``ollama`` is local; an ``openai_compatible`` server is local when its address is a loopback address."""
+    if profile["provider"] == "ollama":
+        return True
+    if profile["provider"] in HOSTED_PROVIDERS:
+        return False
+    host = urlsplit(profile["base_url"] or "").hostname or ""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def statement(profile: Mapping[str, object]) -> str:
+    """Start step 13 (llm-providers.md, Privacy)."""
+    model = f"{profile['provider']}/{profile['name']}"
+    if is_local(profile):
+        return f"Model: {model}, local: the context of each call stays on this machine."
+    return f"Model: {model}, hosted: the context of each call is sent to the provider."
 
 
 def project_top_level(path: Path) -> Path:

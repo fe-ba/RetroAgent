@@ -83,6 +83,51 @@ def test_null_removes_a_limit_set_by_a_lower_level(home, project):
 
 
 @pytest.mark.parametrize(
+    ("user", "project_value", "effective"),
+    [("allow", "ask", "ask"), ("allow", "deny", "deny"), ("ask", "deny", "deny"), (None, "deny", "deny")],
+)
+def test_a_stricter_project_permission_applies(home, project, user, project_value, effective):
+    if user is not None:
+        user_config(home, f"permissions:\n  run_tests: {user}\n")
+    project_config(project, f"permissions:\n  run_tests: {project_value}\n")
+    config = load_config(project)
+    assert config["permissions.run_tests"] == effective
+    assert config.warnings == ()
+
+
+@pytest.mark.parametrize(
+    ("user", "project_value", "kept", "source"),
+    [("ask", "allow", "ask", "user-level"), ("deny", "ask", "deny", "user-level"), (None, "allow", "ask", "default")],
+)
+def test_a_looser_project_permission_is_ignored_with_a_warning(home, project, user, project_value, kept, source):
+    if user is not None:
+        user_config(home, f"permissions:\n  write_tests: {user}\n")
+    project_config(project, f"permissions:\n  write_tests: {project_value}\n  run_tests: deny\n")
+    config = load_config(project)
+    assert config["permissions.write_tests"] == kept
+    assert config["permissions.run_tests"] == "deny"  # the stricter key of the same file still applies
+    (warning,) = config.warnings
+    assert "permissions.write_tests" in warning
+    assert f"the {source} value {kept} is kept" in warning
+
+
+@pytest.mark.parametrize("value", ["allow", "ask", "deny"])
+def test_an_equal_project_permission_is_silent(home, project, value):
+    user_config(home, f"permissions:\n  start_service: {value}\n")
+    project_config(project, f"permissions:\n  start_service: {value}\n")
+    config = load_config(project)
+    assert config["permissions.start_service"] == value
+    assert config.warnings == ()
+
+
+def test_the_user_level_may_loosen_a_permission(home, project):
+    user_config(home, "permissions:\n  run_tests: allow\n")
+    config = load_config(project)
+    assert config["permissions.run_tests"] == "allow"
+    assert config.warnings == ()
+
+
+@pytest.mark.parametrize(
     ("level", "text", "key"),
     [
         ("project", "models:\n  local:\n    provider: ollama\n    name: m\n", "models"),

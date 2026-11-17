@@ -5,7 +5,8 @@ The runtime is synchronous; the MCP SDK is asynchronous. The client runs an even
 Every method is called from ordinary threads, and ``stop()`` may be called while a ``call()`` waits in another one.
 
 A server that dies, that does not answer in time or that cannot start is a ``ServerUnavailable`` error, a
-``ToolError`` with code ``unavailable`` (mcp-tools.md, Errors), never a hang. A server is not restarted.
+``ToolError`` with code ``unavailable`` (mcp-tools.md, Errors), never a hang. A server that fails is not restarted;
+a server stopped to cancel its call with ``interrupt()`` is started again (runtime.md, Interruption).
 """
 
 import json
@@ -100,6 +101,7 @@ class Client:
         if commands is None:
             commands = {name: bundled_command(name, self.project_dir, session_id) for name in BUNDLED}
         self._servers = {name: _Server(name, command) for name, command in commands.items()}
+        self._replaced: list[_Server] = []  # servers stopped by interrupt(); their stderr is closed by stop()
         self._portal_context = None
         self._portal: BlockingPortal | None = None
 
@@ -113,10 +115,30 @@ class Client:
         for server in self._servers.values():
             server.task = self._portal.start_task_soon(self._hold, server)
         for server in self._servers.values():
-            if not server.ready.wait(START_TIMEOUT + 5.0) or server.session is None:
-                error = server.unavailable(server.failure or f"did not start within {START_TIMEOUT:.0f} seconds")
+            error = self._wait_ready(server)
+            if error is not None:
                 self.stop()
                 raise error
+
+    def interrupt(self, name: str) -> None:
+        """Cancel the call in progress on one server: stop it, which ends the work in progress through its stop path
+        (a run is stored ``interrupted``), then start it again. The cancelled ``call()`` raises ``ServerUnavailable``.
+        Raises ``ServerUnavailable`` when the server does not start again."""
+        old = self._servers[name]
+        self._stop_server(old)
+        self._replaced.append(old)
+        new = _Server(name, old.command)
+        self._servers[name] = new
+        new.task = self._portal.start_task_soon(self._hold, new)
+        error = self._wait_ready(new)
+        if error is not None:
+            raise error
+
+    @staticmethod
+    def _wait_ready(server: _Server) -> ServerUnavailable | None:
+        if not server.ready.wait(START_TIMEOUT + 5.0) or server.session is None:
+            return server.unavailable(server.failure or f"did not start within {START_TIMEOUT:.0f} seconds")
+        return None
 
     def tools(self) -> dict[str, tuple[ToolDefinition, ...]]:
         """The tools of each server with bare names, the input of ``context.tools.tool_definitions``."""
@@ -156,8 +178,9 @@ class Client:
             self._stop_server(server)
         self._portal_context.__exit__(None, None, None)
         self._portal = self._portal_context = None
-        for server in self._servers.values():
+        for server in (*self._servers.values(), *self._replaced):
             server.stderr.close()
+        self._replaced = []
 
     def __enter__(self) -> "Client":
         self.start()

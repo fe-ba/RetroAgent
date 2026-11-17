@@ -23,7 +23,9 @@ classifiers = [
 ]
 dependencies = [
     "litellm>=1.50",          # provider adapter (ADR-0003)
-    "mcp>=1.2",               # MCP client and servers (ADR-0004)
+    "mcp>=2.3,<3",            # MCP client and servers (ADR-0004); the low-level server API of 2.x
+    "anyio>=4",               # the event loop of the MCP client and servers
+    "jsonschema>=4.20",       # validation of tool arguments (mcp-tools.md, Execution results)
     "pyyaml>=6.0",            # configuration
     "rich>=13.7",             # terminal tables and prompts
     "prompt_toolkit>=3.0.43", # interactive session

@@ -118,3 +118,42 @@ def list_modules(conn: sqlite3.Connection, analysis_id: int) -> list[sqlite3.Row
     return conn.execute(
         "SELECT * FROM analysis_module WHERE analysis_id = ? ORDER BY module", (analysis_id,)
     ).fetchall()
+
+
+def latest_analysis(conn: sqlite3.Connection, base_commit: str, candidate_commit: str) -> int | None:
+    """The latest analysis of a version pair: the one whose commits equal them."""
+    row = conn.execute(
+        "SELECT id FROM analysis WHERE base_commit = ? AND candidate_commit = ? ORDER BY id DESC LIMIT 1",
+        (base_commit, candidate_commit),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def list_files(conn: sqlite3.Connection, analysis_id: int) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM analysis_file WHERE analysis_id = ? ORDER BY path", (analysis_id,)).fetchall()
+
+
+def get_file(conn: sqlite3.Connection, analysis_id: int, path: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM analysis_file WHERE analysis_id = ? AND path = ?", (analysis_id, path)
+    ).fetchone()
+
+
+def list_requirements(conn: sqlite3.Connection, analysis_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM analysis_requirement WHERE analysis_id = ? ORDER BY requirement_id", (analysis_id,)
+    ).fetchall()
+
+
+def list_risks(conn: sqlite3.Connection) -> list[dict]:
+    """Every risk, oldest first, with the IDs of its requirements."""
+    risks = []
+    for row in conn.execute("SELECT * FROM risk ORDER BY id").fetchall():
+        requirement_ids = [
+            link["requirement_id"]
+            for link in conn.execute(
+                "SELECT requirement_id FROM risk_requirement WHERE risk_id = ? ORDER BY requirement_id", (row["id"],)
+            ).fetchall()
+        ]
+        risks.append({**dict(row), "requirement_ids": requirement_ids})
+    return risks

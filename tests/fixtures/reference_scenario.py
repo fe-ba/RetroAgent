@@ -116,6 +116,27 @@ class ReferenceScenario:
         return self.test_cases[test_id]
 
 
+# The change set of v1.0..v1.1, as `git diff --numstat` gives it on the example.
+CHANGE_SET = [
+    {"path": path, "change": "modified", "lines_added": added, "lines_removed": removed}
+    for path, added, removed in [
+        ("README.md", 1, 1),
+        ("RETRO.md", 2, 2),
+        ("docs/requirements.md", 9, 1),
+        ("pyproject.toml", 2, 2),
+        ("src/shop/api.py", 6, 2),
+        ("src/shop/cart.py", 3, 3),
+        ("src/shop/discounts.py", 12, 6),
+        ("src/shop/orders.py", 15, 2),
+        ("src/shop/pricing.py", 9, 5),
+        ("src/shop/store.py", 2, 1),
+        ("tests/test_api.py", 11, 0),
+        ("tests/test_discounts.py", 16, 0),
+        ("tests/test_orders.py", 9, 1),
+    ]
+]
+
+
 def _attempts(version: str, test_id: str) -> list[dict]:
     results = FAILING[version].get(test_id, ("passed",))
     return [
@@ -207,24 +228,7 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         base_commit=BASE_COMMIT,
         candidate_ref=CANDIDATE_REF,
         candidate_commit=CANDIDATE_COMMIT,
-        files=[
-            {"path": path, "change": "modified", "lines_added": added, "lines_removed": removed}
-            for path, added, removed in [
-                ("README.md", 1, 1),
-                ("RETRO.md", 2, 2),
-                ("docs/requirements.md", 9, 1),
-                ("pyproject.toml", 2, 2),
-                ("src/shop/api.py", 6, 2),
-                ("src/shop/cart.py", 3, 3),
-                ("src/shop/discounts.py", 12, 6),
-                ("src/shop/orders.py", 15, 2),
-                ("src/shop/pricing.py", 9, 5),
-                ("src/shop/store.py", 2, 1),
-                ("tests/test_api.py", 11, 0),
-                ("tests/test_discounts.py", 16, 0),
-                ("tests/test_orders.py", 9, 1),
-            ]
-        ],
+        files=CHANGE_SET,
     )
     impact.record_impact(
         conn,

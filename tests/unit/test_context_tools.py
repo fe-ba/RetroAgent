@@ -5,21 +5,11 @@ import re
 from importlib.resources import files
 
 import pytest
+from fixtures.tool_definitions import DOCUMENTED, with_placeholders
 
 from retroagent.context import tools
 from retroagent.llm.provider import ToolDefinition
 
-# The tools of mcp-tools.md (Summary), as <server>.<tool>.
-DOCUMENTED = """
-runtime.load_skill runtime.set_versions
-git.resolve_ref git.analyze_changes git.get_diff git.read_file git.list_files
-memory.sync_requirements memory.get_requirements memory.get_analysis memory.save_impact memory.add_risk
-memory.get_risks memory.save_suite memory.get_suite memory.design_test_case memory.update_test_case
-memory.retire_test_case memory.get_test_cases memory.get_runs memory.get_executions memory.get_test_case_history
-memory.save_triage memory.register_defect memory.link_defect memory.close_defect memory.get_defects
-test_runner.write_test test_runner.run_tests test_runner.get_evidence
-reports.evaluate reports.prepare_report reports.render_report reports.get_report
-""".split()
 ALL = sorted(tools.normalize(name) for name in DOCUMENTED)
 
 # The skill of each model step of /cycle (runtime.md, Cycle command).
@@ -35,12 +25,8 @@ TOOL_NAME = re.compile(r"\b[a-z_]+__[a-z_]+\b")
 
 
 def servers() -> dict[str, list[ToolDefinition]]:
-    """Every documented tool, as the servers report them: bare names. The order is not sorted on purpose."""
-    found: dict[str, list[ToolDefinition]] = {}
-    for name in reversed(DOCUMENTED):
-        server, tool = name.split(".")
-        found.setdefault(server, []).append(ToolDefinition(tool, f"Description of {tool}.", {"type": "object"}))
-    return found
+    """Every documented tool, as the servers report them: bare names, real definitions where the tool exists."""
+    return with_placeholders()
 
 
 def names(definitions) -> list[str]:
@@ -62,8 +48,9 @@ def test_names():
 def test_a_free_message_exposes_every_tool_but_the_user_only_ones_sorted_by_name():
     definitions = tools.tool_definitions(servers(), mode="default")
     assert names(definitions) == [name for name in ALL if name != "memory__close_defect"]
+    analyze_changes = next(d for d in servers()["git"] if d.name == "analyze_changes")
     assert definitions[0] == ToolDefinition(
-        "git__analyze_changes", "Description of analyze_changes.", {"type": "object"}
+        "git__analyze_changes", analyze_changes.description, analyze_changes.parameters
     )
 
 

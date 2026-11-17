@@ -104,6 +104,11 @@ def _scope(conn, scope, test_case_ids, base_commit, candidate_commit) -> tuple[l
     return rows, None
 
 
+def _why(interruption: KeyboardInterrupt) -> str:
+    """The reason of an interruption: its message, such as "the server was stopped", or the user."""
+    return str(interruption) or "interrupted by the user"
+
+
 def _active_implemented(row: sqlite3.Row) -> bool:
     return row["status"] == "implemented" and row["retired_at"] is None
 
@@ -235,8 +240,8 @@ class _Run:
         except _Stop as stop:
             self._store_blocked(stop.status, stop.reason, stop.error, stop.exit_code)
             return
-        except KeyboardInterrupt:
-            self._store_blocked("interrupted", "interrupted", f"{self.step}: interrupted by the user")
+        except KeyboardInterrupt as error:
+            self._store_blocked("interrupted", "interrupted", f"{self.step}: {_why(error)}")
             raise
         items = self._match(entries)
         interrupted = self._reruns(items)
@@ -365,8 +370,8 @@ class _Run:
             self.step = f"rerun round {number}"
             try:
                 _, entries, problem = self._round(number, names)
-            except KeyboardInterrupt:
-                self._note(f"round {number}: interrupted by the user; the run keeps the attempts stored so far")
+            except KeyboardInterrupt as error:
+                self._note(f"round {number}: {_why(error)}; the run keeps the attempts stored so far")
                 return True
             if entries is None:
                 self._note(f"round {number}: {problem}; no attempt is stored for it and no further round runs")
@@ -408,7 +413,8 @@ class _Run:
             execution.finish_run(self.conn, self.run_id, status="completed", exit_code=exit_code)
 
     def _store_blocked(self, status: str, reason: str, error: str, exit_code: int | None = None) -> None:
-        self._note(error)
+        if hasattr(self, "log"):
+            self._note(error)
         with transaction(self.conn):
             for row in self.blocked_rows:
                 execution.record_test_execution(
@@ -422,10 +428,14 @@ class _Run:
             execution.finish_run(self.conn, self.run_id, status=status, exit_code=exit_code, error=error)
 
     def _fail(self, error: BaseException) -> None:
-        """A run left ``running`` by an unexpected error ends as ``error``; it is never left running."""
+        """A run left ``running`` by an unexpected error ends as ``error``, and by an interruption outside the
+        rounds as ``interrupted``; it is never left running."""
         run_id = getattr(self, "run_id", None)
         row = execution.get_run(self.conn, run_id) if run_id else None
         if row is None or row["status"] != "running":
+            return
+        if isinstance(error, KeyboardInterrupt):
+            self._store_blocked("interrupted", "interrupted", f"{self.step}: {_why(error)}")
             return
         message = f"{self.step}: {type(error).__name__}: {error}"
         if hasattr(self, "log"):

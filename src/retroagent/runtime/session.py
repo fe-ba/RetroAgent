@@ -14,6 +14,7 @@ from pathlib import Path
 from retroagent.config import Config, ConfigError, load_config
 from retroagent.memory import SchemaTooNew, connect, execution, sessions
 from retroagent.runtime import lock
+from retroagent.servers.git import changes
 from retroagent.servers.test_runner import worktree
 
 # Slice 1 has no model. The session record needs one; slice 3 writes "<provider>/<model name>" (Start step 7).
@@ -178,12 +179,10 @@ def set_versions(
 
 def resolve_commit(project_dir: Path, ref: str) -> str:
     """The full commit hash of a tag, a branch or a commit. Raises ``UnknownRef``."""
-    if not ref:
+    commit = changes.resolve(project_dir, ref)
+    if commit is None:
         raise UnknownRef(ref)
-    result = _git(project_dir, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}")
-    if result.returncode != 0:
-        raise UnknownRef(ref)
-    return result.stdout.strip()
+    return commit
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:

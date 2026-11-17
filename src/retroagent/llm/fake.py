@@ -3,30 +3,18 @@
 Each item of the script is a ``Response`` to return or an exception to raise. The usage it reports is the usage
 of the scripted response when that is set, otherwise the result of the ``usage`` function; the default reports the
 characters sent and received divided by 4, so the truncation guard sees an honest provider. A test that needs a
-provider which drops context passes, for example, ``usage=lambda request, response: Usage(sent_characters(request)
-// 16, 1)``, a quarter of the estimate (SC-19).
+provider which drops context passes, for example, ``usage=lambda request, response:
+Usage(request_characters(request) // 16, 1)``, a quarter of the estimate (SC-19).
 """
 
 import dataclasses
 import json
 from collections.abc import Callable, Iterable
 
-from retroagent.llm.provider import Capabilities, Request, Response, Usage
+from retroagent.llm.provider import Capabilities, Request, Response, Usage, request_characters
 
 UsageFunction = Callable[[Request, Response], Usage | None]
 TOOL_CALLING = Capabilities(tool_calling=True, context_window=None)
-
-
-def sent_characters(request: Request) -> int:
-    """Characters of the messages and tool definitions of a request."""
-    total = 0
-    for message in request.messages:
-        total += len(message.content)
-        for call in message.tool_calls:
-            total += len(call.name) + len(json.dumps(call.arguments))
-    for tool in request.tools:
-        total += len(tool.name) + len(tool.description) + len(json.dumps(tool.parameters))
-    return total
 
 
 def received_characters(response: Response) -> int:
@@ -34,7 +22,7 @@ def received_characters(response: Response) -> int:
 
 
 def estimated_usage(request: Request, response: Response) -> Usage:
-    return Usage(input_tokens=sent_characters(request) // 4, output_tokens=received_characters(response) // 4)
+    return Usage(input_tokens=request_characters(request) // 4, output_tokens=received_characters(response) // 4)
 
 
 class FakeProvider:

@@ -13,7 +13,7 @@ from retroagent.llm import (
     ToolDefinition,
     Usage,
 )
-from retroagent.llm.fake import sent_characters
+from retroagent.llm.provider import request_characters
 
 
 def request(text="hello", tools=()):
@@ -58,8 +58,8 @@ def test_default_usage_is_the_characters_divided_by_4():
     tool = ToolDefinition("memory__get_suite", "Read the suite.", {"type": "object", "properties": {}})
     sent = request("x" * 400, tools=[tool])
     response = FakeProvider([Response("y" * 40)]).complete(sent)
-    assert response.usage == Usage(input_tokens=sent_characters(sent) // 4, output_tokens=10)
-    assert sent_characters(sent) == len("rules") + 400 + len("memory__get_suite") + len("Read the suite.") + len(
+    assert response.usage == Usage(input_tokens=request_characters(sent) // 4, output_tokens=10)
+    assert request_characters(sent) == len("rules") + 400 + len("memory__get_suite") + len("Read the suite.") + len(
         '{"type": "object", "properties": {}}'
     )
 
@@ -71,11 +71,11 @@ def test_usage_of_a_scripted_response_wins():
 
 def test_usage_function_can_report_fewer_tokens_than_were_sent():
     def quarter(sent, response):
-        return Usage(sent_characters(sent) // 16, 1)
+        return Usage(request_characters(sent) // 16, 1)
 
     sent = request("z" * 4000)
     fake = FakeProvider([Response("ok")], usage=quarter)
-    assert fake.complete(sent).usage.input_tokens == sent_characters(sent) // 16
+    assert fake.complete(sent).usage.input_tokens == request_characters(sent) // 16
 
 
 def test_usage_function_can_report_nothing():

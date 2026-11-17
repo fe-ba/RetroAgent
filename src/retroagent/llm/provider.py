@@ -3,6 +3,7 @@
 The runtime depends only on this module. No module outside ``retroagent.llm`` imports a provider library.
 """
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -73,6 +74,21 @@ class LLMProvider(Protocol):
     def complete(self, request: Request) -> Response: ...
 
     def capabilities(self) -> Capabilities: ...
+
+
+def message_characters(message: Message) -> int:
+    """Characters of a message as sent: its content and the name and arguments of its tool calls."""
+    return len(message.content) + sum(len(call.name) + len(json.dumps(call.arguments)) for call in message.tool_calls)
+
+
+def definition_characters(tool: ToolDefinition) -> int:
+    return len(tool.name) + len(tool.description) + len(json.dumps(tool.parameters))
+
+
+def request_characters(request: Request) -> int:
+    """Characters of the messages and tool definitions of a request: the measure of the context budget and of the
+    truncation guard (``context-loading.md``, Measuring)."""
+    return sum(message_characters(m) for m in request.messages) + sum(definition_characters(t) for t in request.tools)
 
 
 def request_from_profile(

@@ -5,6 +5,7 @@ the retries that change the request are done by the turn. Waits go through an in
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -19,6 +20,7 @@ from retroagent.llm.provider import (
     Message,
     MissingCredential,
     ProviderError,
+    ProviderNotice,
     ProviderUnavailable,
     QuotaExhausted,
     RateLimitExceeded,
@@ -56,13 +58,52 @@ _QUOTA_ID = re.compile(r'"?quotaId"?\s*:\s*"([^"]+)"')
 _RETRY_DELAY = re.compile(r'"?retryDelay"?\s*:\s*"(\d+(?:\.\d+)?)s"|retry in (\d+(?:\.\d+)?)\s*s', re.IGNORECASE)
 
 
+# The loggers of LiteLLM. Each has a handler of its own that writes to the terminal.
+LITELLM_LOGGERS = ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy")
+
+
+class _Notices(logging.Handler):
+    """Keeps the lines LiteLLM logs at WARNING and above, instead of writing them to the terminal; the provider
+    reports them as ``ProviderNotice`` after each call (runtime.md, Display)."""
+
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.lines.append(record.getMessage())
+        except Exception:  # a record that cannot be formatted is dropped, never raised into the model call
+            pass
+
+    def drain(self) -> list[str]:
+        self.acquire()
+        try:
+            lines, self.lines = self.lines, []
+        finally:
+            self.release()
+        return lines
+
+
+NOTICES = _Notices()
+
+
 def _litellm():
-    """LiteLLM, set to make no network call other than model calls: its model list comes from the bundled copy."""
+    """LiteLLM, set to make no network call other than model calls: its model list comes from the bundled copy.
+    Its log lines go to ``NOTICES``, not to the terminal."""
     os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
     os.environ["LITELLM_OFFLINE_MODE"] = "true"
     import litellm
 
     litellm.suppress_debug_info = True
+    for name in LITELLM_LOGGERS:
+        logger = logging.getLogger(name)
+        for handler in list(logger.handlers):
+            if handler is not NOTICES:
+                logger.removeHandler(handler)
+        if NOTICES not in logger.handlers:
+            logger.addHandler(NOTICES)
+        logger.propagate = False
     return litellm
 
 
@@ -74,9 +115,11 @@ class LiteLLMProvider:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         on_wait: Callable[[Wait], None] | None = None,
+        on_notice: Callable[[ProviderNotice], None] | None = None,
         completion: Callable[..., object] | None = None,
     ):
-        """``profile`` is a validated model profile. ``completion`` replaces ``litellm.completion`` in tests."""
+        """``profile`` is a validated model profile. ``completion`` replaces ``litellm.completion`` in tests.
+        ``on_notice`` receives each line LiteLLM logged during a call."""
         self._litellm = _litellm()
         self._profile = dict(profile)
         self._provider = profile["provider"]
@@ -84,6 +127,7 @@ class LiteLLMProvider:
         self._clock = clock
         self._sleep = sleep
         self._on_wait = on_wait
+        self._on_notice = on_notice
         self._completion = completion or self._litellm.completion
         self._sent: deque[float] = deque()
 
@@ -131,6 +175,8 @@ class LiteLLMProvider:
                 failure = self._classify(error, api_key)
                 if failure is None:
                     raise
+            finally:
+                self._report_notices(api_key)
             if failure is None:
                 return _response(raw)
             # Raised outside the except clause, so the LiteLLM error and the request it may carry are not chained.
@@ -144,6 +190,11 @@ class LiteLLMProvider:
             seconds = wait if wait is not None else waits[retries[kind]]
             retries[kind] += 1
             self._wait(Wait(reason=kind, attempt=retries[kind], seconds=seconds))
+
+    def _report_notices(self, api_key: str) -> None:
+        for line in NOTICES.drain():
+            if self._on_notice is not None:
+                self._on_notice(ProviderNotice(_scrub(line, api_key)))
 
     def _pace(self) -> None:
         """No window of one minute holds more than ``requests_per_minute`` calls; retries count. Records the send."""

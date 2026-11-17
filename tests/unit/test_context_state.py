@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fixtures import reference_scenario as ref
-from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, no_removal
 
 from retroagent.context.state import CycleStep, Digest, SessionState, Version, read_digest, state_message
 from retroagent.memory import impact
@@ -106,6 +106,8 @@ def test_analysis_with_impact_and_a_suite_with_a_designed_test_case(build):
         build.analysis_id,
         modules=[{"module": "cart", "files": ["app/cart.py"], "risk_level": "high", "reason": "Totals"}],
         requirements=[{"requirement_id": "REQ-001", "reason": "Totals"}],
+        not_impacted=[],
+        removal_applies=no_removal,
     )
     suite_id = build.suite(build.test_case(), build.test_case(implemented=False))
     fields = lines(state_message(session(), read_digest(build.conn, BASE_COMMIT, CANDIDATE_COMMIT)))

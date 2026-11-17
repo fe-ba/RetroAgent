@@ -23,6 +23,9 @@ tests:
 """
 
 PRICING = {"module": "pricing", "files": ["src/shop/pricing.py"], "risk_level": "high", "reason": "r"}
+EVERY = [{"requirement_id": f"REQ-00{n}", "reason": "r"} for n in range(1, 9)]  # not impacted
+DESIGN = {"title": "t", "objective": "o", "priority": "high", "preconditions": [], "input_data": [], "steps": ["s"],
+          "expected_result": "e", "requirement_ids": ["REQ-002"], "selection_reason": "r"}  # fmt: skip
 
 
 @pytest.fixture
@@ -64,9 +67,13 @@ def test_every_write_tool_succeeds_while_the_runtime_connection_is_open(project)
     calls = [
         ("memory", "sync_requirements", {}),
         ("git", "analyze_changes", {}),
-        ("memory", "save_impact", {"analysis_id": 1, "modules": [PRICING], "requirements": []}),
+        ("memory", "save_impact", {"analysis_id": 1, "modules": [PRICING], "requirements": [], "not_impacted": EVERY}),
         ("memory", "add_risk", {"description": "Shipping charged wrongly.", "level": "high"}),
-    ]
+        ("memory", "save_suite", {"analysis_id": 1, "items": []}),
+        ("memory", "design_test_case", DESIGN),
+        ("memory", "update_test_case", {"test_case_id": "TC-001", "fields": {"priority": "low"}}),
+        ("memory", "retire_test_case", {"test_case_id": "TC-001", "reason": "Obsolete."}),
+    ]  # fmt: skip
     for server, tool, arguments in calls:
         outcome, elapsed = dispatch(conn, session_id, client, server, tool, arguments)
         assert not isinstance(outcome, Exception), f"{tool}: {outcome}"
@@ -77,7 +84,7 @@ def test_every_write_tool_succeeds_while_the_runtime_connection_is_open(project)
     assert not isinstance(outcome, Exception), outcome
     assert outcome["status"] == "completed" and outcome["counts"]["passed"] == 1
     assert elapsed < BUSY_TIMEOUT
-    assert conn.execute("SELECT COUNT(*) FROM tool_call").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM tool_call").fetchone()[0] == len(calls) + 1
 
 
 def test_a_read_left_open_by_the_runtime_would_make_a_server_wait(project):

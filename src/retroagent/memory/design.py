@@ -136,7 +136,12 @@ def update_test_case(conn: sqlite3.Connection, test_case_id: str, fields: dict) 
             allowed = _DESIGN_FIELDS
         refused = [name for name in fields if name not in allowed]
         if refused:
-            raise InvariantViolation(f"invalid_state: {', '.join(refused)} cannot change for {test_case_id}")
+            why = (
+                ": its generated test is implemented, so they change only with its code, through test_runner.write_test"
+                if allowed != _DESIGN_FIELDS
+                else ""
+            )
+            raise InvariantViolation(f"invalid_state: {', '.join(refused)} cannot change for {test_case_id}{why}")
         for requirement_id in fields.get("requirement_ids", []):
             require_exists(conn, "requirement", "id", requirement_id, "requirement")
         for name, value in fields.items():
@@ -215,15 +220,22 @@ def rewrite_generated_test(conn: sqlite3.Connection, test_case_id: str, implemen
     return revision
 
 
-def retire_test_case(conn: sqlite3.Connection, test_case_id: str, *, reason: str, retired_by: str) -> None:
+def retire_test_case(conn: sqlite3.Connection, test_case_id: str, *, reason: str, retired_by: str) -> str:
+    """Take an active test case out of use. Retiring is permanent; returns the time it was retired."""
     now = utc_now()
     with transaction(conn):
-        require_exists(conn, "test_case", "id", test_case_id, "test case")
+        row = conn.execute("SELECT retired_at FROM test_case WHERE id = ?", (test_case_id,)).fetchone()
+        if row is None:
+            raise InvariantViolation(f"INV-13: test case {test_case_id!r} does not exist")
+        if row["retired_at"] is not None:
+            raise InvariantViolation(
+                f"invalid_state: test case {test_case_id} was already retired at {row['retired_at']}"
+            )
         conn.execute(
-            "UPDATE test_case SET retired_at = ?, retire_reason = ?, retired_by = ?, updated_at = ?"
-            " WHERE id = ? AND retired_at IS NULL",
+            "UPDATE test_case SET retired_at = ?, retire_reason = ?, retired_by = ?, updated_at = ? WHERE id = ?",
             (now, reason, retired_by, now, test_case_id),
         )
+    return now
 
 
 def bind_test_id(conn: sqlite3.Connection, test_case_id: str, test_id: str) -> None:
@@ -302,3 +314,115 @@ def add_to_suite(
             "INSERT INTO suite_test_case (suite_id, test_case_id, position, selection_reason) VALUES (?, ?, ?, ?)",
             (suite_id, test_case_id, position, selection_reason),
         )
+
+
+def save_suite(conn: sqlite3.Connection, *, analysis_id: int, session_id: int, items: list[dict]) -> int:
+    """A new suite for an analysis with its items ``{test_case_id, position, selection_reason}``, in one transaction.
+
+    Unknown references fail first (INV-13); then duplicated test cases or positions, and retired test cases (INV-16),
+    are refused as ``invalid_argument``, naming each one.
+    """
+    with transaction(conn):
+        require_exists(conn, "analysis", "id", analysis_id, "analysis")
+        test_case_ids = [item["test_case_id"] for item in items]
+        for test_case_id in dict.fromkeys(test_case_ids):
+            require_exists(conn, "test_case", "id", test_case_id, "test case")
+        positions = [item["position"] for item in items]
+        problems = []
+        repeated = sorted({t for t in test_case_ids if test_case_ids.count(t) > 1})
+        if repeated:
+            problems.append(f"repeated test cases: {', '.join(repeated)}")
+        repeated_positions = sorted({p for p in positions if positions.count(p) > 1})
+        if repeated_positions:
+            problems.append(f"repeated positions: {', '.join(map(str, repeated_positions))}")
+        marks = ",".join("?" * len(test_case_ids))
+        retired = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM test_case WHERE retired_at IS NOT NULL AND id IN ({marks}) ORDER BY id", test_case_ids
+            )
+        ]
+        if retired:
+            problems.append(f"INV-16: retired test cases cannot be added to a suite: {', '.join(retired)}")
+        if problems:
+            raise InvariantViolation("invalid_argument: " + "; ".join(problems))
+        suite_id = add_suite(conn, analysis_id=analysis_id, session_id=session_id)
+        for item in items:
+            add_to_suite(
+                conn,
+                suite_id,
+                test_case_id=item["test_case_id"],
+                position=item["position"],
+                selection_reason=item["selection_reason"],
+            )
+    return suite_id
+
+
+def design_test_case(
+    conn: sqlite3.Connection, *, suite_id: int, selection_reason: str, designed_by: str, **fields
+) -> tuple[str, int]:
+    """Create a ``designed`` test case and add it to the suite after its last position, in one transaction.
+
+    ``fields`` are the design fields of ``add_test_case``. ``requirement_ids`` may be empty only when memory holds no
+    requirement. Returns the test case ID and its position.
+    """
+    with transaction(conn):
+        require_exists(conn, "suite", "id", suite_id, "suite")
+        has_requirements = conn.execute("SELECT 1 FROM requirement LIMIT 1").fetchone() is not None
+        if has_requirements and not fields.get("requirement_ids"):
+            raise InvariantViolation(
+                "invalid_argument: requirement_ids is empty, but the project has requirements: trace the test case"
+                " to every requirement it verifies"
+            )
+        test_case_id = add_test_case(conn, designed_by=designed_by, **fields)
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM suite_test_case WHERE suite_id = ?", (suite_id,)
+        ).fetchone()[0]
+        add_to_suite(conn, suite_id, test_case_id=test_case_id, position=position, selection_reason=selection_reason)
+    return test_case_id, position
+
+
+def suite_items(conn: sqlite3.Connection, suite_id: int) -> list[sqlite3.Row]:
+    """The items of a suite with the test case of each, in the order of their position."""
+    return conn.execute(
+        "SELECT s.position, s.test_case_id, s.selection_reason, tc.title, tc.priority, tc.status, tc.origin,"
+        " tc.retired_at FROM suite_test_case AS s JOIN test_case AS tc ON tc.id = s.test_case_id"
+        " WHERE s.suite_id = ? ORDER BY s.position, tc.id",
+        (suite_id,),
+    ).fetchall()
+
+
+def get_suite(conn: sqlite3.Connection, suite_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM suite WHERE id = ?", (suite_id,)).fetchone()
+
+
+def list_test_cases(
+    conn: sqlite3.Connection,
+    *,
+    ids: list[str] | None = None,
+    status: str | None = None,
+    requirement_id: str | None = None,
+    include_retired: bool = False,
+) -> list[sqlite3.Row]:
+    """Test cases by ID, filtered by every criterion given. Test cases asked for by ID are returned even when
+    retired; otherwise retired ones only with ``include_retired``."""
+    sql, params = "SELECT * FROM test_case WHERE 1 = 1", []
+    if ids is not None:
+        sql += f" AND id IN ({','.join('?' * len(ids))})"
+        params += ids
+    elif not include_retired:
+        sql += " AND retired_at IS NULL"
+    if status is not None:
+        sql += " AND status = ?"
+        params.append(status)
+    if requirement_id is not None:
+        sql += " AND id IN (SELECT test_case_id FROM test_case_requirement WHERE requirement_id = ?)"
+        params.append(requirement_id)
+    return conn.execute(sql + " ORDER BY id", params).fetchall()
+
+
+def test_case_requirements(conn: sqlite3.Connection, test_case_id: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT requirement_id, link FROM test_case_requirement WHERE test_case_id = ? ORDER BY requirement_id, link",
+        (test_case_id,),
+    ).fetchall()

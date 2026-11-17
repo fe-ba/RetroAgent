@@ -96,6 +96,14 @@ class Shell:
             return self._model(lambda ask, interrupt: commands.analyze(
                 self.session, command.refs, ask=ask, listener=self._listener, interrupt=interrupt
             ))  # fmt: skip
+        if name == "/select":
+            return self._model(lambda ask, interrupt: commands.select(
+                self.session, ask=ask, listener=self._listener, interrupt=interrupt
+            ))  # fmt: skip
+        if name == "/design":
+            return self._model(lambda ask, interrupt: commands.design_tests(
+                self.session, command.scope, ask=ask, listener=self._listener, interrupt=interrupt
+            ))  # fmt: skip
         if name == "/run":
             return self._run(command)
         try:

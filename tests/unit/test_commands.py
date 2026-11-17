@@ -8,12 +8,14 @@ from rich.console import Console
 from retroagent.cli import tables
 from retroagent.cli.interactive import run_failed
 from retroagent.runtime.commands import (
+    SELECT,
     Command,
     CommandError,
     NotAvailable,
     RunOutcome,
     RunRow,
     Status,
+    design_message,
     help_rows,
     parse,
 )
@@ -45,6 +47,11 @@ from retroagent.servers.errors import ToolError
         ("/skills", Command("/skills")),
         ("/mcp", Command("/mcp")),
         ("/init", Command("/init")),
+        ("/select", Command("/select")),
+        ("/design", Command("/design")),
+        ("/design REQ-002", Command("/design", scope="REQ-002")),
+        ("/design REQ-002   REQ-004", Command("/design", scope="REQ-002 REQ-004")),
+        ('/design "the coupon rules"', Command("/design", scope="the coupon rules")),
     ],
 )
 def test_parse(line, command):
@@ -64,6 +71,7 @@ def test_parse(line, command):
         ("/analyze v1.0", "give both refs, or none"),
         ("/mode fast", "unknown mode fast"),
         ("/clear all", "usage: /clear"),
+        ("/select now", "usage: /select"),
         ("/nowhere", "unknown command /nowhere"),
         ("what changed?", "not a command"),
     ],
@@ -89,11 +97,26 @@ def row(status="completed", **counts):
     )
 
 
-@pytest.mark.parametrize("name", ["/cycle", "/select", "/design", "/implement", "/triage", "/report", "/defects"])
-def test_the_commands_of_slice_4_are_known_and_not_available(name):
+@pytest.mark.parametrize("name", ["/cycle", "/implement", "/triage", "/report", "/defects"])
+def test_the_commands_of_later_sessions_are_known_and_not_available(name):
     with pytest.raises(NotAvailable, match="is not available yet"):
         parse(name)
     assert help_rows(name)[0][1].endswith("Not available yet in this build.")
+
+
+def test_the_templates_of_select_and_design():
+    """runtime.md, Model commands: the fixed messages, with the backticks of the specification kept."""
+    assert SELECT == (
+        "Load the skill `test-selection` and select and prioritize the regression suite for the latest impact analysis."
+    )
+    assert design_message(None) == (
+        "Load the skill `test-design` and design test cases for the impacted areas not covered by the current suite."
+    )
+    assert (
+        design_message("REQ-002 REQ-004") == "Load the skill `test-design` and design test cases for `REQ-002 REQ-004`."
+    )
+    for name in ("/select", "/design"):
+        assert not help_rows(name)[0][1].endswith("Not available yet in this build.")
 
 
 def test_help_lists_every_command():

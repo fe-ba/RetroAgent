@@ -84,17 +84,24 @@ def result_in(request, call_id: str) -> dict:
     return json.loads(next(m.content for m in request.messages if m.role == "tool" and m.tool_call_id == call_id))
 
 
+# The decision of the reference scenario (ORACLE.md, SC-22): every requirement is impacted except REQ-001, the catalog
+# search, whose behavior no changed file takes part in.
+NOT_IMPACTED = {"REQ-001": "Catalog search: no changed file takes part in it."}
+
+
 def analyze_script(text: str = "The impact is recorded.") -> list:
     """A model that follows the skill ``impact-analysis`` on shop-api: it loads the skill, synchronizes the
     requirements, computes the change set, reads one diff and the requirements, records the impact with every file of
-    the change set, registers one risk and answers."""
+    the change set and a decision on every requirement it read, registers one risk and answers."""
     changes = call("git__analyze_changes")
+    requirements = call("memory__get_requirements")
 
     def save_impact(request) -> Response:
         result = result_in(request, changes.id)
         modules: dict[str, list[str]] = {}
         for changed in result["files"]:
             modules.setdefault(changed["path"].split("/")[0], []).append(changed["path"])
+        read = [r["id"] for r in result_in(request, requirements.id)["requirements"]]
         return calls(
             call(
                 "memory__save_impact",
@@ -104,7 +111,14 @@ def analyze_script(text: str = "The impact is recorded.") -> list:
                         {"module": name, "files": files, "risk_level": "high", "reason": "Changed in the diff."}
                         for name, files in sorted(modules.items())
                     ],
-                    "requirements": [{"requirement_id": "REQ-004", "reason": "Documented change in v1.1."}],
+                    "requirements": [
+                        {"requirement_id": r, "reason": "A changed file takes part in it."}
+                        for r in read
+                        if r not in NOT_IMPACTED
+                    ],
+                    "not_impacted": [
+                        {"requirement_id": r, "reason": NOT_IMPACTED[r]} for r in read if r in NOT_IMPACTED
+                    ],
                 },
             )
         )
@@ -114,7 +128,7 @@ def analyze_script(text: str = "The impact is recorded.") -> list:
         calls(call("memory__sync_requirements")),
         calls(changes),
         calls(call("git__get_diff", {"path": "src/shop/pricing.py"})),
-        calls(call("memory__get_requirements")),
+        calls(requirements),
         save_impact,
         calls(
             call(

@@ -57,8 +57,10 @@ def test_the_tools_feed_the_tool_definitions(shop):
         names = [d.name for d in tool_definitions(client.tools(), mode="plan", tool_set="analyze")]
     assert names == [
         "git__analyze_changes", "git__get_diff", "git__list_files", "git__read_file", "git__resolve_ref",
-        "memory__add_risk", "memory__get_analysis", "memory__get_requirements", "memory__get_risks",
-        "memory__save_impact", "memory__sync_requirements",
+        "memory__add_risk", "memory__design_test_case", "memory__get_analysis", "memory__get_executions",
+        "memory__get_requirements", "memory__get_risks", "memory__get_runs", "memory__get_suite",
+        "memory__get_test_case_history", "memory__get_test_cases", "memory__retire_test_case", "memory__save_impact",
+        "memory__save_suite", "memory__sync_requirements", "memory__update_test_case",
     ]  # fmt: skip
 
 

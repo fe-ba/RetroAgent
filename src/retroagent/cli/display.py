@@ -2,10 +2,11 @@
 
 Without verbose mode a tool call is one line with its name and outcome, and warnings are shown. Verbose mode adds the
 arguments (as recorded: secret values replaced) and the duration of each tool call, each model call with its token
-usage, each retry of the turn and each wait of the provider adapter. Pure functions: they return text.
+usage, each retry of the turn, each wait of the provider adapter and each notice logged by the provider library.
+Pure functions: they return text.
 """
 
-from retroagent.llm.provider import Wait
+from retroagent.llm.provider import ProviderNotice, Wait
 from retroagent.runtime.permissions import PermissionRequest
 from retroagent.runtime.turn import ModelCalled, Retried, ToolCalled, Warned
 
@@ -58,6 +59,8 @@ def event_line(event: object, verbose: bool) -> str | None:
         reason = WAITS.get(event.reason, event.reason)
         attempt = f", retry {event.attempt}" if event.attempt else ""
         return f"wait {event.seconds:.1f} s: {reason}{attempt}"
+    if isinstance(event, ProviderNotice):
+        return f"provider notice: {event.message}"
     return None
 
 

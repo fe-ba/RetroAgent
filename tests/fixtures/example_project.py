@@ -1,5 +1,6 @@
 """An example project for integration tests, and a session on it."""
 
+import shutil
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -27,6 +28,22 @@ def example_project(tmp_path_factory, pip_cache):
         cache = cache_dir(path)
         cache.mkdir(parents=True)
         (cache / "pip").symlink_to(pip_cache, target_is_directory=True)
+        yield path
+
+
+@contextmanager
+def project_copy(tmp_path_factory, source: Path):
+    """A copy of a project made with ``example_project``, with its git repository and project memory, under the same
+    conditions: its own ``RETRO_HOME`` with the model profile of the tests, and no model key in the environment. For
+    tests that change a project whose runs are already stored, such as ``shop_after_both_runs``."""
+    with pytest.MonkeyPatch.context() as patch:
+        home = tmp_path_factory.mktemp("retro-home")
+        write_user_config(home)
+        patch.setenv("RETRO_HOME", str(home))
+        for name in process.WELL_KNOWN_KEYS:
+            patch.delenv(name, raising=False)
+        path = tmp_path_factory.mktemp("copy") / source.name
+        shutil.copytree(source, path, symlinks=True)
         yield path
 
 

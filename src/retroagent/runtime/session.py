@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 from retroagent.config import Config, ConfigError, load_config
 from retroagent.config.schema import HOSTED_PROVIDERS
 from retroagent.context import budget, skills, state, system, tools
-from retroagent.llm.provider import LLMProvider, Message, MissingCredential, ToolDefinition, Wait
+from retroagent.llm.provider import LLMProvider, Message, MissingCredential, ProviderNotice, ToolDefinition, Wait
 from retroagent.mcp_client import Client
 from retroagent.mcp_client.client import ServerUnavailable
 from retroagent.memory import SchemaTooNew, connect, execution, sessions
@@ -200,7 +200,7 @@ class Session:
             profiles = ", ".join(sorted(self.config.models)) or "none"
             raise SessionError(f"there is no model profile {name!r} in the user configuration. Profiles: {profiles}.")
         check_credential(profile)
-        provider = _make_provider(profile, self.on_wait, self.provider_factory)
+        provider = _make_provider(profile, self, self.provider_factory)
         capabilities = provider.capabilities()
         check_tool_calling(profile, capabilities.tool_calling)
         model = f"{profile['provider']}/{profile['name']}"
@@ -228,6 +228,11 @@ class Session:
         """A wait of the provider adapter (a retry or pacing), reported to the listener of the current turn."""
         if self.listener is not None:
             self.listener(wait)
+
+    def on_notice(self, notice: ProviderNotice) -> None:
+        """A line logged by the provider library, reported to the listener of the current turn."""
+        if self.listener is not None:
+            self.listener(notice)
 
     # End ----------------------------------------------------------------------------------------------------------
 
@@ -302,7 +307,7 @@ def start(
         session.recovered_runs = recover(session.conn, project_dir, session.id)
         # 7. The model profile and its credential.
         check_credential(profile)
-        session.provider = _make_provider(profile, session.on_wait, provider_factory)
+        session.provider = _make_provider(profile, session, provider_factory)
         capabilities = session.provider.capabilities()
         check_tool_calling(profile, capabilities.tool_calling)
         # 8. The session versions.
@@ -382,12 +387,13 @@ def check_tool_calling(profile: Mapping[str, object], supported: bool | None) ->
         )
 
 
-def _make_provider(profile, on_wait, factory: ProviderFactory | None) -> LLMProvider:
+def _make_provider(profile, session: "Session", factory: ProviderFactory | None) -> LLMProvider:
+    """The provider of a profile; its waits and notices go to the listener of the session's current turn."""
     if factory is not None:
-        return factory(profile, on_wait)
+        return factory(profile, session.on_wait)
     from retroagent.llm.litellm_provider import LiteLLMProvider  # loads LiteLLM only when a session needs it
 
-    return LiteLLMProvider(profile, on_wait=on_wait)
+    return LiteLLMProvider(profile, on_wait=session.on_wait, on_notice=session.on_notice)
 
 
 def is_local(profile: Mapping[str, object]) -> bool:

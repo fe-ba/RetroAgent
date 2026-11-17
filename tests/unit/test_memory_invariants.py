@@ -6,7 +6,7 @@ import inspect
 import sqlite3
 
 import pytest
-from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, populate_every_table
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, no_removal, populate_every_table
 
 from retroagent.memory import design, execution, impact, interpretation, reporting
 from retroagent.memory.errors import InvariantViolation
@@ -217,17 +217,29 @@ def test_inv_10_closed_records_are_never_updated(conn, build):
     # the impact of an analysis is written once and never changes
     requirement_id = build.requirement()
     module = {"module": "cart", "files": ["app/cart.py"], "risk_level": "high", "reason": "changed"}
+    other_requirement = build.requirement("REQ-002")
     impact.record_impact(
-        conn, build.analysis_id, modules=[module], requirements=[{"requirement_id": requirement_id, "reason": "r"}]
+        conn,
+        build.analysis_id,
+        modules=[module],
+        requirements=[{"requirement_id": requirement_id, "reason": "r"}],
+        not_impacted=[{"requirement_id": other_requirement, "reason": "r"}],
+        removal_applies=no_removal,
     )
+    decided = {
+        "requirements": [],
+        "not_impacted": [{"requirement_id": r, "reason": "r"} for r in ("REQ-001", "REQ-002")],
+    }
     with pytest.raises(InvariantViolation, match="INV-10"):
-        impact.record_impact(conn, build.analysis_id, modules=[module], requirements=[])
+        impact.record_impact(conn, build.analysis_id, modules=[module], removal_applies=no_removal, **decided)
     with pytest.raises(sqlite3.IntegrityError, match="INV-10"):
         conn.execute("UPDATE analysis_module SET risk_level = 'low'")
     with pytest.raises(sqlite3.IntegrityError, match="INV-10"):
         conn.execute("UPDATE analysis_requirement SET reason = 'other'")
+    with pytest.raises(sqlite3.IntegrityError, match="INV-10"):
+        conn.execute("UPDATE analysis_requirement_not_impacted SET reason = 'other'")
     other_analysis = build.analysis()  # a corrected impact needs a new analysis
-    impact.record_impact(conn, other_analysis, modules=[module], requirements=[])
+    impact.record_impact(conn, other_analysis, modules=[module], removal_applies=no_removal, **decided)
     # evaluations and rendered reports
     evaluation_id = reporting.add_evaluation(
         conn,
@@ -251,7 +263,7 @@ def test_inv_10_closed_records_are_never_updated(conn, build):
 def test_inv_11_records_are_never_deleted(conn, build):
     populate_every_table(build)
     counts = count_rows(conn)
-    assert len(counts) == 23 and all(counts.values()), counts  # every table has a row to delete
+    assert len(counts) == 24 and all(counts.values()), counts  # every table has a row to delete
     for table in counts:
         with pytest.raises(sqlite3.IntegrityError, match="INV-11"):
             conn.execute(f"DELETE FROM {table}")  # for test_case_requirement, the name link refuses the statement
@@ -311,17 +323,21 @@ def test_inv_13_failed_call_writes_nothing(conn, build):
     calls = [
         # the first module is valid, the second names a file that is not in the change set
         lambda: impact.record_impact(
-            conn, build.analysis_id, modules=[module, {**module, "module": "x", "files": ["nope.py"]}], requirements=[]
+            conn,
+            build.analysis_id,
+            modules=[module, {**module, "module": "x", "files": ["nope.py"]}],
+            requirements=[],
+            not_impacted=[{"requirement_id": requirement_id, "reason": "r"}],
+            removal_applies=no_removal,
         ),
         # valid module, then a requirement that does not exist
         lambda: impact.record_impact(
             conn,
             build.analysis_id,
             modules=[module],
-            requirements=[
-                {"requirement_id": requirement_id, "reason": "r"},
-                {"requirement_id": "REQ-404", "reason": "r"},
-            ],
+            requirements=[{"requirement_id": requirement_id, "reason": "r"}],
+            not_impacted=[{"requirement_id": "REQ-404", "reason": "r"}],
+            removal_applies=no_removal,
         ),
         lambda: design.add_test_case(
             conn, title="t", priority="low", designed_by="m", requirement_ids=[requirement_id, "REQ-404"]
@@ -347,7 +363,12 @@ def test_inv_13_failed_call_writes_nothing(conn, build):
 
     # the same calls with valid references work
     impact.record_impact(
-        conn, build.analysis_id, modules=[module], requirements=[{"requirement_id": requirement_id, "reason": "r"}]
+        conn,
+        build.analysis_id,
+        modules=[module],
+        requirements=[{"requirement_id": requirement_id, "reason": "r"}],
+        not_impacted=[],
+        removal_applies=no_removal,
     )
     assert count_rows(conn)["analysis_module"] == 1
 

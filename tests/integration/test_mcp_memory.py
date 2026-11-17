@@ -11,6 +11,7 @@ from fixtures.reference_scenario import CHANGE_SET
 
 from retroagent.mcp_client import Client
 from retroagent.memory import connect, design
+from retroagent.memory import requirements as stored_requirements
 
 REQ_004_CHANGE = {
     "version": "v1.1",
@@ -157,6 +158,14 @@ def new_analysis(shop) -> int:
 
 PRICING = {"module": "pricing", "files": ["src/shop/pricing.py"], "risk_level": "high", "reason": "Shipping order."}
 COUPONS = {"requirement_id": "REQ-004", "reason": "Documented change in v1.1."}
+EVERY_REQUIREMENT = [f"REQ-00{n}" for n in range(1, 9)]  # in effect at v1.1
+
+
+def not_impacted(*requirement_ids: str) -> list[dict]:
+    return [{"requirement_id": r, "reason": "No changed file takes part in it."} for r in requirement_ids]
+
+
+OTHERS = not_impacted(*(r for r in EVERY_REQUIREMENT if r != "REQ-004"))  # every requirement but REQ-004
 
 
 def test_get_requirements(shop):
@@ -179,10 +188,13 @@ def test_get_analysis_returns_the_change_set_and_the_impact(shop):
     assert empty["files"] == CHANGE_SET
     assert empty["modules"] == [] and empty["requirements"] == []
     assert empty["base"] == {"ref": "v1.0", "commit": "c7d45ada468e3746c498cb3417999e117154a942"}
-    call(shop, "memory", "save_impact", {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [COUPONS]})
+    assert empty["not_impacted"] == []
+    arguments = {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [COUPONS], "not_impacted": OTHERS}
+    call(shop, "memory", "save_impact", arguments)
     stored = call(shop, "memory", "get_analysis", {"analysis_id": analysis_id})
     assert stored["modules"] == [PRICING]
     assert stored["requirements"] == [COUPONS]
+    assert stored["not_impacted"] == OTHERS
 
 
 def test_get_analysis_errors(shop):
@@ -195,11 +207,17 @@ def test_get_analysis_errors(shop):
 def test_save_impact_records_the_impact_once(shop):
     analysis_id = new_analysis(shop)
     cart = {"module": "cart", "files": ["src/shop/cart.py"], "risk_level": "medium", "reason": "Stock check."}
-    arguments = {"analysis_id": analysis_id, "modules": [PRICING, cart], "requirements": [COUPONS]}
+    arguments = {
+        "analysis_id": analysis_id,
+        "modules": [PRICING, cart],
+        "requirements": [COUPONS],
+        "not_impacted": OTHERS,
+    }
     assert call(shop, "memory", "save_impact", arguments) == {
         "analysis_id": analysis_id,
         "modules": 2,
         "requirements": 1,
+        "not_impacted": 7,
     }
     assert code(shop, "save_impact", arguments) == "invalid_state"
 
@@ -207,19 +225,68 @@ def test_save_impact_records_the_impact_once(shop):
 def test_save_impact_errors(shop):
     analysis_id = new_analysis(shop)
 
-    def impact(modules=(PRICING,), requirements=(COUPONS,), target=analysis_id) -> dict:
-        return {"analysis_id": target, "modules": list(modules), "requirements": list(requirements)}
+    def impact(modules=(PRICING,), requirements=(COUPONS,), target=analysis_id, others=OTHERS) -> dict:
+        return {"analysis_id": target, "modules": list(modules), "requirements": list(requirements),
+                "not_impacted": list(others)}  # fmt: skip
 
     unknown_file = {**PRICING, "files": ["src/shop/money.py"]}
     assert code(shop, "save_impact", impact(modules=[unknown_file])) == "not_found"
     assert code(shop, "save_impact", impact(requirements=[{"requirement_id": "REQ-099", "reason": "x"}])) == "not_found"
+    assert code(shop, "save_impact", impact(others=[*OTHERS, *not_impacted("REQ-099")])) == "not_found"
     assert code(shop, "save_impact", impact(target=999)) == "not_found"
     assert code(shop, "save_impact", impact(modules=[{**PRICING, "risk_level": "severe"}])) == "invalid_argument"
     assert code(shop, "save_impact", impact(modules=[])) == "invalid_argument"
     assert code(shop, "save_impact", impact(modules=[PRICING, PRICING])) == "invalid_argument"
     assert code(shop, "save_impact", {"analysis_id": analysis_id, "modules": [PRICING]}) == "invalid_argument"
+    assert code(shop, "save_impact", {"analysis_id": analysis_id, "modules": [PRICING], "requirements": []}) == (
+        "invalid_argument"
+    )  # not_impacted is required, even when empty
     # Nothing of the refused calls was written: the impact can still be recorded.
     assert call(shop, "memory", "save_impact", impact())["modules"] == 1
+
+
+def message(shop, tool, arguments, **session) -> tuple[str, str]:
+    error = error_of(lambda: call(shop, "memory", tool, arguments, **session))
+    return error.code, error.message
+
+
+def test_save_impact_refuses_one_missing_requirement_and_names_it(shop):
+    analysis_id = new_analysis(shop)
+    others = [entry for entry in OTHERS if entry["requirement_id"] != "REQ-001"]
+    arguments = {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [COUPONS], "not_impacted": others}
+    error_code, text = message(shop, "save_impact", arguments)
+    assert error_code == "invalid_argument"
+    assert "missing: REQ-001" in text and "v1.1" in text
+    assert call(shop, "memory", "get_analysis")["modules"] == []  # nothing was written
+    arguments["not_impacted"] = OTHERS  # the model decides it and calls again
+    assert call(shop, "memory", "save_impact", arguments)["not_impacted"] == 7
+
+
+def test_save_impact_names_every_missing_requirement_in_one_message(shop):
+    analysis_id = new_analysis(shop)
+    arguments = {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [COUPONS], "not_impacted": []}
+    error_code, text = message(shop, "save_impact", arguments)
+    assert error_code == "invalid_argument"
+    assert "missing: REQ-001, REQ-002, REQ-003, REQ-005, REQ-006, REQ-007, REQ-008" in text
+
+
+def test_save_impact_refuses_a_requirement_decided_twice(shop):
+    analysis_id = new_analysis(shop)
+    twice = {
+        "analysis_id": analysis_id,
+        "modules": [PRICING],
+        "requirements": [COUPONS, COUPONS],
+        "not_impacted": OTHERS,
+    }
+    error_code, text = message(shop, "save_impact", twice)
+    assert error_code == "invalid_argument" and "repeated: REQ-004" in text
+    in_both = {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [COUPONS],
+               "not_impacted": [*OTHERS, *not_impacted("REQ-004")]}  # fmt: skip
+    error_code, text = message(shop, "save_impact", in_both)
+    assert error_code == "invalid_argument" and "repeated: REQ-004" in text and "missing" not in text
+    one_missing_one_repeated = {**twice, "not_impacted": OTHERS[1:]}
+    error_code, text = message(shop, "save_impact", one_missing_one_repeated)
+    assert "missing: REQ-001" in text and "repeated: REQ-004" in text  # every problem in one message
 
 
 def test_add_risk_and_get_risks(shop):
@@ -243,3 +310,66 @@ def test_add_risk_errors(shop):
     assert code(shop, "add_risk", {"level": "low"}) == "invalid_argument"
     assert code(shop, "add_risk", risk, base="v1.1", candidate="v1.2") == "invalid_state"  # no analysis yet
     assert code(shop, "get_risks", {"level": "high"}) == "invalid_argument"
+
+
+# Requirements in effect: a removal applies to the change when its ref is reachable from the candidate and not from
+# the baseline (mcp-tools.md, save_impact; project-contract.md).
+
+
+@pytest.fixture(scope="module")
+def removals(tmp_path_factory, pip_cache):
+    """shop-api whose memory holds only three requirements, removed in v1.0, v1.1 and v1.2 (stored directly)."""
+    with example_project(tmp_path_factory, pip_cache) as path:
+        conn = connect(path)
+        for requirement_id, removed in (("REQ-901", "v1.1"), ("REQ-902", "v1.0"), ("REQ-903", "v1.2")):
+            stored_requirements.add_requirement(
+                conn, id=requirement_id, title="Old", description="Old.", source_file="docs/requirements.md",
+                removed=removed,
+            )  # fmt: skip
+        conn.close()
+        yield path
+
+
+def missing_requirements(path, base: str, candidate: str) -> tuple[str, Client, dict]:
+    """The refusal of an impact that decides no requirement, for an analysis of ``base..candidate``."""
+    client = Client(path, open_session(path, base, candidate))
+    client.start()
+    analysis = client.call("git", "analyze_changes")
+    module = {"module": "shop", "files": [analysis["files"][0]["path"]], "risk_level": "low", "reason": "r"}
+    arguments = {"analysis_id": analysis["analysis_id"], "modules": [module], "requirements": [], "not_impacted": []}
+    error = error_of(lambda: client.call("memory", "save_impact", arguments))
+    assert error.code == "invalid_argument"
+    return error.message.partition("missing: ")[2], client, arguments
+
+
+def test_a_requirement_removed_in_the_candidate_is_decided_and_one_removed_earlier_or_later_is_not(removals):
+    missing, client, arguments = missing_requirements(removals, "v1.0", "v1.1")
+    try:
+        assert missing == "REQ-901"  # removed in v1.1; REQ-902 was removed in v1.0, REQ-903 is removed in v1.2
+        arguments["requirements"] = [{"requirement_id": "REQ-901", "reason": "Removed in v1.1."}]
+        arguments["not_impacted"] = not_impacted("REQ-902")  # out of effect, but it exists: accepted
+        assert client.call("memory", "save_impact", arguments)["requirements"] == 1
+    finally:
+        client.stop()
+
+
+def test_versions_given_as_commit_hashes_use_the_same_rule(removals):
+    missing, client, _ = missing_requirements(removals, "c7d45ad", "46a5ef0")  # v1.0 and v1.1
+    client.stop()
+    assert missing == "REQ-901"
+
+
+def test_a_removal_in_a_skipped_version_must_be_decided(removals):
+    missing, client, _ = missing_requirements(removals, "v1.0", "v1.2")
+    client.stop()
+    assert missing == "REQ-901, REQ-903"
+
+
+def test_a_project_without_requirements_sends_two_empty_lists(tmp_path_factory, pip_cache):
+    with example_project(tmp_path_factory, pip_cache) as path:
+        with Client(path, open_session(path)) as client:
+            analysis_id = client.call("git", "analyze_changes")["analysis_id"]
+            arguments = {"analysis_id": analysis_id, "modules": [PRICING], "requirements": [], "not_impacted": []}
+            assert client.call("memory", "save_impact", arguments)["not_impacted"] == 0
+            stored = client.call("memory", "get_analysis")
+            assert stored["requirements"] == [] and stored["not_impacted"] == []

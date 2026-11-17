@@ -86,7 +86,7 @@ def fake_model(monkeypatch):
     from retroagent.runtime import session as session_module
 
     def use(provider):
-        monkeypatch.setattr(session_module, "_make_provider", lambda profile, on_wait, factory: provider)
+        monkeypatch.setattr(session_module, "_make_provider", lambda profile, session, factory: provider)
         return provider
 
     return use

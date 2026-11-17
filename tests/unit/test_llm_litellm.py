@@ -20,6 +20,7 @@ from retroagent.llm import (
     InvalidRequest,
     Message,
     MissingCredential,
+    ProviderNotice,
     ProviderUnavailable,
     QuotaExhausted,
     RateLimitExceeded,
@@ -576,3 +577,47 @@ def test_importing_the_llm_package_does_not_load_litellm():
     code = "import sys, retroagent.llm; print('litellm' in sys.modules)"
     output = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
     assert output.strip() == "False"
+
+
+# Notices of LiteLLM (runtime.md, Display)
+
+
+def test_a_line_logged_by_litellm_is_a_notice_and_never_reaches_the_terminal(capsys, monkeypatch):
+    import logging
+
+    plain_key = "plainvalue0123456789"  # not a pattern LiteLLM redacts by itself: the adapter must remove it
+    monkeypatch.setenv(KEY_VARIABLE, plain_key)
+
+    def logging_stub(**kwargs):
+        logging.getLogger("LiteLLM").warning("DeprecationWarning: `temperature` (key %s)", plain_key)
+        return model_response()
+
+    notices = []
+    adapter = LiteLLMProvider(profile(temperature=0.2), on_notice=notices.append, completion=logging_stub)
+    adapter.complete(request(temperature=0.2))
+
+    assert notices == [ProviderNotice("DeprecationWarning: `temperature` (key ***)")]
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
+
+
+def test_temperature_is_still_sent_to_gemini_3():
+    stub = Stub(model_response())
+    provider(stub, temperature=0.2).complete(request(temperature=0.2))
+    assert stub.calls[0]["temperature"] == 0.2
+
+
+def test_the_gemini_3_deprecation_warning_of_litellm_is_kept_out_of_the_terminal():
+    """LiteLLM's own Gemini code, run in a new process so that its once-per-process warning is logged."""
+    script = (
+        "from retroagent.llm.litellm_provider import NOTICES, _litellm\n"
+        "_litellm()\n"
+        "from litellm.utils import get_optional_params\n"
+        "params = get_optional_params(model='gemini-3.1-flash-lite', custom_llm_provider='gemini', temperature=0.2)\n"
+        "assert params['temperature'] == 0.2, params\n"
+        "lines = NOTICES.drain()\n"
+        "assert any('DeprecationWarning' in line and 'temperature' in line for line in lines), lines\n"
+    )
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "" and result.stderr == ""

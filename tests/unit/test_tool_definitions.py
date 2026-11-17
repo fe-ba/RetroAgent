@@ -1,6 +1,9 @@
 """The definitions of the bundled tools: description sizes (mcp-tools.md, Descriptions), strict schemas and no input
 for an execution status or result (INV-03)."""
 
+import re
+from pathlib import Path
+
 import jsonschema
 import pytest
 
@@ -35,11 +38,13 @@ def parameters(schema: dict, path: str = ""):
         yield from parameters(schema["items"], f"{path}[]")
 
 
-def test_the_bundled_tools_of_slice_3():
+def test_the_bundled_tools_built_so_far():
     assert {server: [t.name for t in tools] for server, tools in TOOLS.items()} == {
         "git": ["resolve_ref", "analyze_changes", "get_diff", "read_file", "list_files"],
         "memory": [
             "sync_requirements", "get_requirements", "get_analysis", "save_impact", "add_risk", "get_risks",
+            "save_suite", "get_suite", "design_test_case", "update_test_case", "retire_test_case", "get_test_cases",
+            "get_runs", "get_executions", "get_test_case_history",
         ],
         "test_runner": ["run_tests"],
     }  # fmt: skip
@@ -63,10 +68,30 @@ def test_schemas_are_valid_and_accept_no_other_property(server, tool):
         assert schema.get("additionalProperties") is False, path
 
 
+def write_tools() -> set[str]:
+    """The tools whose Access is ``write`` in the Summary of mcp-tools.md, as ``<server>.<tool>``."""
+    text = (Path(__file__).resolve().parents[2] / "docs" / "reference" / "mcp-tools.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| `(\w+\.\w+)` \| (write[^|]*)\|", text, re.MULTILINE)
+    assert len(rows) > 10, "the Summary table of mcp-tools.md was not found"
+    return {name for name, _ in rows}
+
+
+WRITE_TOOLS = write_tools()
+
+
 @pytest.mark.parametrize(("server", "tool"), ALL, ids=IDS)
-def test_no_input_is_an_execution_status_or_result(server, tool):
+def test_no_tool_that_writes_has_an_input_for_an_execution_status_or_result(server, tool):
+    """INV-03: at any depth of the schema of a tool that writes. Read tools may filter by them (mcp-tools.md)."""
     names = {path.rsplit("/", 1)[-1].removesuffix("[]") for path, _ in parameters(tool.parameters)}
-    assert not names & RESULT_WORDS
+    if f"{server}.{tool.name}" in WRITE_TOOLS:
+        assert not names & RESULT_WORDS
+    else:
+        assert names & RESULT_WORDS <= {"status", "result"}, "a read tool filters by status or result only"
+
+
+def test_the_write_tools_are_read_from_the_summary():
+    assert {"memory.save_impact", "memory.update_test_case", "test_runner.run_tests"} <= WRITE_TOOLS
+    assert not {"memory.get_executions", "memory.get_test_cases"} & WRITE_TOOLS
 
 
 def test_the_limit_checks_fail_over_300_and_150_characters():

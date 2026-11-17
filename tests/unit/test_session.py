@@ -235,5 +235,6 @@ def test_a_looser_project_permission_is_ignored_with_a_warning_at_start(repo):
     (repo / ".retro" / "config.yaml").write_text("permissions:\n  run_tests: allow\n")
     with session.start(Options(project=repo), provider_factory=fake()) as started:
         assert started.permissions()["run_tests"] == "ask"
-        (warning,) = started.warnings
+        # The other warning, if any, is the size of the fixed context against the window of the test profile.
+        (warning,) = [w for w in started.warnings if "permissions." in w]
         assert "permissions.run_tests" in warning and "the default value ask is kept" in warning

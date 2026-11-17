@@ -1,4 +1,4 @@
--- RetroAgent project memory, schema version 1. Source: spec/data-model.md.
+-- RetroAgent project memory, schema version 2. Source: spec/data-model.md.
 -- Applied once to a new database by retroagent.memory.migrations.
 -- Conventions: timestamps are ISO 8601 UTC text, lists are JSON arrays as text, booleans are 0 or 1.
 
@@ -85,6 +85,13 @@ CREATE TABLE analysis_module (
 );
 
 CREATE TABLE analysis_requirement (
+    analysis_id    INTEGER NOT NULL REFERENCES analysis (id),
+    requirement_id TEXT NOT NULL REFERENCES requirement (id),
+    reason         TEXT NOT NULL,
+    PRIMARY KEY (analysis_id, requirement_id)
+);
+
+CREATE TABLE analysis_requirement_not_impacted (
     analysis_id    INTEGER NOT NULL REFERENCES analysis (id),
     requirement_id TEXT NOT NULL REFERENCES requirement (id),
     reason         TEXT NOT NULL,
@@ -388,6 +395,12 @@ BEGIN
     SELECT RAISE(ABORT, 'INV-10: the impact of an analysis is never updated');
 END;
 
+CREATE TRIGGER inv_10_analysis_requirement_not_impacted_is_final
+BEFORE UPDATE ON analysis_requirement_not_impacted
+BEGIN
+    SELECT RAISE(ABORT, 'INV-10: the impact of an analysis is never updated');
+END;
+
 CREATE TRIGGER inv_10_evaluation_is_final
 BEFORE UPDATE ON evaluation
 BEGIN
@@ -434,6 +447,8 @@ BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_analysis_module BEFORE DELETE ON analysis_module
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_analysis_requirement BEFORE DELETE ON analysis_requirement
+BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+CREATE TRIGGER inv_11_analysis_requirement_not_impacted BEFORE DELETE ON analysis_requirement_not_impacted
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_risk BEFORE DELETE ON risk
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;

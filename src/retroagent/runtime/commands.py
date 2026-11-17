@@ -4,8 +4,9 @@
 same checks, question and ``tool_call`` row as a call of the model, dispatched to the MCP server. A direct command and
 its output are not added to the conversation.
 
-**Model** commands empty the conversation and send a fixed template with the tool set of their step. Only
-``/analyze`` exists in this build; the other commands of cli.md are parsed and answered as not available yet.
+**Model** commands empty the conversation and send a fixed template with the tool set of their step. This build
+has ``/analyze``, ``/select`` and ``/design``; the other commands of cli.md are parsed and answered as not available
+yet.
 
 Counts and statuses come from stored records; no function here takes or computes a test result.
 """
@@ -28,6 +29,15 @@ HISTORY_DEFAULT = 10
 # The fixed templates of the model commands (runtime.md, Model commands) and the tool set of each.
 ANALYZE = "Load the skill `impact-analysis` and analyze the impact of the change between the session versions."
 ANALYZE_TOOL_SET = "analyze"
+SELECT = (
+    "Load the skill `test-selection` and select and prioritize the regression suite for the latest impact analysis."
+)
+SELECT_TOOL_SET = "select"
+DESIGN = "Load the skill `test-design` and design test cases for `{scope}`."
+DESIGN_DEFAULT = (
+    "Load the skill `test-design` and design test cases for the impacted areas not covered by the current suite."
+)
+DESIGN_TOOL_SET = "design"
 
 # Every slash command of cli.md: usage, description, and whether this build has it.
 HELP = (
@@ -35,8 +45,9 @@ HELP = (
      " report, one step at a time.", False),
     ("/analyze [base] [candidate]", "Compute the change set and the impact analysis. Sets the session versions when"
      " given.", True),
-    ("/select", "Select and prioritize the regression suite for the current change.", False),
-    ("/design [scope]", "Design test cases for the impacted areas, or for scope.", False),
+    ("/select", "Select and prioritize the regression suite for the current change.", True),
+    ("/design [scope]", "Design test cases for the impacted areas, or for scope (requirement IDs, modules or free"
+     " text).", True),
     ("/implement [ids]", "Write executable test code for designed test cases.", False),
     ("/run [target] [--on <version>]", "Execute tests. target: suite (default), all, or test case IDs separated by"
      " spaces. --on: base, candidate (default) or both.", True),
@@ -57,7 +68,7 @@ HELP = (
 )  # fmt: skip
 COMMANDS = tuple(usage.split()[0] for usage, _, _ in HELP)
 AVAILABLE = tuple(usage.split()[0] for usage, _, available in HELP if available)
-MODEL_COMMANDS = ("/analyze",)
+MODEL_COMMANDS = ("/analyze", "/select", "/design")
 
 
 class CommandError(Exception):
@@ -76,6 +87,7 @@ class Command:
     limit: int = HISTORY_DEFAULT  # /history
     argument: str | None = None  # /model, /mode, /help
     refs: tuple[str, ...] = ()  # /analyze: () or (base, candidate)
+    scope: str | None = None  # /design: the words after the command, joined by one space
 
 
 def is_command(line: str) -> bool:
@@ -106,6 +118,8 @@ def parse(line: str) -> Command:
         if len(args) not in (0, 2):
             raise CommandError("usage: /analyze [base] [candidate]: give both refs, or none")
         return Command(name, refs=tuple(args))
+    if name == "/design":
+        return Command(name, scope=" ".join(args) or None)
     if name in ("/model", "/mode", "/help"):
         if len(args) > 1:
             raise CommandError(f"usage: {name} [{'name' if name == '/model' else name[1:]}]")
@@ -362,14 +376,49 @@ def analyze(
     if refs:
         base, candidate = refs
         turn.call_tool(session, "runtime__set_versions", {"base": base, "candidate": candidate}, ask=ask)
+    return _model_command(session, ANALYZE, ANALYZE_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
+def select(
+    session: Session,
+    *,
+    ask: turn.Ask | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> turn.TurnResult:
+    """``/select``: an empty conversation, then the template with the tools of the step ``select``."""
+    return _model_command(session, SELECT, SELECT_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
+def design_message(scope: str | None) -> str:
+    """The message of ``/design [scope]``."""
+    return DESIGN.format(scope=scope) if scope else DESIGN_DEFAULT
+
+
+def design_tests(
+    session: Session,
+    scope: str | None = None,
+    *,
+    ask: turn.Ask | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> turn.TurnResult:
+    """``/design [scope]``: an empty conversation, then the template with the tools of the step ``design``."""
+    message = design_message(scope)
+    return _model_command(session, message, DESIGN_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
+def _model_command(session: Session, message: str, tool_set: str, *, ask, listener, interrupt) -> turn.TurnResult:
+    """A model command: the conversation is emptied, then one turn with the tools of the step."""
+    session.conversation.clear()
     return turn.run_turn(
         session,
-        ANALYZE,
+        message,
         provider=session.provider,
         client=session.client,
         ask=ask,
         listener=listener,
-        tool_set=ANALYZE_TOOL_SET,
+        tool_set=tool_set,
         interrupt=interrupt,
     )
 

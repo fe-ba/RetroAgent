@@ -1,8 +1,9 @@
 """Impact analysis: tables ``analysis``, ``analysis_file``, ``analysis_module``, ``analysis_requirement``,
-``risk`` and ``risk_requirement``."""
+``analysis_requirement_not_impacted``, ``risk`` and ``risk_requirement``."""
 
 import json
 import sqlite3
+from collections.abc import Callable
 
 from retroagent.memory.db import require_exists, transaction, utc_now
 from retroagent.memory.errors import InvariantViolation
@@ -43,23 +44,41 @@ def add_analysis(
     return analysis_id
 
 
+def requirements_in_effect(conn: sqlite3.Connection, removal_applies: Callable[[str], bool]) -> list[str]:
+    """The requirements in effect at the candidate of an analysis: those without a ``removed`` version, and those
+    whose removal applies to the change of the analysis (``removal_applies(version)``, the rule of a ``Changed``
+    entry in project-contract.md). Sorted by ID."""
+    return [
+        row["id"]
+        for row in conn.execute("SELECT id, removed FROM requirement ORDER BY id")
+        if row["removed"] is None or removal_applies(row["removed"])
+    ]
+
+
 def record_impact(
     conn: sqlite3.Connection,
     analysis_id: int,
     *,
     modules: list[dict],
     requirements: list[dict],
+    not_impacted: list[dict],
+    removal_applies: Callable[[str], bool],
 ) -> None:
     """Write the impact of an analysis, once (INV-10). Every reference must exist (INV-13), or nothing is written.
 
-    A module is ``{module, files, risk_level, reason}``; a requirement is ``{requirement_id, reason}``.
+    A module is ``{module, files, risk_level, reason}``; a requirement, impacted or not, is
+    ``{requirement_id, reason}``. Every requirement in effect (``requirements_in_effect``) must appear exactly once
+    in the two lists; one refusal names every missing and every repeated requirement (mcp-tools.md, save_impact).
     """
     with transaction(conn):
-        require_exists(conn, "analysis", "id", analysis_id, "analysis")
+        analysis = conn.execute("SELECT * FROM analysis WHERE id = ?", (analysis_id,)).fetchone()
+        if analysis is None:
+            raise InvariantViolation(f"INV-13: analysis {analysis_id!r} does not exist")
         already = conn.execute(
             "SELECT (SELECT COUNT(*) FROM analysis_module WHERE analysis_id = ?)"
-            " + (SELECT COUNT(*) FROM analysis_requirement WHERE analysis_id = ?)",
-            (analysis_id, analysis_id),
+            " + (SELECT COUNT(*) FROM analysis_requirement WHERE analysis_id = ?)"
+            " + (SELECT COUNT(*) FROM analysis_requirement_not_impacted WHERE analysis_id = ?)",
+            (analysis_id, analysis_id, analysis_id),
         ).fetchone()[0]
         if already:
             raise InvariantViolation(
@@ -74,16 +93,35 @@ def record_impact(
                     raise InvariantViolation(
                         f"INV-13: file {path!r} is not in the change set of analysis {analysis_id}"
                     )
+        decided = [entry["requirement_id"] for entry in [*requirements, *not_impacted]]
+        for requirement_id in dict.fromkeys(decided):
+            require_exists(conn, "requirement", "id", requirement_id, "requirement")
+        repeated = sorted({r for r in decided if decided.count(r) > 1})
+        missing = [r for r in requirements_in_effect(conn, removal_applies) if r not in decided]
+        if repeated or missing:
+            problems = []
+            if missing:
+                problems.append(
+                    f"every requirement in effect at {analysis['candidate_ref']} must be in requirements or in"
+                    f" not_impacted; missing: {', '.join(missing)}"
+                )
+            if repeated:
+                problems.append(f"a requirement must be decided once; repeated: {', '.join(repeated)}")
+            raise InvariantViolation("invalid_argument: " + "; ".join(problems))
+        for module in modules:
             conn.execute(
                 "INSERT INTO analysis_module (analysis_id, module, files, risk_level, reason) VALUES (?, ?, ?, ?, ?)",
                 (analysis_id, module["module"], json.dumps(module["files"]), module["risk_level"], module["reason"]),
             )
-        for requirement in requirements:
-            require_exists(conn, "requirement", "id", requirement["requirement_id"], "requirement")
-            conn.execute(
-                "INSERT INTO analysis_requirement (analysis_id, requirement_id, reason) VALUES (?, ?, ?)",
-                (analysis_id, requirement["requirement_id"], requirement["reason"]),
-            )
+        for table, entries in (
+            ("analysis_requirement", requirements),
+            ("analysis_requirement_not_impacted", not_impacted),
+        ):
+            for entry in entries:
+                conn.execute(
+                    f"INSERT INTO {table} (analysis_id, requirement_id, reason) VALUES (?, ?, ?)",
+                    (analysis_id, entry["requirement_id"], entry["reason"]),
+                )
 
 
 def add_risk(
@@ -142,6 +180,12 @@ def get_file(conn: sqlite3.Connection, analysis_id: int, path: str) -> sqlite3.R
 def list_requirements(conn: sqlite3.Connection, analysis_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM analysis_requirement WHERE analysis_id = ? ORDER BY requirement_id", (analysis_id,)
+    ).fetchall()
+
+
+def list_not_impacted(conn: sqlite3.Connection, analysis_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM analysis_requirement_not_impacted WHERE analysis_id = ? ORDER BY requirement_id", (analysis_id,)
     ).fetchall()
 
 

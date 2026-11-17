@@ -45,6 +45,7 @@ TABLES = {
     "analysis_file": ["analysis_id", "path", "old_path", "change", "lines_added", "lines_removed"],
     "analysis_module": ["analysis_id", "module", "files", "risk_level", "reason"],
     "analysis_requirement": ["analysis_id", "requirement_id", "reason"],
+    "analysis_requirement_not_impacted": ["analysis_id", "requirement_id", "reason"],
     "risk": ["id", "description", "level", "analysis_id", "created_at"],
     "risk_requirement": ["risk_id", "requirement_id"],
     "test_case": [
@@ -170,12 +171,34 @@ def test_newer_schema_is_not_opened(tmp_path):
 
 def test_older_schema_is_backed_up_then_migrated(tmp_path, monkeypatch):
     connect(tmp_path).close()
-    monkeypatch.setattr(migrations, "SCHEMA_VERSION", 2)
-    monkeypatch.setitem(migrations.MIGRATIONS, 2, "CREATE TABLE added_in_two (x INTEGER);")
+    current = migrations.SCHEMA_VERSION
+    monkeypatch.setattr(migrations, "SCHEMA_VERSION", current + 1)
+    monkeypatch.setitem(migrations.MIGRATIONS, current + 1, "CREATE TABLE added_later (x INTEGER);")
     conn = connect(tmp_path)
-    assert (tmp_path / ".retro" / "retro.db.bak-1").exists()
-    assert conn.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0] == "2"
-    assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'added_in_two'").fetchone()[0] == 1
+    assert (tmp_path / ".retro" / f"retro.db.bak-{current}").exists()
+    assert conn.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0] == str(current + 1)
+    assert conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'added_later'").fetchone()[0] == 1
+
+
+def schema_objects(conn) -> set[tuple[str, str, str]]:
+    return {(r[0], r[1], r[2]) for r in conn.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL")}
+
+
+def test_a_version_1_database_migrates_to_version_2_and_equals_a_new_one(tmp_path):
+    new = connect(tmp_path / "new")
+    expected = schema_objects(new)
+    new.close()
+    old = tmp_path / "old"
+    connect(old).close()
+    raw = sqlite3.connect(database_path(old))  # what schema version 1 had: no table of not impacted requirements
+    raw.executescript(
+        "DROP TABLE analysis_requirement_not_impacted; UPDATE schema_info SET value = '1' WHERE key = 'schema_version';"
+    )
+    raw.close()
+    migrated = connect(old)
+    assert (old / ".retro" / "retro.db.bak-1").exists()
+    assert migrated.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0] == "2"
+    assert schema_objects(migrated) == expected
 
 
 def test_enumerations_use_the_glossary_values(conn, build):

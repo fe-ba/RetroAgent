@@ -122,11 +122,15 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM run WHERE id = ?", (run_id,)).fetchone()
 
 
-def list_runs(conn: sqlite3.Connection, limit: int, *, session_id: int | None = None) -> list[sqlite3.Row]:
-    """The latest runs first, of every session or of one."""
-    sql, params = "SELECT * FROM run", []
+def list_runs(
+    conn: sqlite3.Connection, limit: int, *, session_id: int | None = None, version_role: str | None = None
+) -> list[sqlite3.Row]:
+    """The latest runs first, of every session or of one, against both versions or one role."""
+    sql, params = "SELECT * FROM run WHERE 1 = 1", []
     if session_id is not None:
-        sql, params = sql + " WHERE session_id = ?", [session_id]
+        sql, params = sql + " AND session_id = ?", [*params, session_id]
+    if version_role is not None:
+        sql, params = sql + " AND version_role = ?", [*params, version_role]
     return conn.execute(sql + " ORDER BY started_at DESC, id DESC LIMIT ?", (*params, limit)).fetchall()
 
 
@@ -151,6 +155,15 @@ def execution_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, int]:
 
 def list_executions(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM test_execution WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+
+
+def test_case_history(conn: sqlite3.Connection, test_case_id: str) -> list[sqlite3.Row]:
+    """Every execution of a test case with its run, oldest first."""
+    return conn.execute(
+        'SELECT e.*, r.version_role, r.ref, r."commit", r.status AS run_status, r.started_at'
+        " FROM test_execution e JOIN run r ON r.id = e.run_id WHERE e.test_case_id = ? ORDER BY r.started_at, e.id",
+        (test_case_id,),
+    ).fetchall()
 
 
 def list_attempts(conn: sqlite3.Connection, execution_id: int) -> list[sqlite3.Row]:

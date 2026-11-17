@@ -29,14 +29,16 @@ def first_user_message(request) -> str:
     return next(m.content for m in request.messages if m.role == "user")
 
 
-def impact_of(conn, analysis_id: int) -> tuple[list[str], list[str]]:
+def impact_of(conn, analysis_id: int) -> tuple[list[str], list[str], list[str]]:
+    """The modules, the impacted requirements and the requirements judged not impacted of an analysis."""
     modules = [r["module"] for r in conn.execute("SELECT module FROM analysis_module WHERE analysis_id = ?",
                                                  (analysis_id,))]  # fmt: skip
-    requirements = [
-        r["requirement_id"]
-        for r in conn.execute("SELECT requirement_id FROM analysis_requirement WHERE analysis_id = ?", (analysis_id,))
-    ]
-    return modules, requirements
+    decided = [
+        [r["requirement_id"] for r in conn.execute(f"SELECT requirement_id FROM {table} WHERE analysis_id = ?"
+                                                   " ORDER BY requirement_id", (analysis_id,))]
+        for table in ("analysis_requirement", "analysis_requirement_not_impacted")
+    ]  # fmt: skip
+    return modules, *decided
 
 
 def test_analyze_with_refs_sets_the_versions_then_sends_the_template_with_the_tools_of_the_step(agent):
@@ -74,8 +76,8 @@ def test_analyze_with_refs_sets_the_versions_then_sends_the_template_with_the_to
     sql = "SELECT * FROM analysis WHERE session_id = ? ORDER BY id DESC"
     analysis = agent.conn.execute(sql, (agent.id,)).fetchone()
     assert (analysis["base_ref"], analysis["candidate_ref"]) == ("v1.1", "v1.2")
-    modules, requirements = impact_of(agent.conn, analysis["id"])
-    assert modules and requirements == ["REQ-004"]
+    modules, impacted, not_impacted = impact_of(agent.conn, analysis["id"])
+    assert modules and impacted == [f"REQ-00{n}" for n in range(2, 9)] and not_impacted == ["REQ-001"]
     assert agent.conversation.loaded_skill == "impact-analysis"
 
 

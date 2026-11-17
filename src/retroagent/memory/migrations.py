@@ -7,10 +7,30 @@ from pathlib import Path
 import retroagent
 from retroagent.memory.errors import SchemaTooNew
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-# SQL script that takes a database from version N - 1 to version N, keyed by N. Empty: version 1 is the first.
-MIGRATIONS: dict[int, str] = {}
+# SQL script that takes a database from version N - 1 to version N, keyed by N. Each one creates exactly what
+# schema.sql has for that version, with the same text, so a migrated database equals a new one.
+MIGRATIONS: dict[int, str] = {
+    # The requirements judged not impacted by an analysis (save_impact decides every requirement in effect).
+    2: """
+CREATE TABLE analysis_requirement_not_impacted (
+    analysis_id    INTEGER NOT NULL REFERENCES analysis (id),
+    requirement_id TEXT NOT NULL REFERENCES requirement (id),
+    reason         TEXT NOT NULL,
+    PRIMARY KEY (analysis_id, requirement_id)
+);
+
+CREATE TRIGGER inv_10_analysis_requirement_not_impacted_is_final
+BEFORE UPDATE ON analysis_requirement_not_impacted
+BEGIN
+    SELECT RAISE(ABORT, 'INV-10: the impact of an analysis is never updated');
+END;
+
+CREATE TRIGGER inv_11_analysis_requirement_not_impacted BEFORE DELETE ON analysis_requirement_not_impacted
+BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+""",
+}
 
 
 def _schema_sql() -> str:

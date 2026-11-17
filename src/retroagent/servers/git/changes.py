@@ -53,6 +53,24 @@ def resolve(project_dir: str | Path, ref: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def is_ancestor(project_dir: str | Path, commit: str, descendant: str) -> bool:
+    """Whether ``commit`` is reachable from ``descendant`` (a commit is reachable from itself)."""
+    result = git(project_dir, "merge-base", "--is-ancestor", commit, descendant)
+    if result.returncode in (0, 1):
+        return result.returncode == 0
+    raise GitError(result.stderr.strip() or f"git merge-base exited with code {result.returncode}")
+
+
+def applies(project_dir: str | Path, version: str, base_commit: str, candidate_commit: str) -> bool:
+    """Whether a ``Changed`` or ``Removed`` entry of ``version`` applies to the change between two commits: the
+    commit of the ref is reachable from the candidate and not from the baseline (project-contract.md). An entry whose
+    version does not resolve never applies."""
+    commit = resolve(project_dir, version)
+    if commit is None:
+        return False
+    return is_ancestor(project_dir, commit, candidate_commit) and not is_ancestor(project_dir, commit, base_commit)
+
+
 def ref_kind(project_dir: str | Path, ref: str) -> str:
     """``tag``, ``branch`` or ``commit``, for a ref that resolves (so it does not start with ``-``)."""
     full = git(project_dir, "rev-parse", "--symbolic-full-name", ref).stdout.strip()

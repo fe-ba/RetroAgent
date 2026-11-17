@@ -3,7 +3,7 @@
 import pytest
 
 from retroagent.cli import display
-from retroagent.llm.provider import Usage, Wait
+from retroagent.llm.provider import ProviderNotice, Usage, Wait
 from retroagent.runtime.permissions import PermissionRequest
 from retroagent.runtime.turn import ModelCalled, Retried, ToolCalled, Warned
 
@@ -36,6 +36,8 @@ DENIED = ToolCalled("test_runner__run_tests", '{"version": "base", "scope": "all
         (Wait("unavailable", 2, 8.0), True, "wait 8.0 s: the provider is unavailable, retry 2"),
         (Wait("pacing", 0, 3.25), True, "wait 3.2 s: pacing under requests_per_minute"),
         (Wait("pacing", 0, 3.25), False, None),
+        (ProviderNotice("Deprecated: temperature"), True, "provider notice: Deprecated: temperature"),
+        (ProviderNotice("Deprecated: temperature"), False, None),
         (Warned("the provider reports no usage"), False, "warning: the provider reports no usage"),
     ],
 )  # fmt: skip

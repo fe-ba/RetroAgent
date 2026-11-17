@@ -6,21 +6,29 @@ BASE_COMMIT = "b" * 40
 CANDIDATE_COMMIT = "c" * 40
 
 
+def no_removal(version: str) -> bool:
+    """``removal_applies`` of ``impact.record_impact`` for records whose removals never apply to the change."""
+    return False
+
+
 def count_rows(conn):
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
     return {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables}
 
 
 def populate_every_table(build):
-    """One row in each of the 23 tables, through the API."""
+    """One row in each of the 24 tables, through the API."""
     conn = build.conn
     requirement_id = build.requirement()
     requirements.add_requirement_change(conn, requirement_id=requirement_id, version="v1.1", description="changed")
+    other_requirement = build.requirement("REQ-002")
     impact.record_impact(
         conn,
         build.analysis_id,
         modules=[{"module": "cart", "files": ["app/cart.py"], "risk_level": "high", "reason": "changed"}],
         requirements=[{"requirement_id": requirement_id, "reason": "total changed"}],
+        not_impacted=[{"requirement_id": other_requirement, "reason": "not about the cart"}],
+        removal_applies=no_removal,
     )
     impact.add_risk(
         conn, description="rounding", level="medium", analysis_id=build.analysis_id, requirement_ids=[requirement_id]

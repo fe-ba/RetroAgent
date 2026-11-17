@@ -115,6 +115,14 @@ class Wait:
     seconds: float
 
 
+@dataclass(frozen=True)
+class ProviderNotice:
+    """A line that the provider library logged, such as a deprecation warning: shown in verbose mode only
+    (runtime.md, Display)."""
+
+    message: str
+
+
 # Errors. Every ``ProviderError`` is a runtime error: it ends the current turn (llm-providers.md, Errors and
 # retries). Messages never contain a credential.
 

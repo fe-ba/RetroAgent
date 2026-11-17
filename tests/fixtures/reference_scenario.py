@@ -7,6 +7,7 @@ records: the results are the ones of ``ORACLE.md``, typed here, not parsed from 
 
 from dataclasses import dataclass
 
+from fixtures.memory_records import no_removal
 from retroagent.memory import db, design, execution, impact, interpretation, requirements, sessions
 
 BASE_REF, BASE_COMMIT = "v1.0", "c7d45ada468e3746c498cb3417999e117154a942"
@@ -247,6 +248,8 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         requirements=[
             {"requirement_id": f"REQ-00{n}", "reason": f"{REQUIREMENTS[f'REQ-00{n}']} may change"} for n in range(2, 9)
         ],
+        not_impacted=[{"requirement_id": "REQ-001", "reason": "No changed file takes part in the catalog search."}],
+        removal_applies=no_removal,
     )
     for description, level, requirement_ids in [
         (
@@ -423,6 +426,12 @@ def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
         analysis_id,
         modules=[{"module": "pricing", "files": ["src/shop/pricing.py"], "risk_level": "high", "reason": "Shipping"}],
         requirements=[{"requirement_id": "REQ-005", "reason": "Shipping is computed again on the discounted subtotal"}],
+        not_impacted=[
+            {"requirement_id": requirement_id, "reason": "Only shipping changed in v1.2."}
+            for requirement_id in REQUIREMENTS
+            if requirement_id != "REQ-005"
+        ],
+        removal_applies=no_removal,
     )
     suite_id = design.add_suite(conn, analysis_id=analysis_id, session_id=session_id)
     for position, test_id in enumerate(V1_2_TESTS, start=1):

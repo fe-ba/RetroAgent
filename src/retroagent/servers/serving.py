@@ -138,12 +138,23 @@ def page(text: str, start_line: int, limit: int) -> tuple[str, dict]:
     return "".join(taken), meta
 
 
+EXPLICIT_CODES = ("invalid_argument", "invalid_state")
+
+
 def tool_error(error: BaseException) -> ToolError:
-    """The error code of an exception raised by a tool function (P14 of slice 3)."""
+    """The error code of an exception raised by a tool function (P14 of slice 3).
+
+    A refusal of the data layer whose message starts with ``invalid_argument: `` or ``invalid_state: `` has that
+    code; otherwise ``INV-13`` is ``not_found``, any other invariant ``invalid_state``, and the rest
+    ``invalid_argument``.
+    """
     if isinstance(error, ToolError):
         return error
     if isinstance(error, InvariantViolation | sqlite3.IntegrityError):
         message = str(error)
+        code, separator, rest = message.partition(": ")
+        if separator and code in EXPLICIT_CODES:
+            return ToolError(code, rest)
         if message.startswith("INV-13"):
             return ToolError("not_found", message)
         if message.startswith("INV-"):

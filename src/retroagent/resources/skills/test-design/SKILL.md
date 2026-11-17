@@ -10,15 +10,16 @@ Three tasks: **design** creates test case specifications with status `designed`;
 ## Design
 
 1. **Suite.** Call `memory__get_suite`. Test cases are added to the current suite when designed; without one, the selection comes first: load the skill `test-selection`.
-2. **Scope.** The scope given by the user (requirement IDs, modules or free text). Without one, the `uncovered_requirements` of the current suite, which every one needs at least one test case, and then the impacted modules that no test case of the suite exercises. Read them with `memory__get_analysis` and `memory__get_requirements`, and read the code with `git__get_diff` and `git__read_file` at `candidate`.
-3. **Avoid duplicates.** Call `memory__get_test_cases` with `requirement_id` for each requirement in scope. Do not design what an existing test case already verifies.
-4. **Derive the test cases.** For each requirement or area in scope:
+2. **Scope.** The scope given by the user (requirement IDs, modules or free text). Without one, the `uncovered_requirements` of the current suite, which every one needs at least one test case, and then the impacted modules that no test case of the suite exercises. Read them with `memory__get_analysis` and `memory__get_requirements`.
+3. **Read the code and the test data.** Before designing, read with `git__read_file` at `base` the code that implements each requirement in scope, the data the tests start from (fixtures, seeded records, catalogs) and one existing test of the same area, found with `git__list_files`. Input data must use values that exist in the project: identifiers, stock, prices. Any exact value the requirement does not give, such as a status code or an error message, is taken from the baseline code and stated as such. Never invent one.
+4. **Avoid duplicates.** Call `memory__get_test_cases` with `requirement_id` for each requirement in scope. Do not design what an existing test case already verifies.
+5. **Derive the test cases.** For each requirement or area in scope:
    - the behavior that changed, from the diff and the documented change;
    - the unchanged behavior next to it, which is what a regression would break;
    - boundary values and equivalence classes of each input;
    - combinations of conditions, as a decision table, when rules interact;
    - invalid inputs and error responses that the requirement defines.
-5. **Fill the fields.**
+6. **Fill the fields.**
 
    | Field | Content |
    |---|---|
@@ -33,8 +34,8 @@ Three tasks: **design** creates test case specifications with status `designed`;
    | `selection_reason` | Which gap of the suite it covers. |
 
    When a requirement is ambiguous, state the interpretation used in the objective and tell the user.
-6. **Record.** Call `memory__design_test_case` for each test case. To correct a design that is still `designed`, use `memory__update_test_case`.
-7. **Answer** with a table (test case, title, priority, requirements), stating that they are designed, not implemented, not executed. Next step: `/implement`.
+7. **Record.** Call `memory__design_test_case` for each test case. To correct a design that is still `designed`, use `memory__update_test_case`.
+8. **Answer** with a table (test case, title, priority, requirements), stating that they are designed, not implemented, not executed. Next step: `/implement`.
 
 ## Implement
 

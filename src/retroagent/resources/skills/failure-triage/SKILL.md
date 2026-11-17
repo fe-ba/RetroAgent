@@ -29,7 +29,7 @@ Explain every failed or error execution of a run, so that the release decision c
 
    - `expected_change` and `test_defect` remove the failure from the product pass rate. Use them only with concrete evidence: a documented requirement change, or a specific error in the test. When in doubt, classify as `regression` and state the doubt.
    - A failure of a project module that was renamed or removed in the candidate is not `environment`.
-   - Code checks the evidence of `flaky`, `expected_change` and `pre_existing`. When `memory__save_triage` answers `invalid_state` because the evidence is missing, do not insist and do not reword the call: read the message, and classify with the next rule that matches.
+   - Code checks the evidence of `flaky`, `expected_change`, `pre_existing` and `regression`: a test case that also failed against the baseline cannot be a `regression`. When `memory__save_triage` answers `invalid_state` because the evidence is missing, do not insist and do not reword the call: read the message, and classify with the next rule that matches.
    - A flaky execution has the result of its first attempt, so it is always a failure to classify. `flaky` and `environment` do not excuse it: when the test case passed against the baseline, it still blocks release until a new run passes.
    - `pre_existing` needs a baseline run that executed the test case. Without one, say that the baseline must be run, and classify as `regression`.
 5. **Record.** Call `memory__save_triage` with the execution, the classification and a justification of one to three sentences that cites the evidence: the failure message, the baseline result with its run, the requirement change, the line of the diff.

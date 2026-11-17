@@ -323,6 +323,8 @@ Three classifications are accepted only when code finds their evidence (INV-15):
 | `flaky` | At least one rerun of the execution passed, or an earlier execution of the same test case against the same commit has a different verdict (`passed` against `failed` or `error`; see `metrics.md`). |
 | `pre_existing` | The execution belongs to a run against the candidate, and the latest completed run on the baseline commit of the session versions that executed the test case has it with result `failed` or `error`. |
 
+"A run against the candidate" means a run whose commit is the candidate commit of the session versions; `expected_change` and `pre_existing` are refused with `invalid_state` while the session versions are not set.
+
 `regression`, `environment` and `test_defect` are judgments of the model and are not validated.
 
 Errors: `invalid_state` when the execution did not fail, is already triaged and `replace` is not `true`, or lacks the evidence its classification requires; the message names the missing evidence.

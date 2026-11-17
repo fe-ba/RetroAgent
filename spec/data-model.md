@@ -358,7 +358,7 @@ The **current triage** of an execution is its latest row. Metrics, exit criteria
 | `defect_id` | text | references `defect` | code | — |
 | `execution_id` | integer | references `test_execution` | model | Must have result `failed` or `error`. |
 
-Writers: memory server, for registration and links proposed by the model and for closing by the user; test runner server, for closing by a run. The model cannot close a defect (INV-14).
+Writers of `defect` and `defect_execution`: memory server, for registration and links proposed by the model and for closing by the user; test runner server, for closing by a run, which writes `defect` only. The model cannot close a defect (INV-14).
 
 ## Reporting
 

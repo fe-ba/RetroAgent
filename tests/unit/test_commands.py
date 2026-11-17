@@ -9,8 +9,10 @@ from retroagent.cli import tables
 from retroagent.cli.interactive import run_failed
 from retroagent.runtime.commands import (
     SELECT,
+    TRIAGE,
     Command,
     CommandError,
+    DefectRow,
     NotAvailable,
     RunOutcome,
     RunRow,
@@ -56,6 +58,18 @@ from retroagent.servers.errors import ToolError
         ("/implement", Command("/implement")),
         ("/implement TC-027", Command("/implement", ids=("TC-027",))),
         ("/implement TC-027 TC-028 TC-027", Command("/implement", ids=("TC-027", "TC-028"))),
+        ("/triage", Command("/triage")),
+        ("/triage RUN-0004", Command("/triage", run_id="RUN-0004")),
+        ("/defects", Command("/defects")),
+        ("/defects --all", Command("/defects", include_closed=True)),
+        (
+            "/defects close DEF-001 fixed outside the tested scope",
+            Command("/defects", defect_id="DEF-001", reason="fixed outside the tested scope"),
+        ),
+        (
+            '/defects close DEF-001 "no longer applies"',
+            Command("/defects", defect_id="DEF-001", reason="no longer applies"),
+        ),
     ],
 )
 def test_parse(line, command):
@@ -76,6 +90,11 @@ def test_parse(line, command):
         ("/mode fast", "unknown mode fast"),
         ("/clear all", "usage: /clear"),
         ("/select now", "usage: /select"),
+        ("/triage RUN-0003 RUN-0004", "usage: /triage [run_id]"),
+        ("/defects close", "usage: /defects close <id> <reason>"),
+        ("/defects close DEF-001", "usage: /defects close <id> <reason>"),
+        ("/defects --open", "usage: /defects [--all], or /defects close <id> <reason>"),
+        ("/defects --all DEF-001", "usage: /defects [--all], or /defects close <id> <reason>"),
         ("/nowhere", "unknown command /nowhere"),
         ("what changed?", "not a command"),
     ],
@@ -101,7 +120,7 @@ def row(status="completed", **counts):
     )
 
 
-@pytest.mark.parametrize("name", ["/cycle", "/triage", "/report", "/defects"])
+@pytest.mark.parametrize("name", ["/cycle", "/report"])
 def test_the_commands_of_later_sessions_are_known_and_not_available(name):
     with pytest.raises(NotAvailable, match="is not available yet"):
         parse(name)
@@ -133,6 +152,15 @@ def test_the_templates_of_implement():
         " `implemented`."
     )
     assert not help_rows("/implement")[0][1].endswith("Not available yet in this build.")
+
+
+def test_the_template_of_triage():
+    """runtime.md, Model commands: the run is always named; without one, the runtime names the latest run."""
+    assert TRIAGE.format(run_id="RUN-0004") == (
+        "Load the skill `failure-triage` and triage the failed executions of run `RUN-0004`."
+    )
+    for name in ("/triage", "/defects"):
+        assert not help_rows(name)[0][1].endswith("Not available yet in this build.")
 
 
 def test_help_lists_every_command():
@@ -196,3 +224,37 @@ def test_the_status_tables_show_every_row():
     ):
         assert expected in text
     assert "0 input, 0 output" in text
+
+
+def defect(status="open", **closing):
+    return DefectRow(
+        defect_id="DEF-001",
+        severity="high",
+        status=status,
+        title="Shipping is not charged",
+        test_cases=("TC-020",),
+        detected_run_id="RUN-0004",
+        detected_at="2026-11-16T10:00:00.000+00:00",
+        closed_by=closing.get("closed_by"),
+        closed_run_id=closing.get("closed_run_id"),
+        closed_at=closing.get("closed_at"),
+        close_reason=closing.get("close_reason"),
+    )
+
+
+def test_the_defects_table_shows_open_defects_and_with_all_how_they_were_closed():
+    text = render(tables.defects_table([defect()]))
+    assert "Open defects" in text
+    for expected in ("DEF-001", "high", "open", "Shipping is not charged", "TC-020", "RUN-0004"):
+        assert expected in text
+    assert "Closed by" not in text
+    closed = defect(
+        "closed",
+        closed_by="run",
+        closed_run_id="RUN-0006",
+        closed_at="2026-11-16T11:00:00.000+00:00",
+        close_reason="Every linked test case passed in RUN-0006: TC-020.",
+    )
+    text = render(tables.defects_table([closed], include_closed=True))
+    for expected in ("Closed by", "run (RUN-0006)", "Every linked test case passed"):
+        assert expected in text

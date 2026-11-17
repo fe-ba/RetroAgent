@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from retroagent.config import Config, ConfigError, PlaceholderError, cache_dir, expand, load_config
-from retroagent.memory import connect, design, execution, transaction
+from retroagent.memory import connect, design, execution, interpretation, transaction
 from retroagent.memory.db import utc_now
 from retroagent.servers.errors import ToolError
 from retroagent.servers.test_runner import generated, junit, process, service, worktree
@@ -33,6 +33,7 @@ class RunSummary:
     run_id: str
     status: str
     counts: dict[str, int]  # executions by status and by result
+    closed_defects: list[str]  # defects closed by this run (INV-14)
 
 
 def run_tests(
@@ -494,6 +495,8 @@ class _Run:
             execution.finish_run(
                 self.conn, self.run_id, status="completed", exit_code=exit_code, error=self._load_errors()
             )
+            # A completed run against the candidate closes the defects whose test cases all passed in it.
+            interpretation.close_defects_verified_by(self.conn, self.run_id)
 
     def _load_errors(self) -> str | None:
         """The ``error`` of a completed run: the test files of the project that could not be loaded."""
@@ -538,4 +541,5 @@ class _Run:
 
     def _summary(self) -> RunSummary:
         counts = execution.execution_counts(self.conn, self.run_id)
-        return RunSummary(self.run_id, execution.get_run(self.conn, self.run_id)["status"], counts)
+        status = execution.get_run(self.conn, self.run_id)["status"]
+        return RunSummary(self.run_id, status, counts, interpretation.defects_closed_by(self.conn, self.run_id))

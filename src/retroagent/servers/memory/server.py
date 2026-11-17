@@ -1,7 +1,8 @@
 """Server ``memory``: long-term memory of the target project (mcp-tools.md, Server ``memory``).
 
-The tools of impact analysis, selection and design, and the reads of runs and executions. Triage and defects come
-in a later session. Run as ``python -m retroagent.servers.memory.server --project <dir> --session <id>``.
+The tools of impact analysis, selection and design, the reads of runs and executions, triage and defects.
+``close_defect`` is user only: the runtime never exposes it to the model (INV-14).
+Run as ``python -m retroagent.servers.memory.server --project <dir> --session <id>``.
 """
 
 import dataclasses
@@ -393,7 +394,7 @@ def get_executions(context: Context, run_id: str, result: str | None = None, unt
                 "attempts": _attempts(conn, row["id"]),
                 "triage": None if triage is None else _without_nulls(dict(triage), "execution_id"),
             }
-            count = conn.execute("SELECT COUNT(*) FROM triage WHERE execution_id = ?", (row["id"],)).fetchone()[0]
+            count = interpretation.triage_count(conn, row["id"])
             if count > 1:
                 record["triage_count"] = count
             found.append(record)
@@ -423,6 +424,85 @@ def get_test_case_history(context: Context, test_case_id: str) -> dict:
             for row in execution.test_case_history(conn, test_case_id)
         ]
     return {"test_case_id": test_case_id, "executions": history}
+
+
+# Triage and defects ----------------------------------------------------------------------------------------------
+
+
+def save_triage(
+    context: Context, execution_id: int, classification: str, justification: str, replace: bool = False
+) -> dict:
+    with context.connection() as conn:
+        session = context.session(conn)
+        base_commit, candidate_commit = session["base_commit"], session["candidate_commit"]
+        change_applies = None
+        if base_commit is not None and candidate_commit is not None:
+            applies: dict[str, bool] = {}
+
+            def change_applies(version: str) -> bool:
+                if version not in applies:
+                    applies[version] = changes.applies(context.project_dir, version, base_commit, candidate_commit)
+                return applies[version]
+
+        previous = interpretation.current_triage(conn, execution_id)
+        triage_id = interpretation.add_triage(
+            conn,
+            execution_id=execution_id,
+            classification=classification,
+            justification=justification,
+            triaged_by=session["model"],
+            base_commit=base_commit,
+            candidate_commit=candidate_commit,
+            change_applies=change_applies,
+            replace=replace,
+        )
+        row = conn.execute("SELECT test_case_id FROM test_execution WHERE id = ?", (execution_id,)).fetchone()
+        test_case_id = row["test_case_id"]
+    saved = {
+        "triage_id": triage_id,
+        "execution_id": execution_id,
+        "test_case_id": test_case_id,
+        "classification": classification,
+    }
+    if previous is not None:
+        saved["previous"] = previous["classification"]
+    return saved
+
+
+def register_defect(context: Context, title: str, severity: str, execution_ids: list[int], steps: list[str]) -> dict:
+    with context.connection() as conn:
+        defect_id = interpretation.add_defect(
+            conn, title=title, severity=severity, execution_ids=execution_ids, steps=steps
+        )
+    return {"defect_id": defect_id}
+
+
+def link_defect(context: Context, defect_id: str, execution_ids: list[int]) -> dict:
+    with context.connection() as conn:
+        interpretation.link_executions(conn, defect_id, execution_ids)
+        linked = [row["execution_id"] for row in interpretation.linked_executions(conn, defect_id)]
+    return {"defect_id": defect_id, "execution_ids": linked}
+
+
+def close_defect(context: Context, defect_id: str, reason: str) -> dict:
+    with context.connection() as conn:
+        interpretation.close_defect(conn, defect_id, closed_by="user", close_reason=reason)
+    return {"defect_id": defect_id, "status": "closed", "closed_by": "user"}
+
+
+def defect_record(conn, row) -> dict:
+    """A defect as ``memory.get_defects`` returns it: its fields, its steps as a list and its linked executions."""
+    return {
+        **_without_nulls(dict(row)),
+        "steps": json.loads(row["steps"]),
+        "executions": [dict(e) for e in interpretation.linked_executions(conn, row["id"])],
+    }
+
+
+def get_defects(context: Context, status: str | None = None) -> dict:
+    with context.connection() as conn:
+        defects = [defect_record(conn, row) for row in interpretation.list_defects(conn, status)]
+    return {"defects": defects}
 
 
 TOOLS = [
@@ -735,6 +815,87 @@ TOOLS = [
         "Every execution of a test case, oldest first, with run, version, status, result and whether it was flaky.",
         schema({"test_case_id": {**TEXT, "description": "Test case ID."}}, ("test_case_id",)),
         get_test_case_history,
+    ),
+    Tool(
+        "save_triage",
+        "Classify a failed or error execution, with a justification that cites the evidence. Code checks the evidence "
+        "of flaky, expected_change and pre_existing and refuses them without it.",
+        schema(
+            {
+                "execution_id": {"type": "integer", "description": "A failed or error execution."},
+                "classification": {
+                    "type": "string",
+                    "enum": ["regression", "expected_change", "flaky", "environment", "test_defect", "pre_existing"],
+                    "description": "The classification of the failure.",
+                },
+                "justification": {**TEXT, "description": "One to three sentences citing the evidence."},
+                "replace": {
+                    "type": "boolean",
+                    "description": "Triage again an execution that already has a triage; the earlier one is kept.",
+                },
+            },
+            ("execution_id", "classification", "justification"),
+        ),
+        save_triage,
+    ),
+    Tool(
+        "register_defect",
+        "Register an open defect for failed executions with the same cause, typically a regression. Expected and "
+        "actual results are taken from the first execution. Returns the DEF ID.",
+        schema(
+            {
+                "title": {**TEXT, "description": "Short description of the failure."},
+                "severity": {
+                    "type": "string",
+                    "enum": ["critical", "high", "medium", "low"],
+                    "description": "critical, high, medium or low.",
+                },
+                "execution_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "integer"},
+                    "description": "Failed or error executions; the first one gives the expected and actual results.",
+                },
+                "steps": {"type": "array", "items": TEXT, "description": "Steps to reproduce."},
+            },
+            ("title", "severity", "execution_ids", "steps"),
+        ),
+        register_defect,
+    ),
+    Tool(
+        "link_defect",
+        "Link more failed executions to an open defect, when the same failure appears in a later run.",
+        schema(
+            {
+                "defect_id": {**TEXT, "description": "An open defect, e.g. DEF-001."},
+                "execution_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "integer"},
+                    "description": "Failed or error executions.",
+                },
+            },
+            ("defect_id", "execution_ids"),
+        ),
+        link_defect,
+    ),
+    Tool(
+        "close_defect",
+        "User only. Close a defect by decision of the user.",
+        schema(
+            {
+                "defect_id": {**TEXT, "description": "An open defect."},
+                "reason": {**TEXT, "description": "Typed by the user."},
+            },
+            ("defect_id", "reason"),
+        ),
+        close_defect,
+    ),
+    Tool(
+        "get_defects",
+        "List defects with severity, status, expected and actual results, steps and linked executions.",
+        schema({"status": {"type": "string", "enum": ["open", "closed"], "description": "Default: both."}}),
+        get_defects,
     ),
 ]
 

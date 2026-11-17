@@ -2,13 +2,16 @@
 
 Loaded through the ``retroagent.memory`` API, as the test runner and the agent would store them. These are test
 records: the results are the ones of ``ORACLE.md``, typed here, not parsed from a JUnit XML of this machine
-(CLAUDE.md, ADR-0016). One record bypasses the API: the triage ``expected_change`` of TC-014 (see below).
+(CLAUDE.md, ADR-0016). The triage goes through ``interpretation.add_triage`` and its evidence checks; the git check
+of ``expected_change`` is replaced by ``v1_1_applies``, because these records have no repository.
 """
 
 from dataclasses import dataclass
 
 from fixtures.memory_records import no_removal
-from retroagent.memory import db, design, execution, impact, interpretation, requirements, sessions
+from retroagent.memory import connect, design, execution, impact, interpretation, requirements, sessions
+from retroagent.metrics import Thresholds, load_inputs
+from retroagent.metrics.evaluation import compute
 
 BASE_REF, BASE_COMMIT = "v1.0", "c7d45ada468e3746c498cb3417999e117154a942"
 CANDIDATE_REF, CANDIDATE_COMMIT = "v1.1", "46a5ef0910ce409a767f7549ed0c557106409321"
@@ -102,6 +105,12 @@ MESSAGES = {
 }
 
 
+def v1_1_applies(version: str) -> bool:
+    """``change_applies`` of ``add_triage`` for v1.0..v1.1: on the example, only ``v1.1`` is reachable from the
+    candidate and not from the baseline (project-contract.md)."""
+    return version == "v1.1"
+
+
 @dataclass(frozen=True)
 class ReferenceScenario:
     session_id: int
@@ -114,7 +123,8 @@ class ReferenceScenario:
     full_candidate_run: str  # RUN-0002
     baseline_run: str  # RUN-0003
     evaluated_run: str  # RUN-0004
-    defect_id: str  # DEF-001
+    defect_id: str | None  # DEF-001; None when loaded without triage
+    executions: dict[str, int]  # test id (or GENERATED) -> its execution in RUN-0004
 
     def tc(self, test_id: str) -> str:
         return self.test_cases[test_id]
@@ -192,7 +202,8 @@ def _full_run(conn, session_id, *, role, version, tests, test_cases) -> str:
     return run_id
 
 
-def load_reference_scenario(conn) -> ReferenceScenario:
+def load_reference_scenario(conn, triage: bool = True) -> ReferenceScenario:
+    """The records of cycle 1. Without ``triage``, they stop after RUN-0004: no triage and no defect."""
     session_id = sessions.start_session(
         conn,
         model="none",
@@ -323,51 +334,10 @@ def load_reference_scenario(conn) -> ReferenceScenario:
     executions = {}
     for test_id in V1_0_TESTS + V1_1_NEW_TESTS:
         executions[test_id] = _execute(conn, evaluated, test_cases[test_id], _attempts("v1.1", test_id))
-    _execute(conn, evaluated, tc_027, _attempts("v1.1", GENERATED), test_revision=1)
+    executions[GENERATED] = _execute(conn, evaluated, tc_027, _attempts("v1.1", GENERATED), test_revision=1)
     execution.finish_run(conn, evaluated, status="completed", exit_code=1)
 
-    # Triage of RUN-0004 (ORACLE.md, Expected triage).
-    interpretation.add_triage(
-        conn,
-        execution_id=executions[S3],
-        classification="flaky",
-        justification="Failed at the first attempt and passed in both reruns.",
-        triaged_by="none",
-    )
-    # Stands in for the slice-4 evidence check of expected_change (INV-15, needs git): add_triage refuses it until
-    # then. REQ-004 has "Changed: v1.1", which applies to v1.0..v1.1.
-    with db.transaction(conn):
-        conn.execute(
-            "INSERT INTO triage (execution_id, classification, justification, triaged_by, created_at)"
-            " VALUES (?, 'expected_change', ?, 'none', ?)",
-            (
-                executions[S2],
-                'REQ-004 has the entry "Changed: v1.1 - Two different coupons can be combined". The test still'
-                " expects a second coupon to be rejected. The test must be updated.",
-                db.utc_now(),
-            ),
-        )
-    interpretation.add_triage(
-        conn,
-        execution_id=executions[S1],
-        classification="regression",
-        justification="REQ-005 requires shipping on the subtotal after discounts; no documented change.",
-        triaged_by="none",
-    )
-    interpretation.add_triage(
-        conn,
-        execution_id=executions[S4],
-        classification="pre_existing",
-        justification="Failed against the baseline in RUN-0003.",
-        triaged_by="none",
-        base_commit=BASE_COMMIT,
-    )
-    defect_id = interpretation.add_defect(
-        conn,
-        title="Shipping is not charged when a coupon brings the subtotal under 100.00",
-        severity="high",
-        execution_ids=[executions[S1]],
-    )
+    defect_id = triage_reference_scenario(conn, executions) if triage else None
 
     return ReferenceScenario(
         session_id=session_id,
@@ -381,6 +351,51 @@ def load_reference_scenario(conn) -> ReferenceScenario:
         baseline_run=baseline,
         evaluated_run=evaluated,
         defect_id=defect_id,
+        executions=executions,
+    )
+
+
+def triage_reference_scenario(conn, executions: dict[str, int]) -> str:
+    """The triage of RUN-0004 (ORACLE.md, Expected triage) and DEF-001, through the API with its evidence checks."""
+    versions = {"base_commit": BASE_COMMIT, "candidate_commit": CANDIDATE_COMMIT, "change_applies": v1_1_applies}
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S3],
+        classification="flaky",
+        justification="Failed at the first attempt and passed in both reruns.",
+        triaged_by="none",
+        **versions,
+    )
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S2],
+        classification="expected_change",
+        justification='REQ-004 has the entry "Changed: v1.1 - Two different coupons can be combined". The test still'
+        " expects a second coupon to be rejected. The test must be updated.",
+        triaged_by="none",
+        **versions,
+    )
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S1],
+        classification="regression",
+        justification="REQ-005 requires shipping on the subtotal after discounts; no documented change.",
+        triaged_by="none",
+        **versions,
+    )
+    interpretation.add_triage(
+        conn,
+        execution_id=executions[S4],
+        classification="pre_existing",
+        justification="Failed against the baseline in RUN-0003.",
+        triaged_by="none",
+        **versions,
+    )
+    return interpretation.add_defect(
+        conn,
+        title="Shipping is not charged when a coupon brings the subtotal under 100.00",
+        severity="high",
+        execution_ids=[executions[S1]],
     )
 
 
@@ -453,6 +468,7 @@ def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
         execution.set_junit_path(conn, run_id, f".retro/runs/{run_id}/junit.xml")
         executions = {t: _execute(conn, run_id, scenario.tc(t), _attempts(version, t)) for t in V1_2_TESTS}
         execution.finish_run(conn, run_id, status="completed", exit_code=1)
+        interpretation.close_defects_verified_by(conn, run_id)  # as the test runner does when a run completes
         return run_id, executions
 
     baseline, _ = suite_run("base", CANDIDATE_REF, CANDIDATE_COMMIT, "v1.1")
@@ -471,12 +487,17 @@ def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
         justification="Failed against the baseline in " + baseline + ".",
         triaged_by="none",
         base_commit=CANDIDATE_COMMIT,
-    )
-    interpretation.close_defect(
-        conn,
-        scenario.defect_id,
-        closed_by="run",
-        close_reason="The test case of the defect passed in " + evaluated + ".",
-        closed_run_id=evaluated,
+        candidate_commit=V1_2_COMMIT,
     )
     return Cycle2(session_id, suite_id, baseline, evaluated)
+
+
+def decision_of(project_dir, candidate_commit: str = CANDIDATE_COMMIT):
+    """The criteria, by ID, and the decision computed from the memory of a project for the latest suite run on the
+    candidate, with ``min_pass_rate`` 0.90 as in the example. Nothing is stored."""
+    conn = connect(project_dir)
+    try:
+        _, criteria, decision = compute(load_inputs(conn, candidate_commit), Thresholds(min_pass_rate=MIN_PASS_RATE))
+    finally:
+        conn.close()
+    return {criterion.id: criterion for criterion in criteria}, decision

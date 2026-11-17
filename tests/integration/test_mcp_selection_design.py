@@ -428,11 +428,12 @@ def test_get_executions_with_attempts_flakiness_and_triage(shop):
 
     untriaged = call(shop, "get_executions", {"run_id": "RUN-0002", "untriaged": True})["executions"]
     assert {e["test_case_id"] for e in untriaged} == set(failed)
-    conn = connect(shop.path)  # triage as memory.save_triage will, which comes in a later session
+    conn = connect(shop.path)  # a triage, then a second one that replaces it
     for classification in ("environment", "regression"):
         interpretation.add_triage(
             conn, execution_id=failed[tc(shop, SHIPPING)]["execution_id"], classification=classification,
             justification="Shipping is charged on the subtotal before discounts.", triaged_by="fake/model",
+            replace=classification == "regression",
         )  # fmt: skip
     conn.close()
     untriaged = call(shop, "get_executions", {"run_id": "RUN-0002", "untriaged": True})["executions"]

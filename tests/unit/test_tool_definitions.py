@@ -44,7 +44,8 @@ def test_the_bundled_tools_built_so_far():
         "memory": [
             "sync_requirements", "get_requirements", "get_analysis", "save_impact", "add_risk", "get_risks",
             "save_suite", "get_suite", "design_test_case", "update_test_case", "retire_test_case", "get_test_cases",
-            "get_runs", "get_executions", "get_test_case_history",
+            "get_runs", "get_executions", "get_test_case_history", "save_triage", "register_defect", "link_defect",
+            "close_defect", "get_defects",
         ],
         "test_runner": ["run_tests", "write_test", "get_evidence"],
     }  # fmt: skip

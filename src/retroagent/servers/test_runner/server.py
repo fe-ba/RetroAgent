@@ -38,7 +38,12 @@ def run_tests(context: Context, version: str, scope: str, test_case_ids: list[st
         commands_approved=True,
         test_case_ids=test_case_ids,
     )
-    return {"run_id": summary.run_id, "status": summary.status, "counts": summary.counts}
+    return {
+        "run_id": summary.run_id,
+        "status": summary.status,
+        "counts": summary.counts,
+        "closed_defects": summary.closed_defects,
+    }
 
 
 # write_test ------------------------------------------------------------------------------------------------------
@@ -202,7 +207,7 @@ TOOLS = [
         "run_tests",
         "Run tests against the base or candidate version and store the results from the JUnit XML. Scope all runs "
         "every test and discovers the project tests; suite runs the current suite; selected runs test_case_ids. "
-        "Returns the run ID, its status and counts.",
+        "Returns the run ID, its status, counts and the defects it closed.",
         schema(
             {
                 "version": {

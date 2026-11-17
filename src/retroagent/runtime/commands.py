@@ -5,8 +5,11 @@ same checks, question and ``tool_call`` row as a call of the model, dispatched t
 its output are not added to the conversation.
 
 **Model** commands empty the conversation and send a fixed template with the tool set of their step. This build
-has ``/analyze``, ``/select``, ``/design`` and ``/implement``; the other commands of cli.md are parsed and answered
-as not available yet.
+has ``/analyze``, ``/select``, ``/design``, ``/implement`` and ``/triage``; the other commands of cli.md are parsed and
+answered as not available yet.
+
+``/defects`` reads the defects from project memory, as ``/history`` reads the runs; ``/defects close`` calls the
+user-only tool ``memory.close_defect`` through ``turn.call_tool``, the only way to reach it (INV-14).
 
 Counts and statuses come from stored records; no function here takes or computes a test result.
 """
@@ -18,7 +21,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from retroagent.context import tools
-from retroagent.memory import design, execution
+from retroagent.memory import design, execution, interpretation
 from retroagent.runtime import permissions, turn
 from retroagent.runtime.session import Session, SessionError, Version
 from retroagent.servers.errors import ToolError
@@ -43,6 +46,9 @@ IMPLEMENT = (
 )
 IMPLEMENT_DEFAULT = "Load the skill `test-design` and implement all designed test cases of the current suite."
 IMPLEMENT_TOOL_SET = "implement"
+TRIAGE = "Load the skill `failure-triage` and triage the failed executions of run `{run_id}`."
+TRIAGE_TOOL_SET = "triage"
+CLOSE_DEFECT = "memory__close_defect"
 
 # Every slash command of cli.md: usage, description, and whether this build has it.
 HELP = (
@@ -56,12 +62,12 @@ HELP = (
     ("/implement [ids]", "Write executable test code for designed test cases.", True),
     ("/run [target] [--on <version>]", "Execute tests. target: suite (default), all, or test case IDs separated by"
      " spaces. --on: base, candidate (default) or both.", True),
-    ("/triage [run_id]", "Classify the failures of a run. Default: last run.", False),
+    ("/triage [run_id]", "Classify the failures of a run. Default: last run.", True),
     ("/report <type> [--run <run_id>] [--format <format>]", "Generate a report.", False),
     ("/status", "Session versions, test cases by status, the current suite, the latest run, the mode, and the model"
      " calls and tokens of the session.", True),
     ("/history [n]", "The last n runs. Default: 10.", True),
-    ("/defects [--all]", "Open defects; with --all, closed ones too. /defects close <id> <reason> closes one.", False),
+    ("/defects [--all]", "Open defects; with --all, closed ones too. /defects close <id> <reason> closes one.", True),
     ("/init", "Same as retro init: create RETRO.md, .retro/config.yaml and .retro/.gitignore when missing.", True),
     ("/model [name]", "Show the current model, or switch to profile name.", True),
     ("/mode [mode]", "Show the current permission mode, or switch to default, plan or auto.", True),
@@ -73,7 +79,7 @@ HELP = (
 )  # fmt: skip
 COMMANDS = tuple(usage.split()[0] for usage, _, _ in HELP)
 AVAILABLE = tuple(usage.split()[0] for usage, _, available in HELP if available)
-MODEL_COMMANDS = ("/analyze", "/select", "/design", "/implement")
+MODEL_COMMANDS = ("/analyze", "/select", "/design", "/implement", "/triage")
 
 
 class CommandError(Exception):
@@ -94,6 +100,10 @@ class Command:
     refs: tuple[str, ...] = ()  # /analyze: () or (base, candidate)
     scope: str | None = None  # /design: the words after the command, joined by one space
     ids: tuple[str, ...] = ()  # /implement: test case IDs, once each, in order
+    run_id: str | None = None  # /triage
+    include_closed: bool = False  # /defects --all
+    defect_id: str | None = None  # /defects close
+    reason: str | None = None  # /defects close: the words after the ID, joined by one space
 
 
 def is_command(line: str) -> bool:
@@ -128,6 +138,12 @@ def parse(line: str) -> Command:
         return Command(name, scope=" ".join(args) or None)
     if name == "/implement":
         return Command(name, ids=tuple(dict.fromkeys(args)))
+    if name == "/triage":
+        if len(args) > 1:
+            raise CommandError("usage: /triage [run_id]")
+        return Command(name, run_id=args[0] if args else None)
+    if name == "/defects":
+        return _parse_defects(args)
     if name in ("/model", "/mode", "/help"):
         if len(args) > 1:
             raise CommandError(f"usage: {name} [{'name' if name == '/model' else name[1:]}]")
@@ -164,6 +180,18 @@ def _parse_run(args: list[str]) -> Command:
     return Command("/run", tuple(dict.fromkeys(targets)), on)
 
 
+def _parse_defects(args: list[str]) -> Command:
+    if not args:
+        return Command("/defects")
+    if args == ["--all"]:
+        return Command("/defects", include_closed=True)
+    if args[0] == "close":
+        if len(args) < 3:
+            raise CommandError("usage: /defects close <id> <reason>")
+        return Command("/defects", defect_id=args[1], reason=" ".join(args[2:]))
+    raise CommandError("usage: /defects [--all], or /defects close <id> <reason>")
+
+
 def help_rows(command: str | None = None) -> list[tuple[str, str]]:
     """``/help [command]``: usage and description of every command, or of one. Raises ``CommandError``."""
     if command is not None and not command.startswith("/"):
@@ -195,6 +223,7 @@ class RunRow:
     started_at: str
     ended_at: str | None
     error: str | None
+    closed_defects: tuple[str, ...] = ()  # defects closed by this run
 
 
 @dataclass(frozen=True)
@@ -217,6 +246,7 @@ def _row(conn, run) -> RunRow:
         started_at=run["started_at"],
         ended_at=run["ended_at"],
         error=run["error"],
+        closed_defects=tuple(interpretation.defects_closed_by(conn, run["id"])),
     )
 
 
@@ -434,6 +464,33 @@ def implement(
     return _model_command(session, message, IMPLEMENT_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
 
 
+def triage_run(session: Session, run_id: str | None = None) -> str:
+    """The run of ``/triage [run_id]``: the given one, which must exist, or the latest run of the project. Raises
+    ``CommandError`` before any model call."""
+    if run_id is not None:
+        if execution.get_run(session.conn, run_id) is None:
+            raise CommandError(f"run {run_id} does not exist; /history lists the runs")
+        return run_id
+    latest = execution.list_runs(session.conn, 1)
+    if not latest:
+        raise CommandError("there is no run to triage; run the tests first with /run")
+    return latest[0]["id"]
+
+
+def triage(
+    session: Session,
+    run_id: str | None = None,
+    *,
+    ask: turn.Ask | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> turn.TurnResult:
+    """``/triage [run_id]``: an empty conversation, then the template with the run and the tools of the step
+    ``triage``. Raises ``CommandError`` when there is no such run, and ``turn.TurnError``."""
+    message = TRIAGE.format(run_id=triage_run(session, run_id))
+    return _model_command(session, message, TRIAGE_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
 def _model_command(session: Session, message: str, tool_set: str, *, ask, listener, interrupt) -> turn.TurnResult:
     """A model command: the conversation is emptied, then one turn with the tools of the step."""
     session.conversation.clear()
@@ -447,6 +504,51 @@ def _model_command(session: Session, message: str, tool_set: str, *, ask, listen
         tool_set=tool_set,
         interrupt=interrupt,
     )
+
+
+# /defects -----------------------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DefectRow:
+    defect_id: str
+    severity: str
+    status: str
+    title: str
+    test_cases: tuple[str, ...]
+    detected_run_id: str
+    detected_at: str
+    closed_by: str | None
+    closed_run_id: str | None
+    closed_at: str | None
+    close_reason: str | None
+
+
+def defects(session: Session, include_closed: bool = False) -> list[DefectRow]:
+    """``/defects [--all]``: the open defects of the project, or every defect."""
+    conn = session.conn
+    return [
+        DefectRow(
+            defect_id=row["id"],
+            severity=row["severity"],
+            status=row["status"],
+            title=row["title"],
+            test_cases=tuple(interpretation.linked_test_cases(conn, row["id"])),
+            detected_run_id=row["detected_run_id"],
+            detected_at=row["detected_at"],
+            closed_by=row["closed_by"],
+            closed_run_id=row["closed_run_id"],
+            closed_at=row["closed_at"],
+            close_reason=row["close_reason"],
+        )
+        for row in interpretation.list_defects(conn, None if include_closed else "open")
+    ]
+
+
+def close_defect(session: Session, defect_id: str, reason: str) -> dict:
+    """``/defects close <id> <reason>``: the user-only tool ``memory.close_defect``, called for the user, with the
+    checks and the ``tool_call`` row of every call. Raises ``ToolError``."""
+    return turn.call_tool(session, CLOSE_DEFECT, {"defect_id": defect_id, "reason": reason}, ask=None)
 
 
 # The outcome of a session, for non-interactive mode ------------------------------------------------------------------

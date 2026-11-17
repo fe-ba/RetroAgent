@@ -203,3 +203,80 @@ def design_script(text: str = "TC designed; designed, not implemented, not execu
         calls(call("memory__design_test_case", REQ_002_DESIGN)),
         answer(text),
     ]
+
+
+# The triage of the reference scenario (ORACLE.md, Expected triage), in the order the skill failure-triage gives:
+# for each failure of RUN-0004, its evidence, then its classification. With ``wrong_first``, the classifications that
+# code must refuse come first (SC-13): expected_change and pre_existing for the shipping test, flaky for the tax test.
+TRIAGE_RUN = "RUN-0004"
+TRIAGE = [
+    ("TC-020", "REQ-005", [
+        ("expected_change", "REQ-005 may have changed in v1.1.", True),
+        ("pre_existing", "Shipping may have failed against the baseline.", True),
+        ("regression", "Shipping 0.00 for a discounted subtotal of 90.00, expected 5.00: REQ-005 requires shipping on"
+                       " the subtotal after discounts and has no documented change. It passed in RUN-0003.", False),
+    ]),
+    ("TC-014", "REQ-004", [
+        ("expected_change", 'REQ-004 has "Changed: v1.1": two coupons can be combined. The test still expects the'
+                            " second coupon to be rejected (409); it must be updated.", False),
+    ]),
+    ("TC-011", "REQ-001", [
+        ("flaky", "Failed at the first attempt (results not sorted) and passed in both reruns.", False),
+    ]),
+    ("TC-022", "REQ-007", [
+        ("flaky", "The tax rounding may be intermittent.", True),
+        ("pre_existing", "Tax 0.12 for 0.625, expected 0.13 (half up). It also failed in RUN-0003 (v1.0).", False),
+    ]),
+]  # fmt: skip
+DEFECT_TITLE = "Shipping is not charged when a coupon brings the subtotal under 100.00"
+DEFECT_STEPS = ["Add products for 100.00 to a cart", "Apply a 10% coupon", "Read the totals"]
+
+
+def triage_script(severity: str = "high", wrong_first: bool = True, extra: list | None = None) -> Scripted:
+    """A model that follows the skill ``failure-triage`` on RUN-0004 of the reference scenario: it reads the untriaged
+    failures, the evidence of each one, classifies it, registers one defect for the regression and answers. ``extra``
+    are answers of the model after the defect is registered, before the final answer."""
+    untriaged = call("memory__get_executions", {"run_id": TRIAGE_RUN, "untriaged": True})
+    seen: dict[str, int] = {}
+
+    def save(test_case_id, classification, justification):
+        def step(request):
+            if not seen:
+                seen.update(
+                    {e["test_case_id"]: e["execution_id"] for e in result_in(request, untriaged.id)["executions"]}
+                )
+            arguments = {"execution_id": seen[test_case_id], "classification": classification,
+                         "justification": justification}  # fmt: skip
+            return calls(call("memory__save_triage", arguments))
+
+        return step
+
+    def register(request):
+        arguments = {"title": DEFECT_TITLE, "severity": severity, "execution_ids": [seen["TC-020"]],
+                     "steps": DEFECT_STEPS}  # fmt: skip
+        return calls(call("memory__register_defect", arguments))
+
+    script: list = [calls(call("runtime__load_skill", {"name": "failure-triage"})), calls(untriaged)]
+    for test_case_id, requirement_id, attempts in TRIAGE:
+        script.append(calls(
+            call("test_runner__get_evidence", {"run_id": TRIAGE_RUN, "test_case_id": test_case_id}),
+            call("memory__get_test_case_history", {"test_case_id": test_case_id}),
+        ))  # fmt: skip
+        script.append(calls(
+            call("memory__get_test_cases", {"ids": [test_case_id]}),
+            call("memory__get_requirements", {"ids": [requirement_id]}),
+        ))  # fmt: skip
+        for classification, justification, wrong in attempts:
+            if wrong_first or not wrong:
+                script.append(save(test_case_id, classification, justification))
+    script += [
+        calls(call("memory__get_defects", {"status": "open"})),
+        register,
+        *(extra or []),
+        calls(call("memory__get_defects", {"status": "closed"})),
+        answer(
+            "| Test case | Classification |\n|---|---|\n| TC-020 | regression |\n| TC-014 | expected_change |\n"
+            "| TC-011 | flaky |\n| TC-022 | pre_existing |\n\nDEF-001 registered for TC-020. No defect was closed."
+        ),
+    ]
+    return Scripted(script)

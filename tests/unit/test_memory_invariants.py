@@ -1,6 +1,7 @@
 """One test per invariant of spec/data-model.md that the data layer enforces. Each shows the refused write
-and the allowed one. INV-03 and INV-14 are tool contracts (slices 3 and 4); the ``expected_change`` evidence
-of INV-15 needs git (slice 4)."""
+and the allowed one. INV-03 and INV-14 are tool contracts, tested through the servers and the runtime; the git check
+of the ``expected_change`` evidence of INV-15 is given to the data layer as ``change_applies`` and tested with git in
+``tests/integration/test_mcp_triage.py``."""
 
 import inspect
 import sqlite3
@@ -8,7 +9,7 @@ import sqlite3
 import pytest
 from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, no_removal, populate_every_table
 
-from retroagent.memory import design, execution, impact, interpretation, reporting
+from retroagent.memory import design, execution, impact, interpretation, reporting, requirements
 from retroagent.memory.errors import InvariantViolation
 
 
@@ -373,109 +374,131 @@ def test_inv_13_failed_call_writes_nothing(conn, build):
     assert count_rows(conn)["analysis_module"] == 1
 
 
-def test_inv_15_triage_needs_evidence(conn, build):
-    # regression, environment and test_defect are judgments and need no evidence
+def triage(conn, execution_id, classification, **options):
+    return interpretation.add_triage(
+        conn, execution_id=execution_id, classification=classification, justification="x", triaged_by="m", **options
+    )
+
+
+SESSION = {"base_commit": BASE_COMMIT, "candidate_commit": CANDIDATE_COMMIT}
+
+
+def test_inv_15_judgments_need_no_evidence(conn, build):
+    # regression, environment and test_defect are judgments of the model
+    _, _, execution_id = build.failed_execution()
+    triage(conn, execution_id, "regression")
+    for classification in ("environment", "test_defect"):
+        triage(conn, execution_id, classification, replace=True)
+    assert interpretation.current_triage(conn, execution_id)["classification"] == "test_defect"
+
+
+def test_inv_15_flaky_needs_a_rerun_that_passed_or_history(conn, build):
     run_id, _, execution_id = build.failed_execution()
-    for classification in ("regression", "environment", "test_defect"):
-        interpretation.add_triage(
-            conn, execution_id=execution_id, classification=classification, justification="x", triaged_by="m"
-        )
-
-    # expected_change cannot be proven yet: refused
-    with pytest.raises(InvariantViolation, match="INV-15"):
-        interpretation.add_triage(
-            conn, execution_id=execution_id, classification="expected_change", justification="x", triaged_by="m"
-        )
-
-    # flaky: no evidence in one attempt, evidence in attempts with different results
-    with pytest.raises(InvariantViolation, match="INV-15"):
-        interpretation.add_triage(
-            conn, execution_id=execution_id, classification="flaky", justification="x", triaged_by="m"
-        )
-    flaky_case = build.test_case()
-    flaky = build.execute(run_id, flaky_case, "failed", "passed")
-    interpretation.add_triage(conn, execution_id=flaky, classification="flaky", justification="x", triaged_by="m")
+    with pytest.raises(InvariantViolation, match=r"INV-15: flaky needs .*\(attempts: failed\)"):
+        triage(conn, execution_id, "flaky")
+    triage(conn, build.execute(run_id, build.test_case(), "failed", "passed"), "flaky")
     # flaky from history: an earlier execution of the same test case on the same commit had another result
     history_case = build.test_case()
     build.execute(build.run(), history_case, "passed")
-    later = build.execute(build.run(), history_case, "failed")
-    interpretation.add_triage(conn, execution_id=later, classification="flaky", justification="x", triaged_by="m")
+    triage(conn, build.execute(build.run(), history_case, "failed"), "flaky")
 
     # failed, error, failed is not flaky: the verdict is the same in every attempt
     same_verdict = build.execute(run_id, build.test_case(), "failed", "error", "failed")
     with pytest.raises(InvariantViolation, match="INV-15"):
-        interpretation.add_triage(
-            conn, execution_id=same_verdict, classification="flaky", justification="x", triaged_by="m"
-        )
+        triage(conn, same_verdict, "flaky")
     # an earlier error does not justify flaky for a failed execution: both are 'not passed'
     error_then_failed = build.test_case()
     build.execute(build.run(), error_then_failed, "error")
-    failed_after = build.execute(build.run(), error_then_failed, "failed")
     with pytest.raises(InvariantViolation, match="INV-15"):
-        interpretation.add_triage(
-            conn, execution_id=failed_after, classification="flaky", justification="x", triaged_by="m"
-        )
+        triage(conn, build.execute(build.run(), error_then_failed, "failed"), "flaky")
+    # a pass on another commit is not history of this one
+    other_commit = build.test_case()
+    build.finished_run(role="base", test_case_id=other_commit, result="passed")
+    with pytest.raises(InvariantViolation, match="INV-15"):
+        triage(conn, build.execute(build.run(), other_commit, "failed"), "flaky")
 
-    # pre_existing: needs a candidate execution and a failed execution in the latest completed baseline run
+
+def test_inv_15_pre_existing_needs_a_failure_in_the_latest_baseline_run(conn, build):
     case = build.test_case()
-    candidate_run = build.run()
-    candidate_failure = build.execute(candidate_run, case, "failed")
-    for base_commit in (None, BASE_COMMIT):  # no baseline run exists yet
-        with pytest.raises(InvariantViolation, match="INV-15"):
-            interpretation.add_triage(
-                conn,
-                execution_id=candidate_failure,
-                classification="pre_existing",
-                justification="x",
-                triaged_by="m",
-                base_commit=base_commit,
-            )
-    build.finished_run(role="base", test_case_id=case, result="passed")
-    with pytest.raises(InvariantViolation, match="INV-15"):  # the baseline passed
-        interpretation.add_triage(
-            conn,
-            execution_id=candidate_failure,
-            classification="pre_existing",
-            justification="x",
-            triaged_by="m",
-            base_commit=BASE_COMMIT,
-        )
+    candidate_failure = build.execute(build.run(), case, "failed")
+    with pytest.raises(InvariantViolation, match="INV-15: pre_existing needs the session versions"):
+        triage(conn, candidate_failure, "pre_existing")
+    with pytest.raises(InvariantViolation, match="INV-15: pre_existing needs a completed run on the baseline"):
+        triage(conn, candidate_failure, "pre_existing", **SESSION)
+    baseline, _ = build.finished_run(role="base", test_case_id=case, result="passed")
+    with pytest.raises(InvariantViolation, match=f"INV-15: pre_existing needs {case} to fail .* passed in {baseline}"):
+        triage(conn, candidate_failure, "pre_existing", **SESSION)
     build.finished_run(role="base", test_case_id=case, result="failed")  # the latest baseline run failed
-    with pytest.raises(InvariantViolation, match="INV-15"):  # the session does not say which commit is the baseline
-        interpretation.add_triage(
-            conn, execution_id=candidate_failure, classification="pre_existing", justification="x", triaged_by="m"
-        )
-    with pytest.raises(InvariantViolation, match="INV-15"):  # another commit
-        interpretation.add_triage(
-            conn,
-            execution_id=candidate_failure,
-            classification="pre_existing",
-            justification="x",
-            triaged_by="m",
-            base_commit="a" * 40,
-        )
-    interpretation.add_triage(
-        conn,
-        execution_id=candidate_failure,
-        classification="pre_existing",
-        justification="x",
-        triaged_by="m",
-        base_commit=BASE_COMMIT,
-    )
+    with pytest.raises(InvariantViolation, match="INV-15"):  # another baseline commit
+        triage(conn, candidate_failure, "pre_existing", base_commit="a" * 40, candidate_commit=CANDIDATE_COMMIT)
+    with pytest.raises(InvariantViolation, match="INV-15: .* a run against the candidate"):  # another candidate commit
+        triage(conn, candidate_failure, "pre_existing", base_commit=BASE_COMMIT, candidate_commit="a" * 40)
+    triage(conn, candidate_failure, "pre_existing", **SESSION)
     # a failure on the baseline itself is not "pre-existing"
-    base_run, base_failure = build.finished_run(role="base", test_case_id=build.test_case(), result="failed")
-    with pytest.raises(InvariantViolation, match="INV-15"):
-        interpretation.add_triage(
-            conn,
-            execution_id=base_failure,
-            classification="pre_existing",
-            justification="x",
-            triaged_by="m",
-            base_commit=BASE_COMMIT,
-        )
-    # every triage is kept and the latest is the current one
+    _, base_failure = build.finished_run(role="base", test_case_id=build.test_case(), result="failed")
+    with pytest.raises(InvariantViolation, match="INV-15: .* a run against the candidate"):
+        triage(conn, base_failure, "pre_existing", **SESSION)
     assert interpretation.current_triage(conn, candidate_failure)["classification"] == "pre_existing"
     assert CANDIDATE_COMMIT != BASE_COMMIT
+
+
+def test_inv_15_expected_change_needs_a_documented_change_that_applies(conn, build):
+    changed = build.requirement("REQ-001")
+    requirements.add_requirement_change(conn, requirement_id=changed, version="v1.1", description="combined")
+    unchanged = build.requirement("REQ-002")
+    old_change = build.requirement("REQ-003")
+    requirements.add_requirement_change(conn, requirement_id=old_change, version="v0.9", description="older")
+    removed = requirements.add_requirement(
+        conn, id="REQ-004", title="Gift wrap", description="Gift wrap.", source_file="docs/req.md", removed="v1.1"
+    )
+
+    def applies(version):
+        return version == "v1.1"
+
+    def failure(requirement_ids, role="candidate"):
+        case = build.test_case(requirement_ids=requirement_ids)
+        _, execution_id = build.finished_run(role=role, test_case_id=case, result="failed")
+        return case, execution_id
+
+    session = {**SESSION, "change_applies": applies}
+    case, execution_id = failure([unchanged])
+    with pytest.raises(
+        InvariantViolation, match=f"INV-15: expected_change .*: {case} traces REQ-002, and it has no Changed or Removed"
+    ):
+        triage(conn, execution_id, "expected_change", **session)
+    _, execution_id = failure([old_change])  # REQ-003 changed in v0.9, before the baseline
+    with pytest.raises(InvariantViolation, match=r"its entries \(REQ-003 v0.9\) do not apply"):
+        triage(conn, execution_id, "expected_change", **session)
+    _, execution_id = failure([])
+    with pytest.raises(InvariantViolation, match="traces none"):
+        triage(conn, execution_id, "expected_change", **session)
+    _, execution_id = failure([changed])
+    with pytest.raises(InvariantViolation, match="INV-15: expected_change needs the session versions"):
+        triage(conn, execution_id, "expected_change")
+    triage(conn, execution_id, "expected_change", **session)
+    _, execution_id = failure([unchanged, removed])  # a Removed entry applies as well
+    triage(conn, execution_id, "expected_change", **session)
+    _, base_failure = failure([changed], role="base")
+    with pytest.raises(InvariantViolation, match="a run against the candidate"):
+        triage(conn, base_failure, "expected_change", **session)
+
+
+def test_a_triaged_execution_is_triaged_again_only_with_replace(conn, build):
+    _, _, execution_id = build.failed_execution()
+    first = triage(conn, execution_id, "regression")
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation, match="invalid_state: .* already triaged as regression; set replace"):
+        triage(conn, execution_id, "environment")
+    assert count_rows(conn) == before
+    second = triage(conn, execution_id, "environment", replace=True)
+    rows = conn.execute("SELECT id, classification FROM triage WHERE execution_id = ? ORDER BY id", (execution_id,))
+    assert [tuple(row) for row in rows] == [(first, "regression"), (second, "environment")]
+    assert interpretation.current_triage(conn, execution_id)["id"] == second
+    assert interpretation.triage_count(conn, execution_id) == 2
+    # replace on an execution without a triage is a first triage
+    _, _, untriaged = build.failed_execution()
+    triage(conn, untriaged, "regression", replace=True)
+    assert interpretation.triage_count(conn, untriaged) == 1
 
 
 def test_inv_16_retired_test_case_is_never_added_to_a_suite(conn, build):

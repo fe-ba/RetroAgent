@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 from fixtures.agent_session import Scripted, analyze_script, design_script, select_script
 from fixtures.example_project import example_project, project_copy, start
-from fixtures.reference_scenario import load_reference_scenario
+from fixtures.reference_scenario import ReferenceScenario, load_reference_scenario
 from fixtures.report_session import open_project
 
+from retroagent.memory import connect
 from retroagent.runtime import commands
 from retroagent.runtime.commands import RunOutcome
 
@@ -108,3 +109,30 @@ def fake_model(monkeypatch):
         return provider
 
     return use
+
+
+@pytest.fixture(scope="module")
+def pristine_example(tmp_path_factory, pip_cache):
+    """An example project that nobody changes, for tests that copy it."""
+    with example_project(tmp_path_factory, pip_cache) as path:
+        yield path
+
+
+@dataclass(frozen=True)
+class ReferenceProject:
+    path: Path
+    scenario: ReferenceScenario
+
+
+@pytest.fixture
+def reference_project(tmp_path_factory, pristine_example) -> ReferenceProject:
+    """A copy of the example project, with its git repository, holding the records of the reference scenario, cycle
+    1, without triage and without DEF-001: the failures of RUN-0004 wait for triage. The session of the scenario has
+    the versions v1.0 and v1.1 at their real commits, so the git check of ``expected_change`` runs."""
+    with project_copy(tmp_path_factory, pristine_example) as path:
+        conn = connect(path)
+        try:
+            scenario = load_reference_scenario(conn, triage=False)
+        finally:
+            conn.close()
+        yield ReferenceProject(path, scenario)

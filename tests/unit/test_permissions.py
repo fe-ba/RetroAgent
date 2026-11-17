@@ -20,7 +20,9 @@ KNOWN = {
 PERMISSION_KEYS = ("run_tests", "write_tests", "start_service")
 
 
-def decide(name, *, mode="default", value="allow", values=None, service=False, approved=True, tool_set=None):
+def decide(
+    name, *, mode="default", value="allow", values=None, service=False, approved=True, tool_set=None, by_user=False
+):
     effective = dict.fromkeys(PERMISSION_KEYS, value) | (values or {})
     return check(
         name,
@@ -30,6 +32,7 @@ def decide(name, *, mode="default", value="allow", values=None, service=False, a
         permissions=effective,
         service_configured=service,
         commands_approved=approved,
+        by_user=by_user,
     )
 
 
@@ -121,6 +124,12 @@ def test_a_user_only_tool_is_denied_in_every_mode():
             "denied",
             "memory__close_defect is called only by the user, with a direct command",
         )
+
+
+def test_the_user_calls_a_user_only_tool_in_every_mode():
+    """``/defects close`` calls memory.close_defect through the runtime; plan mode allows it (mcp-tools.md)."""
+    for mode in ("default", "auto", "plan"):
+        assert decide("memory__close_defect", mode=mode, by_user=True).action == "run"
 
 
 def test_a_tool_outside_the_step_is_denied_and_the_message_names_the_tools_of_the_step():

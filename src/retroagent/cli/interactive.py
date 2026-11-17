@@ -108,6 +108,15 @@ class Shell:
             return self._model(lambda ask, interrupt: commands.implement(
                 self.session, command.ids, ask=ask, listener=self._listener, interrupt=interrupt
             ))  # fmt: skip
+        if name == "/triage":
+            try:
+                run_id = commands.triage_run(self.session, command.run_id)
+            except CommandError as error:
+                self._error(str(error))
+                return Outcome(usage_error=True)
+            return self._model(lambda ask, interrupt: commands.triage(
+                self.session, run_id, ask=ask, listener=self._listener, interrupt=interrupt
+            ))  # fmt: skip
         if name == "/run":
             return self._run(command)
         try:
@@ -124,6 +133,8 @@ class Shell:
                 out.print(table)
         elif name == "/history":
             out.print(tables.history_table(commands.history(session, command.limit)))
+        elif name == "/defects":
+            self._defects(command)
         elif name == "/clear":
             commands.clear(session)
             self._say("The conversation is cleared. Project memory is not affected.")
@@ -167,6 +178,20 @@ class Shell:
         else:
             raise ValueError(f"not a direct command: {name}")
 
+    def _defects(self, command: Command) -> None:
+        if command.defect_id is None:
+            rows = commands.defects(self.session, command.include_closed)
+            if rows:
+                self.out.print(tables.defects_table(rows, include_closed=command.include_closed))
+            else:
+                self._say("No defects." if command.include_closed else "No open defects.")
+            return
+        try:
+            commands.close_defect(self.session, command.defect_id, command.reason)
+        except ToolError as error:
+            raise CommandError(str(error)) from error
+        self._say(f"{command.defect_id} is closed by the user: {command.reason}")
+
     def _init(self) -> None:
         project_dir = self.session.project_dir
         proposal = init.propose(project_dir)
@@ -191,6 +216,9 @@ class Shell:
         )
         if outcome.runs:
             self.out.print(tables.runs_table(outcome.runs))
+        for row in outcome.runs:
+            if row.closed_defects:
+                self._say(f"{row.run_id} closed {', '.join(row.closed_defects)}.")
         for row in outcome.runs:
             if row.error:
                 self._error(f"{row.run_id}: {row.error}")

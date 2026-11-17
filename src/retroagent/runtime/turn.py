@@ -142,6 +142,7 @@ def call_tool(
     the permission is ``ask``, the dispatch and the ``tool_call`` row. Returns the result of the tool. Raises
     ``ToolError``, or ``Interrupted`` when ``interrupt`` is set during the call."""
     turn = _Turn(session, None, client or session.client, ask, listener, None, None, interrupt)
+    turn.by_user = True
     call = ToolCall(id="user", name=name, arguments=dict(arguments))
     outcome, code, result = turn.run_call(call, deferred=False)
     if code is not None:
@@ -178,6 +179,7 @@ class _Turn:
         self.report = listener or (lambda event: None)
         self.tool_set, self.cycle_step = tool_set, cycle_step
         self.interrupt = interrupt
+        self.by_user = False  # a direct command of the user, which may call the user-only tools
         self.calls = 0
         self.secrets = secret_values(session.config.credential_env_names)
 
@@ -384,6 +386,7 @@ class _Turn:
             permissions=session.permissions(),
             service_configured=bool(config["service.start"]),
             commands_approved=commands is None or commands.ready,
+            by_user=self.by_user,
         )
         if decision.action == "refuse":
             if decision.reason in permissions.PERMISSION_REFUSALS:

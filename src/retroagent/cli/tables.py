@@ -1,4 +1,4 @@
-"""Terminal tables of runs, status and history (FR-30). Timestamps are shown in local time with their offset.
+"""Terminal tables of runs, status, history and defects (FR-30). Timestamps are shown in local time with their offset.
 
 Cells fold instead of being cut, so a narrow terminal never hides an identifier or a count.
 """
@@ -7,7 +7,7 @@ from datetime import datetime
 
 from rich.table import Table
 
-from retroagent.runtime.commands import RunRow, Status
+from retroagent.runtime.commands import DefectRow, RunRow, Status
 from retroagent.runtime.session import Version
 
 _COUNT_COLUMNS = ("executed", "passed", "failed", "error", "blocked", "skipped")
@@ -73,3 +73,29 @@ def status_tables(status: Status) -> list[Table]:
 
 def history_table(rows: list[RunRow]) -> Table:
     return runs_table(rows, title="History")
+
+
+def defects_table(rows: list[DefectRow], include_closed: bool = False) -> Table:
+    table = Table(title="Defects" if include_closed else "Open defects")
+    for name in ("Defect", "Severity", "Status", "Title", "Test cases", "Detected", "Detected at"):
+        table.add_column(name, overflow="fold")
+    if include_closed:
+        for name in ("Closed by", "Closed at", "Reason"):
+            table.add_column(name, overflow="fold")
+    for row in rows:
+        cells = [
+            row.defect_id,
+            row.severity,
+            row.status,
+            row.title,
+            ", ".join(row.test_cases),
+            row.detected_run_id,
+            local_time(row.detected_at),
+        ]
+        if include_closed:
+            closed_by = "-" if row.closed_by is None else row.closed_by
+            if row.closed_run_id is not None:
+                closed_by += f" ({row.closed_run_id})"
+            cells += [closed_by, local_time(row.closed_at), row.close_reason or "-"]
+        table.add_row(*cells)
+    return table

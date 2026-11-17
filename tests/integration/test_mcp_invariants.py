@@ -7,6 +7,7 @@ from fixtures.example_project import example_project
 from fixtures.mcp_project import dump, error_of, open_session
 
 from retroagent.mcp_client import Client
+from retroagent.memory import connect, design, execution, interpretation
 
 PRICING = {"module": "pricing", "files": ["src/shop/pricing.py"], "risk_level": "high", "reason": "r"}
 DESIGN = {"title": "t", "objective": "o", "priority": "high", "preconditions": [], "input_data": [], "steps": ["s"],
@@ -43,24 +44,62 @@ UNKNOWN_REFERENCES = [
     ("memory", "get_test_cases", {"requirement_id": "REQ-099"}),
     ("memory", "get_executions", {"run_id": "RUN-9999"}),
     ("memory", "get_test_case_history", {"test_case_id": "TC-999"}),
+    ("memory", "save_triage", {"execution_id": 999, "classification": "regression", "justification": "j"}),
+    ("memory", "register_defect", {"title": "t", "severity": "low", "execution_ids": [1, 999], "steps": []}),
+    ("memory", "link_defect", {"defect_id": "DEF-999", "execution_ids": [1]}),
+    ("memory", "link_defect", {"defect_id": "DEF-001", "execution_ids": [999]}),
+    ("memory", "close_defect", {"defect_id": "DEF-999", "reason": "r"}),
     ("test_runner", "run_tests", {"version": "base", "scope": "selected", "test_case_ids": ["TC-999"]}),
     ("test_runner", "write_test",
      {"test_case_id": "TC-999", "file": "test_x.py", "test_name": "test_x", "code": "x = 1\n"}),
     ("test_runner", "get_evidence", {"run_id": "RUN-9999"}),
 ]  # fmt: skip
-WITHOUT_REFERENCES = {"git.analyze_changes", "memory.sync_requirements", "memory.get_risks", "memory.get_runs"}
+WITHOUT_REFERENCES = {
+    "git.analyze_changes",
+    "memory.sync_requirements",
+    "memory.get_risks",
+    "memory.get_runs",
+    "memory.get_defects",
+}
 
 
 @pytest.fixture(scope="module")
 def shop(tmp_path_factory, pip_cache):
-    """shop-api with its requirements, analysis 1 of v1.0..v1.1 without an impact, and its suite with TC-001."""
+    """shop-api with its requirements, analysis 1 of v1.0..v1.1 without an impact, its suite with TC-001, and
+    execution 1, a failure of TC-002 linked to DEF-001."""
     with example_project(tmp_path_factory, pip_cache) as path:
-        with Client(path, open_session(path)) as client:
+        session_id = open_session(path)
+        with Client(path, session_id) as client:
             client.call("memory", "sync_requirements")
             assert client.call("git", "analyze_changes")["analysis_id"] == 1
             client.call("memory", "save_suite", {"analysis_id": 1, "items": []})
             assert client.call("memory", "design_test_case", DESIGN)["test_case_id"] == "TC-001"
+            _failure_with_a_defect(path, session_id)
             yield path, client
+
+
+def _failure_with_a_defect(path, session_id) -> None:
+    """Test records stored through the data layer API, not results of a run (ADR-0016): a run with one failed
+    execution of a project test, and an open defect linked to it."""
+    conn = connect(path)
+    try:
+        test_case = design.add_project_suite_test_case(
+            conn, test_id="tests.test_cart::test_req_003_total", implementation="tests/test_cart.py::test_req_003_total"
+        )
+        run_id = execution.start_run(
+            conn, version_role="candidate", ref="v1.1", commit="0" * 40, scope="all", command="pytest",
+            session_id=session_id,
+        )  # fmt: skip
+        execution.set_junit_path(conn, run_id, f".retro/runs/{run_id}/junit-1.xml")
+        failed = execution.record_test_execution(
+            conn, run_id=run_id, test_case_id=test_case, status="executed", result="failed",
+            attempts=[{"result": "failed", "failure_message": "AssertionError"}],
+        )  # fmt: skip
+        execution.finish_run(conn, run_id, status="completed", exit_code=1)
+        assert (test_case, failed) == ("TC-002", 1)
+        assert interpretation.add_defect(conn, title="d", severity="low", execution_ids=[failed]) == "DEF-001"
+    finally:
+        conn.close()
 
 
 def test_every_reference_input_is_covered(shop):

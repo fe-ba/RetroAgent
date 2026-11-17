@@ -126,6 +126,7 @@ def check(
     permissions: Mapping[str, str],
     service_configured: bool,
     commands_approved: bool,
+    by_user: bool = False,
 ) -> Decision:
     """Decide a tool call, in the order of runtime.md: the tool exists, is not user only, is in the tool set of the
     step, is allowed by the mode and is not ``deny``; then the approval of the project commands; then the question.
@@ -133,10 +134,11 @@ def check(
     for the approval, or refuses the call when there is no one to ask.
 
     ``known`` holds the exposed name of every existing tool; ``permissions`` the effective value of each permission.
+    ``by_user`` is a call of the runtime for a direct command of the user, the only caller of a user-only tool.
     """
     if name not in known:
         return refuse("not_found", f"there is no tool {name}", NOT_FOUND)
-    if name in USER_ONLY:
+    if name in USER_ONLY and not by_user:
         return refuse("denied", f"{name} is called only by the user, with a direct command", USER_ONLY_TOOL)
     if tool_set is not None and not in_tool_set(name, STEP_TOOLS[tool_set]):
         has = ", ".join(step_tools(known, mode=mode, tool_set=tool_set))

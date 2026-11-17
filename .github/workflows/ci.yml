@@ -23,7 +23,13 @@ jobs:
         run: |
           git config --global user.name "ci"
           git config --global user.email "ci@example.invalid"
-      - run: pip install -e ".[dev]" -c constraints.txt
+      - name: Install (pinned versions on 3.12, where constraints.txt was made)
+        run: |
+          if [ "${{ matrix.python }}" = "3.12" ]; then
+            pip install -e ".[dev]" -c constraints.txt
+          else
+            pip install -e ".[dev]"
+          fi
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest

@@ -111,6 +111,11 @@ def materialize(name: str, target: Path) -> tuple[str, ...]:
             GIT_COMMITTER_EMAIL=manifest["author_email"],
             GIT_COMMITTER_DATE=version["date"],
         )
+        # Empty the index first, so that git reads the content of every file. Otherwise git skips a file whose
+        # size, times and inode equal the ones it has in the index, and a file that only changed in content
+        # (same size, copied right after the previous version on a filesystem that reuses inode numbers) is
+        # left out of the commit.
+        _git(target, "read-tree", "--empty")
         _git(target, "add", "--all")
         _git(target, "commit", "--quiet", "--message", version["message"], env=env)
         _git(target, "tag", version["tag"])

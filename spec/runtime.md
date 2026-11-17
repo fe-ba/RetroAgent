@@ -195,7 +195,8 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 - Every tool call that writes project memory runs in a single transaction: it is applied completely or not at all (NFR-07).
 - The session lock prevents two sessions from writing the same project memory. The operating system releases it when the process ends, however it ends, so a crashed session never blocks the next one.
 - A server that reads fewer tokens than it was sent is detected after the call, and the session stops instead of continuing with a model that lost its instructions (`context-loading.md`).
-- Setup, test and service commands run in their own process group. A timeout, an interruption or the end of the session terminates the whole group, so no process of the target project outlives its run.
+- Setup, test and service commands run in their own process group. A timeout, an interruption or the end of the session terminates the whole group, so no process of the target project outlives its run. This also holds when the runtime stops the server that started them: the server ends the process groups of its run and stores the run as `interrupted` before it exits.
+- The runtime holds no open transaction while a tool call is dispatched, so a server never waits for it to write project memory.
 - Model errors are handled as in `llm-providers.md`; a failed turn never leaves partial records.
 
 ## Testing

@@ -11,7 +11,7 @@ Every tool the model can call: the tools of the four bundled MCP servers (ADR-00
 | Internal servers | The bundled servers are components of RetroAgent, not a public integration: they need a session created by the runtime, which also enforces modes, permissions and approvals. Using them from another MCP client is not supported (ADR-0026). |
 | Identifiers | Tools that create records return their new identifiers. No tool accepts an identifier for a record it creates. |
 | References | Every identifier, path or ref given by the model must exist; otherwise the call fails with `not_found` and nothing is written (INV-13). |
-| Execution results | No tool accepts an execution status or result as input (INV-03). |
+| Execution results | No tool accepts an execution status or result as input (INV-03). Arguments are validated against the schema of the tool, which accepts no other property: an unknown argument is an `invalid_argument`. |
 | Large output | Tools that return file content, diffs or evidence return at most the result limit of the session, cut at a line boundary. The limit is 20,000 characters, or less with a small context window (`context-loading.md`); tools read it from the `session` record. When they cut, they set `truncated` to `true` and return `next_line`; calling the tool again with `start_line` set to that value returns what follows. |
 | Models | No MCP tool calls a model (ADR-0020). Text written by the model reaches the servers only as tool arguments. |
 | Mode, permissions and approvals | Enforced by the runtime before dispatch, including the approval of the project commands before `test_runner.run_tests` (`configuration.md`). A refused call is recorded with outcome `denied`. |
@@ -30,7 +30,7 @@ Every error returns a code and a message.
 | `denied` | The mode, a permission or a missing approval of the project commands does not allow the call. Returned by the runtime. |
 | `deferred` | The results of the same model message already fill their share of the context. The call was not executed: call it again in the next step. Returned by the runtime. |
 | `execution_failed` | An external process failed: git, the setup, the test command or the service. |
-| `unavailable` | A dependency is missing, for example the PDF libraries. |
+| `unavailable` | A dependency is missing, for example the PDF libraries, or a server stopped or did not answer in time. |
 
 ## Summary
 
@@ -43,7 +43,7 @@ Every error returns a code and a message.
 | `git.get_diff` | read | — | allowed | — |
 | `git.read_file` | read | — | allowed | — |
 | `git.list_files` | read | — | allowed | — |
-| `memory.sync_requirements` | write | — | allowed | `requirement`, `requirement_change` |
+| `memory.sync_requirements` | write | — | allowed | `requirement`, `requirement_change`, `test_case_requirement` |
 | `memory.get_requirements` | read | — | allowed | — |
 | `memory.get_analysis` | read | — | allowed | — |
 | `memory.save_impact` | write | — | allowed | `analysis_module`, `analysis_requirement` |

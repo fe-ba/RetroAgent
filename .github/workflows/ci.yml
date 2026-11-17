@@ -1,0 +1,30 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: System libraries for PDF
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
+      - name: Git identity for tests that create commits
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@example.invalid"
+      - run: pip install -e ".[dev]" -c constraints.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest
+      - run: pip install build && python -m build

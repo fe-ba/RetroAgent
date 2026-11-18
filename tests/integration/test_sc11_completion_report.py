@@ -1,6 +1,5 @@
 """SC-11: the completion report, on the records of the reference scenario (without the model)."""
 
-import difflib
 import html
 import re
 import sys
@@ -11,13 +10,12 @@ import pytest
 from fixtures.chart_text import overflowing
 from fixtures.mcp_project import reports_server
 from fixtures.reference_scenario import S4
+from fixtures.report_text import EXPECTED, computed, difference
 
 from retroagent.memory import interpretation
-from retroagent.resources import __file__ as resources_file
 from retroagent.servers.errors import ToolError
 from retroagent.servers.reports import server
 
-EXPECTED = Path(resources_file).parent / "examples" / "shop-api" / "expected"
 SECTIONS = {
     "conclusions": "Do not release.\n\nTC-020 is the reason.",
     "summary": "A summary.",
@@ -25,20 +23,6 @@ SECTIONS = {
     "residual_risks": "A risk.",
     "limitations": "A limit.",
 }
-# The rows that SC-11 allows to differ: generation time, model, tool version and the two durations.
-VARIABLE_ROWS = ("| Generated |", "| Model |", "| RetroAgent |", "| Run duration |", "| Test time |")
-
-
-def computed(text: str) -> str:
-    """The computed sections of a report: no blockquote (the prototype note and the agent sections), no variable row."""
-    lines = [line for line in text.split("\n") if not line.startswith(">") and not line.startswith(VARIABLE_ROWS)]
-    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip() + "\n"
-
-
-def difference(expected: str, actual: str) -> str:
-    return "\n".join(
-        difflib.unified_diff(expected.split("\n"), actual.split("\n"), "expected", "generated", lineterm="")
-    )
 
 
 def generate(session, formats=None, sections=SECTIONS) -> tuple[Path, dict]:

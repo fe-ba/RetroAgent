@@ -136,10 +136,12 @@ def row(status="completed", **counts):
     )
 
 
-def test_the_commands_of_later_sessions_are_known_and_not_available():
-    with pytest.raises(NotAvailable, match="is not available yet"):
-        parse("/cycle")
-    assert help_rows("/cycle")[0][1].endswith("Not available yet in this build.")
+def test_cycle_takes_both_refs_or_none():
+    assert parse("/cycle") == Command("/cycle")
+    assert parse("/cycle v1.0 v1.1") == Command("/cycle", refs=("v1.0", "v1.1"))
+    with pytest.raises(CommandError, match=r"usage: /cycle \[base\] \[candidate\]: give both refs, or none"):
+        parse("/cycle v1.0")
+    assert not help_rows("/cycle")[0][1].endswith("Not available yet in this build.")
 
 
 @pytest.mark.parametrize("report_type", ["test-plan", "status", "defects"])

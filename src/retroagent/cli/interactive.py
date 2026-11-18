@@ -22,7 +22,7 @@ from rich.text import Text
 
 from retroagent.cli import display, tables
 from retroagent.llm.provider import ProviderError
-from retroagent.runtime import commands, init, permissions, turn
+from retroagent.runtime import commands, cycle, init, permissions, turn
 from retroagent.runtime.commands import Command, CommandError, RunOutcome
 from retroagent.runtime.session import Session
 from retroagent.servers.errors import ToolError
@@ -132,6 +132,8 @@ class Shell:
             ))  # fmt: skip
         if name == "/run":
             return self._run(command)
+        if name == "/cycle":
+            return self._cycle(command)
         try:
             self._direct(command)
         except CommandError as error:
@@ -227,6 +229,10 @@ class Shell:
                 self.session, command.target, command.on, ask=ask, interrupt=interrupt, listener=self._listener
             )
         )
+        self._show_runs(outcome)
+        return Outcome(runtime_error=run_failed(outcome))
+
+    def _show_runs(self, outcome: RunOutcome) -> None:
         if outcome.runs:
             self.out.print(tables.runs_table(outcome.runs))
         for row in outcome.runs:
@@ -241,7 +247,40 @@ class Shell:
             self._error("interrupted by the user")
         if outcome.error is not None:
             self._error(str(outcome.error))
-        return Outcome(runtime_error=run_failed(outcome))
+
+    def _cycle(self, command: Command) -> Outcome:
+        """``/cycle``: the steps are shown as they run; the stop, if any, names the step and how to continue."""
+        try:
+            result = self.perform(
+                lambda ask, interrupt: cycle.run_cycle(
+                    self.session, command.refs, ask=ask, listener=self._listener, interrupt=interrupt,
+                    show=self._cycle_event,
+                )
+            )  # fmt: skip
+        except (ToolError, cycle.CycleError) as error:  # no step ran
+            self._error(str(error))
+            return Outcome(usage_error=True)
+        stop = result.stop
+        if stop is None:
+            self._say(cycle.PLAN_END if result.plan_end else "The cycle is complete.")
+            return Outcome(answer=result.answer, recorded=result.recorded)
+        self._error(stop.message)
+        if stop.ends_session:
+            self._error("The session ends: the model did not receive the whole context.")
+        else:
+            self._error("Continue with /cycle: the steps whose outcome is in project memory are skipped.")
+        return Outcome(
+            answer=stop.message, recorded=result.recorded, runtime_error=stop.runtime_error, end=stop.ends_session
+        )
+
+    def _cycle_event(self, event: object) -> None:
+        if isinstance(event, cycle.StepAnswered):
+            self._show_answer(event.result)
+            self._recorded(event.result.recorded)
+        elif isinstance(event, cycle.StepRuns):
+            self._show_runs(event.outcome)
+        else:
+            self._say(display.cycle_line(event))
 
     def _model(self, work: Work) -> Outcome:
         try:
@@ -266,14 +305,19 @@ class Shell:
             self._error(result.text)
             self._recorded(result.recorded)
             return Outcome(answer=result.text, runtime_error=True, recorded=result.recorded)
+        self._show_answer(result)
+        self._recorded(result.recorded)
+        return Outcome(answer=result.text, recorded=result.recorded)
+
+    def _show_answer(self, result: turn.TurnResult) -> None:
+        if not result.text:
+            return
         if self.render_markdown:
             self.out.print(Markdown(result.text))
         else:
             self.out.print(result.text, markup=False, highlight=False, soft_wrap=True)
         if result.incomplete:
             self._error("warning: the answer was cut at max_output_tokens of the model profile.")
-        self._recorded(result.recorded)
-        return Outcome(answer=result.text, recorded=result.recorded)
 
     def _recorded(self, recorded: turn.Recorded) -> None:
         if self.show_recorded:

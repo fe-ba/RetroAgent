@@ -60,7 +60,7 @@ def test_the_commands_of_slice_5_say_so_and_exit_2(argv, capsys):
         ["example", "list", "extra"],
         ["example", "shop-api"],
         ["-p"],
-        ["-p", "/cycle"],
+        ["-p", "/cycle v1.0"],
         ["-p", "/analyze v1.0"],
         ["-p", "/nowhere"],
         ["--output-format", "json"],

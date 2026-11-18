@@ -121,7 +121,7 @@ def test_skills_mcp_and_help_list_what_exists(shell):
     for server in ("git", "memory", "test_runner", "reports", "runtime (built in, not an MCP server)"):
         assert server in output
     assert "analyze_changes" in output and "set_versions" in output
-    assert "/cycle [base] [candidate]" in output and "Not available yet in this build." in output
+    assert "/cycle [base] [candidate]" in output and "Not available yet in this build." not in output
     assert shell.handle("/help nowhere").usage_error
 
 

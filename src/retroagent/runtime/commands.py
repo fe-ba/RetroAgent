@@ -5,8 +5,8 @@ same checks, question and ``tool_call`` row as a call of the model, dispatched t
 its output are not added to the conversation.
 
 **Model** commands empty the conversation and send a fixed template with the tool set of their step. This build
-has ``/analyze``, ``/select``, ``/design``, ``/implement``, ``/triage`` and ``/report`` (the Must report types only);
-``/cycle`` is parsed and answered as not available yet.
+has ``/analyze``, ``/select``, ``/design``, ``/implement``, ``/triage`` and ``/report`` (the Must report types only).
+``/cycle`` is parsed here and run by ``runtime.cycle``, which uses the same templates.
 
 ``/defects`` reads the defects from project memory, as ``/history`` reads the runs; ``/defects close`` calls the
 user-only tool ``memory.close_defect`` through ``turn.call_tool``, the only way to reach it (INV-14).
@@ -58,7 +58,7 @@ CLOSE_DEFECT = "memory__close_defect"
 # Every slash command of cli.md: usage, description, and whether this build has it.
 HELP = (
     ("/cycle [base] [candidate]", "Run the whole regression cycle, from the impact analysis to the completion"
-     " report, one step at a time.", False),
+     " report, one step at a time.", True),
     ("/analyze [base] [candidate]", "Compute the change set and the impact analysis. Sets the session versions when"
      " given.", True),
     ("/select", "Select and prioritize the regression suite for the current change.", True),
@@ -103,7 +103,7 @@ class Command:
     on: str = "candidate"  # /run
     limit: int = HISTORY_DEFAULT  # /history
     argument: str | None = None  # /model, /mode, /help
-    refs: tuple[str, ...] = ()  # /analyze: () or (base, candidate)
+    refs: tuple[str, ...] = ()  # /analyze, /cycle: () or (base, candidate)
     scope: str | None = None  # /design: the words after the command, joined by one space
     ids: tuple[str, ...] = ()  # /implement: test case IDs, once each, in order
     run_id: str | None = None  # /triage
@@ -138,9 +138,9 @@ def parse(line: str) -> Command:
         if len(args) > 1 or (args and not (args[0].isdigit() and int(args[0]) > 0)):
             raise CommandError("usage: /history [n], where n is a positive integer")
         return Command(name, limit=int(args[0]) if args else HISTORY_DEFAULT)
-    if name == "/analyze":
+    if name in ("/analyze", "/cycle"):
         if len(args) not in (0, 2):
-            raise CommandError("usage: /analyze [base] [candidate]: give both refs, or none")
+            raise CommandError(f"usage: {name} [base] [candidate]: give both refs, or none")
         return Command(name, refs=tuple(args))
     if name == "/design":
         return Command(name, scope=" ".join(args) or None)

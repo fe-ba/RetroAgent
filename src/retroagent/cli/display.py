@@ -3,10 +3,12 @@
 Without verbose mode a tool call is one line with its name and outcome, and warnings are shown. Verbose mode adds the
 arguments (as recorded: secret values replaced) and the duration of each tool call, each model call with its token
 usage, each retry of the turn, each wait of the provider adapter and each notice logged by the provider library.
-After every turn, one line says what the turn recorded. Pure functions: they return text.
+After every turn, one line says what the turn recorded; ``/cycle`` shows a line for each step that starts or is
+skipped. Pure functions: they return text.
 """
 
 from retroagent.llm.provider import ProviderNotice, Wait
+from retroagent.runtime import cycle
 from retroagent.runtime.permissions import ApprovalRequest, PermissionRequest
 from retroagent.runtime.turn import ModelCalled, Recorded, Retried, ToolCalled, Warned
 
@@ -64,6 +66,16 @@ def event_line(event: object, verbose: bool) -> str | None:
     if isinstance(event, ProviderNotice):
         return f"provider notice: {event.message}"
     return None
+
+
+def cycle_line(event: object) -> str:
+    """The line of a step of ``/cycle`` that starts or is skipped."""
+    if isinstance(event, cycle.StepSkipped):
+        return f"Cycle step {event.position} of {event.total}: {event.name}, skipped: {event.reason}."
+    if isinstance(event, cycle.StepStarted):
+        retry = ", once more: its outcome is missing" if event.retry else ""
+        return f"Cycle step {event.position} of {event.total}: {event.name}{retry}"
+    raise ValueError(f"not an event of the cycle: {event!r}")
 
 
 def recorded_line(recorded: Recorded) -> str:

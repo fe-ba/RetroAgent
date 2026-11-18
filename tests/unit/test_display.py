@@ -4,6 +4,7 @@ import pytest
 
 from retroagent.cli import display
 from retroagent.llm.provider import ProviderNotice, Usage, Wait
+from retroagent.runtime import cycle
 from retroagent.runtime.permissions import PermissionRequest
 from retroagent.runtime.turn import ModelCalled, Retried, ToolCalled, Warned
 
@@ -97,3 +98,13 @@ def test_the_recorded_line_lists_the_write_tools_of_the_turn_with_their_count():
 
 def test_the_recorded_line_of_a_turn_that_recorded_nothing():
     assert display.recorded_line(()) == "Nothing was recorded."
+
+
+def test_the_lines_of_the_steps_of_cycle():
+    assert display.cycle_line(cycle.StepStarted("analyze", 1, 8)) == "Cycle step 1 of 8: analyze"
+    assert display.cycle_line(cycle.StepStarted("analyze", 1, 8, retry=True)) == (
+        "Cycle step 1 of 8: analyze, once more: its outcome is missing"
+    )
+    assert display.cycle_line(cycle.StepSkipped("discover", 2, 8, "completed full runs exist for v1.1..v1.2")) == (
+        "Cycle step 2 of 8: discover, skipped: completed full runs exist for v1.1..v1.2."
+    )

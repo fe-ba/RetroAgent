@@ -29,6 +29,7 @@ For a question about metrics or the release decision without a report, call `rep
 
 - Use only the computed data returned by `reports__prepare_report`. Do not state a figure, status, identifier or decision that is not in it. Copy values as they appear.
 - Never contradict the release decision. Explain it.
+- Never contradict a criterion either. Name every criterion that is `not_met` or `not_evaluable`, blocking or not, with its value, in `conclusions` and in the section it bears on. Do not write that testing was complete, comprehensive or covered the impacted areas when a criterion of coverage or execution is not met.
 - Mark hypotheses as such.
 - Plain paragraphs, with short lists when they help. No headings: each section is rendered inside a quote block.
 - Two to six sentences per section, in the language of the session.

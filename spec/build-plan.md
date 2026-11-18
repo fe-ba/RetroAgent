@@ -73,9 +73,19 @@ The servers are written as plain functions over the data layer first, and expose
 
 **Measuring the context.** As soon as the tool definitions exist, run the test that prints the fixed part of every tool set, and write the figures here. If the largest one exceeds half of a window of 32,768 tokens minus the output reserve, shorten tool descriptions before going on. This replaces the estimate of 9,000 to 11,000 tokens in `limitations-and-risks.md`.
 
-| Tool set | Characters | Estimated tokens |
-|---|---|---|
-| To be measured in slice 3 | — | — |
+Measured at the end of slice 4, on shop-api: system context (14,117 characters), tool definitions of the step, and the state message of the reference scenario (891 characters). Tokens at the starting ratio of 1.3 characters per token over 4; budget 28,672 tokens (window 32,768 minus reserve 4,096).
+
+| Tool set | Tools | Fixed part (characters) | Estimated tokens | Share of budget | With the skill of the step |
+|---|---|---|---|---|---|
+| analyze | 19 | 25,030 | 8,135 | 28.4% | 33.7% |
+| select | 17 | 23,518 | 7,644 | 26.7% | 30.7% |
+| design | 18 | 25,788 | 8,382 | 29.2% | 36.8% |
+| implement | 19 | 26,628 | 8,655 | 30.2% | 37.7% |
+| triage | 19 | 24,498 | 7,962 | 27.8% | 34.5% |
+| report | 19 | 23,658 | 7,689 | 26.8% | 31.0% |
+| free message | 33 | 37,734 | 12,264 | 42.8% | — |
+
+Every tool set stays under half of the budget, and every one is above the 25% warning, so a window of 32,768 tokens always shows that warning at start. Reported by the provider for the first call of a step with Gemini: 5,892 to 6,123 input tokens, below the estimate.
 
 ### Slice 4: the whole cycle
 

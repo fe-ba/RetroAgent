@@ -17,7 +17,7 @@ def count_rows(conn):
 
 
 def populate_every_table(build):
-    """One row in each of the 24 tables, through the API."""
+    """One row in each of the 25 tables, through the API."""
     conn = build.conn
     requirement_id = build.requirement()
     requirements.add_requirement_change(conn, requirement_id=requirement_id, version="v1.1", description="changed")
@@ -34,10 +34,11 @@ def populate_every_table(build):
         conn, description="rounding", level="medium", analysis_id=build.analysis_id, requirement_ids=[requirement_id]
     )
     test_case_id = build.test_case(requirement_ids=[requirement_id])  # a design link
-    design.add_project_suite_test_case(  # a name link
+    left_out = design.add_project_suite_test_case(  # a name link
         conn, test_id="tests.test_cart::test_req_001_total", implementation="tests/test_cart.py::test_req_001_total"
     )
     suite_id = build.suite(test_case_id)
+    design.add_left_out(conn, suite_id, test_case_id=left_out, reason="covered by the selected test case")
     run_id = build.run(scope="suite", suite_id=suite_id)
     execution_id = build.execute(run_id, test_case_id, "failed")
     execution.finish_run(conn, run_id, status="completed", exit_code=1)

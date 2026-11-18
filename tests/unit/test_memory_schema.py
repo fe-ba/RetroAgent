@@ -72,6 +72,7 @@ TABLES = {
     "test_case_requirement": ["test_case_id", "requirement_id", "link"],
     "suite": ["id", "analysis_id", "session_id", "created_at"],
     "suite_test_case": ["suite_id", "test_case_id", "position", "selection_reason"],
+    "suite_left_out": ["suite_id", "test_case_id", "reason"],
     "run": [
         "id",
         "version_role",
@@ -184,20 +185,25 @@ def schema_objects(conn) -> set[tuple[str, str, str]]:
     return {(r[0], r[1], r[2]) for r in conn.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL")}
 
 
-def test_a_version_1_database_migrates_to_version_2_and_equals_a_new_one(tmp_path):
+# What each older schema version lacks, as the statements that take a new database back to it.
+WITHOUT_VERSION_3 = "DROP TABLE suite_left_out;"
+WITHOUT_VERSION_2 = WITHOUT_VERSION_3 + " DROP TABLE analysis_requirement_not_impacted;"
+
+
+@pytest.mark.parametrize("version, statements", [(1, WITHOUT_VERSION_2), (2, WITHOUT_VERSION_3)])
+def test_an_older_database_migrates_to_the_current_version_and_equals_a_new_one(tmp_path, version, statements):
     new = connect(tmp_path / "new")
     expected = schema_objects(new)
     new.close()
     old = tmp_path / "old"
     connect(old).close()
-    raw = sqlite3.connect(database_path(old))  # what schema version 1 had: no table of not impacted requirements
-    raw.executescript(
-        "DROP TABLE analysis_requirement_not_impacted; UPDATE schema_info SET value = '1' WHERE key = 'schema_version';"
-    )
+    raw = sqlite3.connect(database_path(old))  # dropping a table drops its triggers
+    raw.executescript(f"{statements} UPDATE schema_info SET value = '{version}' WHERE key = 'schema_version';")
     raw.close()
     migrated = connect(old)
-    assert (old / ".retro" / "retro.db.bak-1").exists()
-    assert migrated.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0] == "2"
+    assert (old / ".retro" / f"retro.db.bak-{version}").exists()
+    current = migrated.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0]
+    assert current == str(migrations.SCHEMA_VERSION) == "3"
     assert schema_objects(migrated) == expected
 
 

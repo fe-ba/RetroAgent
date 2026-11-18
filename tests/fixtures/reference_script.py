@@ -250,7 +250,8 @@ def select(runs_note: str, removed: tuple[str, ...] = ()) -> list:
     """The skill ``test-selection``: read the analysis and the test cases, check that a full run against the candidate
     exists when the change adds tests, read the risks and the impacted requirements, and save a suite of every
     project test (the suite of the reference scenario: it is small, so everything is selected). Tests removed by the
-    change are left out."""
+    change are not selected; ``left_out`` names every implemented test case traced to an impacted requirement that is
+    not selected, which is none in both cycles."""
     analysis, test_cases = call("memory__get_analysis"), call("memory__get_test_cases")
     saved: dict = {}
 
@@ -271,8 +272,16 @@ def select(runs_note: str, removed: tuple[str, ...] = ()) -> list:
                 " is selected."
             )
             items.append({"test_case_id": tc["id"], "position": position, "selection_reason": reason})
+        chosen = {item["test_case_id"] for item in items}
+        left_out = [
+            {"test_case_id": tc["id"], "reason": f"Removed by the change; traced to {', '.join(linked)}."
+             if tc.get("test_id") in removed else f"Not selected; traced to {', '.join(linked)}."}
+            for tc in result_in(request, test_cases.id)["test_cases"]
+            if tc["status"] == "implemented" and tc["id"] not in chosen
+            and (linked := [r["requirement_id"] for r in tc["requirements"] if r["requirement_id"] in impacted])
+        ]  # fmt: skip
         saved["call"] = call("memory__save_suite", {"analysis_id": result_in(request, analysis.id)["analysis_id"],
-                                                    "items": items})  # fmt: skip
+                                                    "items": items, "left_out": left_out})  # fmt: skip
         return calls(saved["call"])
 
     def report(request) -> Response:

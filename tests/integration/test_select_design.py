@@ -72,7 +72,7 @@ def test_select_records_a_suite_with_a_reason_for_every_test_case_and_reports_th
             for position, (test_case_id, requirement_id) in enumerate(selected, start=1)
         ]  # fmt: skip
         saved["call"] = call("memory__save_suite", {"analysis_id": result_in(request, analysis.id)["analysis_id"],
-                                                    "items": items})  # fmt: skip
+                                                    "items": items, "left_out": []})  # fmt: skip
         return calls(saved["call"])
 
     def report_gaps(request):
@@ -150,7 +150,13 @@ def test_design_designs_for_every_uncovered_requirement_of_the_current_suite(pro
         suite_id = design.current_suite(session.conn, base.commit, candidate.commit)
         if suite_id is None:  # this test runs alone: an empty selection, as /select may leave
             analysis_id = impact.latest_analysis(session.conn, base.commit, candidate.commit)
-            suite_id = design.save_suite(session.conn, analysis_id=analysis_id, session_id=session.id, items=[])
+            left_out = [
+                {"test_case_id": test_case_id, "reason": "Not selected."}
+                for test_case_id in design.test_cases_to_decide(session.conn, analysis_id)
+            ]
+            suite_id = design.save_suite(
+                session.conn, analysis_id=analysis_id, session_id=session.id, items=[], left_out=left_out
+            )
         size = len(design.suite_test_cases(session.conn, suite_id))
         uncovered = design.uncovered_requirements(session.conn, suite_id)
         assert "REQ-002" in uncovered  # after /select, the only one

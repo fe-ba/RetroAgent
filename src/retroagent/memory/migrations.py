@@ -7,7 +7,7 @@ from pathlib import Path
 import retroagent
 from retroagent.memory.errors import SchemaTooNew
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # SQL script that takes a database from version N - 1 to version N, keyed by N. Each one creates exactly what
 # schema.sql has for that version, with the same text, so a migrated database equals a new one.
@@ -28,6 +28,19 @@ BEGIN
 END;
 
 CREATE TRIGGER inv_11_analysis_requirement_not_impacted BEFORE DELETE ON analysis_requirement_not_impacted
+BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+""",
+    # The test cases a suite leaves out, with the reason (save_suite decides every test case of an impacted
+    # requirement).
+    3: """
+CREATE TABLE suite_left_out (
+    suite_id     INTEGER NOT NULL REFERENCES suite (id),
+    test_case_id TEXT NOT NULL REFERENCES test_case (id),
+    reason       TEXT NOT NULL,
+    PRIMARY KEY (suite_id, test_case_id)
+);
+
+CREATE TRIGGER inv_11_suite_left_out BEFORE DELETE ON suite_left_out
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 """,
 }

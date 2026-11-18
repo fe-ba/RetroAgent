@@ -264,7 +264,7 @@ def test_inv_10_closed_records_are_never_updated(conn, build):
 def test_inv_11_records_are_never_deleted(conn, build):
     populate_every_table(build)
     counts = count_rows(conn)
-    assert len(counts) == 24 and all(counts.values()), counts  # every table has a row to delete
+    assert len(counts) == 25 and all(counts.values()), counts  # every table has a row to delete
     for table in counts:
         with pytest.raises(sqlite3.IntegrityError, match="INV-11"):
             conn.execute(f"DELETE FROM {table}")  # for test_case_requirement, the name link refuses the statement

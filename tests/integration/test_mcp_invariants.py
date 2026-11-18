@@ -32,9 +32,12 @@ UNKNOWN_REFERENCES = [
      {"analysis_id": 1, "modules": [PRICING], "requirements": [],
       "not_impacted": [{"requirement_id": "REQ-099", "reason": "r"}]}),
     ("memory", "add_risk", {"description": "d", "level": "low", "requirement_ids": ["REQ-001", "REQ-099"]}),
-    ("memory", "save_suite", {"analysis_id": 999, "items": []}),
+    ("memory", "save_suite", {"analysis_id": 999, "items": [], "left_out": []}),
     ("memory", "save_suite",
-     {"analysis_id": 1, "items": [{"test_case_id": "TC-999", "position": 1, "selection_reason": "r"}]}),
+     {"analysis_id": 1, "items": [{"test_case_id": "TC-999", "position": 1, "selection_reason": "r"}],
+      "left_out": []}),
+    ("memory", "save_suite",
+     {"analysis_id": 1, "items": [], "left_out": [{"test_case_id": "TC-999", "reason": "r"}]}),
     ("memory", "get_suite", {"suite_id": 999}),
     ("memory", "design_test_case", {**DESIGN, "requirement_ids": ["REQ-002", "REQ-099"]}),
     ("memory", "update_test_case", {"test_case_id": "TC-999", "fields": {"title": "x"}}),
@@ -76,7 +79,7 @@ def shop(tmp_path_factory, pip_cache):
         with Client(path, session_id) as client:
             client.call("memory", "sync_requirements")
             assert client.call("git", "analyze_changes")["analysis_id"] == 1
-            client.call("memory", "save_suite", {"analysis_id": 1, "items": []})
+            client.call("memory", "save_suite", {"analysis_id": 1, "items": [], "left_out": []})
             assert client.call("memory", "design_test_case", DESIGN)["test_case_id"] == "TC-001"
             _failure_with_a_defect(path, session_id)
             yield path, client

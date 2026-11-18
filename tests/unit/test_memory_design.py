@@ -1,11 +1,11 @@
 """Test design functions of the data layer: ``update_test_case`` (mcp-tools.md, ``memory.update_test_case``), links
-by name (project-contract.md, Traceability), the priority of discovered tests and the uncovered requirements of a
-suite."""
+by name (project-contract.md, Traceability), the priority of discovered tests, the uncovered requirements of a
+suite and the test cases that ``save_suite`` must decide."""
 
 import json
 
 import pytest
-from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, no_removal
+from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, no_removal
 
 from retroagent.memory import design, impact, requirements
 from retroagent.memory.errors import InvariantViolation
@@ -248,7 +248,7 @@ def test_no_requirement_is_uncovered_when_the_suite_traces_every_impacted_one(co
     suite_id = design.save_suite(conn, analysis_id=build.analysis_id, session_id=build.session_id, items=[
         {"test_case_id": by_design, "position": 1, "selection_reason": "r"},
         {"test_case_id": by_name, "position": 2, "selection_reason": "r"},
-    ])  # fmt: skip
+    ], left_out=[])  # fmt: skip
     assert design.uncovered_requirements(conn, suite_id) == []
 
 
@@ -259,7 +259,8 @@ def test_an_impacted_requirement_without_a_test_case_is_uncovered_until_one_is_d
     traced = build.test_case(requirement_ids=["REQ-001", "REQ-003"])
     elsewhere = build.test_case(requirement_ids=["REQ-002"])  # traced to REQ-002, but not in the suite
     suite_id = design.save_suite(conn, analysis_id=build.analysis_id, session_id=build.session_id,
-                                 items=[{"test_case_id": traced, "position": 1, "selection_reason": "r"}])  # fmt: skip
+                                 items=[{"test_case_id": traced, "position": 1, "selection_reason": "r"}],
+                                 left_out=[{"test_case_id": elsewhere, "reason": "r"}])  # fmt: skip
     assert elsewhere and design.uncovered_requirements(conn, suite_id) == ["REQ-002"]
     designed, _ = design.design_test_case(
         conn, suite_id=suite_id, selection_reason="Gap of REQ-002.", designed_by="fake/model", title="t",
@@ -297,3 +298,104 @@ def test_a_priority_changed_after_the_links_is_kept_when_more_links_come(conn):
     assert design.link_tests_by_name(conn) == 1  # its link to REQ-004, but not its first name link
     assert priority_of(conn, discovered) == "low"
     assert links(conn, discovered) == [("REQ-004", "name"), ("REQ-005", "name")]
+
+
+# The test cases that save_suite must decide (mcp-tools.md, save_suite)
+
+
+def selected(*test_case_ids):
+    return [{"test_case_id": t, "position": n, "selection_reason": "r"} for n, t in enumerate(test_case_ids, start=1)]
+
+
+def left(*test_case_ids, reason="Not selected."):
+    return [{"test_case_id": t, "reason": reason} for t in test_case_ids]
+
+
+def save(conn, build, items, left_out):
+    return design.save_suite(
+        conn, analysis_id=build.analysis_id, session_id=build.session_id, items=items, left_out=left_out
+    )
+
+
+def refused(conn, build, items, left_out) -> str:
+    """The message of a refused save_suite, checking that nothing was written."""
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        save(conn, build, items, left_out)
+    assert count_rows(conn) == before
+    return str(error.value)
+
+
+@pytest.fixture
+def impacted(conn, build):
+    """REQ-004 and REQ-005 are impacted; REQ-001 is not."""
+    for requirement_id in ("REQ-001", "REQ-004", "REQ-005"):
+        build.requirement(requirement_id)
+    impact_on(conn, build, "REQ-004", "REQ-005")
+
+
+def test_a_test_case_of_an_impacted_requirement_in_neither_list_is_refused_and_named(conn, build, impacted):
+    chosen, forgotten = build.test_case(requirement_ids=["REQ-004"]), build.test_case(requirement_ids=["REQ-004"])
+    message = refused(conn, build, selected(chosen), [])
+    assert message == (
+        "invalid_argument: test cases traced to an impacted requirement are in neither items nor left_out:"
+        f" {forgotten} (REQ-004); select each one or add it to left_out with a reason"
+    )
+
+
+def test_every_undecided_test_case_is_named_in_one_message(conn, build, impacted):
+    first, second = build.test_case(requirement_ids=["REQ-004"]), build.test_case(requirement_ids=["REQ-004"])
+    both = build.test_case(requirement_ids=["REQ-004", "REQ-005"])
+    message = refused(conn, build, [], [])
+    assert f"neither items nor left_out: {first} (REQ-004), {second} (REQ-004), {both} (REQ-004, REQ-005);" in message
+
+
+def test_a_test_case_in_both_lists_is_refused_and_named(conn, build, impacted):
+    chosen = build.test_case(requirement_ids=["REQ-004"])
+    message = refused(conn, build, selected(chosen), left(chosen))
+    assert message.startswith("invalid_argument: ") and f"in both items and left_out: {chosen}" in message
+    assert "neither" not in message
+
+
+def test_retired_designed_and_not_impacted_test_cases_need_no_decision(conn, build, impacted):
+    chosen = build.test_case(requirement_ids=["REQ-004"])
+    designed = build.test_case(implemented=False, requirement_ids=["REQ-004"])
+    retired = build.test_case(requirement_ids=["REQ-005"])
+    design.retire_test_case(conn, retired, reason="obsolete", retired_by="fake/model")
+    elsewhere = build.test_case(requirement_ids=["REQ-001"])
+    suite_id = save(conn, build, selected(chosen), [])
+    assert designed and elsewhere and design.suite_left_out(conn, suite_id) == []
+
+
+def test_a_test_case_linked_only_by_name_must_be_decided(conn, build, impacted):
+    by_name = project_test(conn, "tests.test_discounts::test_req_004_second_coupon_is_rejected")
+    assert links(conn, by_name) == [("REQ-004", "name")]
+    assert f"neither items nor left_out: {by_name} (REQ-004);" in refused(conn, build, [], [])
+    suite_id = save(conn, build, [], left(by_name, reason="Removed by the change."))
+    assert [tuple(row) for row in design.suite_left_out(conn, suite_id)] == [(by_name, "Removed by the change.")]
+
+
+def test_a_valid_call_stores_the_test_cases_left_out_with_their_reasons(conn, build, impacted):
+    chosen, other = build.test_case(requirement_ids=["REQ-004"]), build.test_case(requirement_ids=["REQ-005"])
+    elsewhere = build.test_case(requirement_ids=["REQ-001"])  # needs no decision, but may be listed
+    retired = build.test_case(requirement_ids=["REQ-001"])
+    design.retire_test_case(conn, retired, reason="obsolete", retired_by="fake/model")
+    left_out = [
+        {"test_case_id": retired, "reason": "Retired."},
+        {"test_case_id": other, "reason": "Covered by a slower end-to-end test."},
+        {"test_case_id": elsewhere, "reason": "REQ-001 is not impacted."},
+    ]
+    suite_id = save(conn, build, selected(chosen), left_out)
+    stored = [tuple(row) for row in design.suite_left_out(conn, suite_id)]
+    assert stored == sorted((entry["test_case_id"], entry["reason"]) for entry in left_out)
+    assert [row["id"] for row in design.suite_test_cases(conn, suite_id)] == [chosen]
+    assert design.uncovered_requirements(conn, suite_id) == ["REQ-005"]  # a test case left out covers nothing
+
+
+def test_an_unknown_test_case_in_left_out_is_not_found(conn, build, impacted):
+    assert refused(conn, build, [], left("TC-999")) == "INV-13: test case 'TC-999' does not exist"
+
+
+def test_a_test_case_repeated_in_left_out_is_refused(conn, build, impacted):
+    chosen = build.test_case(requirement_ids=["REQ-004"])
+    assert f"repeated test cases in left_out: {chosen}" in refused(conn, build, [], left(chosen, chosen))

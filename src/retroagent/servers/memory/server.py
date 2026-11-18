@@ -197,7 +197,7 @@ def _current_suite(context: Context, conn) -> int | None:
     return design.current_suite(conn, base.commit, candidate.commit)
 
 
-def save_suite(context: Context, analysis_id: int, items: list[dict]) -> dict:
+def save_suite(context: Context, analysis_id: int, items: list[dict], left_out: list[dict]) -> dict:
     with context.connection() as conn:
         if impact.get_analysis(conn, analysis_id) is None:
             raise ToolError("not_found", f"analysis {analysis_id} does not exist")
@@ -209,7 +209,9 @@ def save_suite(context: Context, analysis_id: int, items: list[dict]) -> dict:
                 f"analysis {analysis_id} is not the latest analysis of {base.ref}..{candidate.ref}"
                 f" ({latest if latest is not None else 'there is none'}); a suite is saved for the latest one",
             )
-        suite_id = design.save_suite(conn, analysis_id=analysis_id, session_id=context.session_id, items=items)
+        suite_id = design.save_suite(
+            conn, analysis_id=analysis_id, session_id=context.session_id, items=items, left_out=left_out
+        )
         uncovered = design.uncovered_requirements(conn, suite_id)
     return {
         "suite_id": suite_id,
@@ -229,12 +231,14 @@ def get_suite(context: Context, suite_id: int | None = None) -> dict:
         if suite is None:
             raise ToolError("not_found", f"suite {suite_id} does not exist")
         items = [_without_nulls(dict(row)) for row in design.suite_items(conn, suite_id)]
+        left_out = [dict(row) for row in design.suite_left_out(conn, suite_id)]
         uncovered = design.uncovered_requirements(conn, suite_id)
     return {
         "suite_id": suite_id,
         "analysis_id": suite["analysis_id"],
         "created_at": suite["created_at"],
         "items": items,
+        "left_out": left_out,
         "uncovered_requirements": uncovered,
     }
 
@@ -616,9 +620,9 @@ TOOLS = [
     ),
     Tool(
         "save_suite",
-        "Save the regression suite selected for the latest analysis; it becomes the current suite. Each item: an "
-        "active test case, its position and why it was selected. Returns the suite ID and uncovered_requirements: "
-        "impacted requirements without a traced test case.",
+        "Save the suite selected for the latest analysis; it becomes the current suite. Every implemented test case "
+        "traced to an impacted requirement goes in items or in left_out, never both. Returns the suite ID and "
+        "uncovered_requirements: impacted requirements without a traced test case.",
         schema(
             {
                 "analysis_id": {"type": "integer", "description": "The latest analysis of the session versions."},
@@ -641,15 +645,28 @@ TOOLS = [
                         ("test_case_id", "position", "selection_reason"),
                     ),
                 },
+                "left_out": {
+                    "type": "array",
+                    "description": "The test cases not selected, with the reason. Required for every implemented "
+                    "test case traced to an impacted requirement. May be empty.",
+                    "items": schema(
+                        {
+                            "test_case_id": {**TEXT, "description": "Test case ID, e.g. TC-013."},
+                            "reason": {**TEXT, "description": "Why it is not selected."},
+                        },
+                        ("test_case_id", "reason"),
+                    ),
+                },
             },
-            ("analysis_id", "items"),
+            ("analysis_id", "items", "left_out"),
         ),
         save_suite,
     ),
     Tool(
         "get_suite",
-        "Get a suite with each test case: position, title, priority, status, origin and selection reason, and its "
-        "uncovered_requirements: impacted requirements no test case of it is traced to. Default: the current suite.",
+        "Get a suite: each test case with position, title, priority, status, origin and selection reason; the test "
+        "cases left out with their reasons; and uncovered_requirements: impacted requirements no test case of it is "
+        "traced to. Default: the current suite.",
         schema({"suite_id": {"type": "integer", "description": "Default: the current suite."}}),
         get_suite,
     ),

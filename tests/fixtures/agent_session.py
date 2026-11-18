@@ -170,7 +170,8 @@ def generated_code() -> str:
 
 
 def select_script(text: str = "Suite saved.") -> list:
-    """A model that follows the skill ``test-selection``: every test case traced to an impacted requirement."""
+    """A model that follows the skill ``test-selection``: every test case traced to an impacted requirement, so
+    nothing is left out."""
     analysis, test_cases = call("memory__get_analysis"), call("memory__get_test_cases")
 
     def save_suite(request) -> Response:
@@ -185,7 +186,7 @@ def select_script(text: str = "Suite saved.") -> list:
             for position, test_case_id in enumerate(selected, start=1)
         ]
         analysis_id = result_in(request, analysis.id)["analysis_id"]
-        return calls(call("memory__save_suite", {"analysis_id": analysis_id, "items": items}))
+        return calls(call("memory__save_suite", {"analysis_id": analysis_id, "items": items, "left_out": []}))
 
     return [
         calls(call("runtime__load_skill", {"name": "test-selection"})),

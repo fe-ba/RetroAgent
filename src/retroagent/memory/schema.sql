@@ -166,6 +166,13 @@ CREATE TABLE suite_test_case (
     PRIMARY KEY (suite_id, test_case_id)
 );
 
+CREATE TABLE suite_left_out (
+    suite_id     INTEGER NOT NULL REFERENCES suite (id),
+    test_case_id TEXT NOT NULL REFERENCES test_case (id),
+    reason       TEXT NOT NULL,
+    PRIMARY KEY (suite_id, test_case_id)
+);
+
 -- Execution ------------------------------------------------------------------------------------
 
 CREATE TABLE run (
@@ -463,6 +470,8 @@ BEGIN SELECT RAISE(ABORT, 'INV-11: links found in a test name are never deleted'
 CREATE TRIGGER inv_11_suite BEFORE DELETE ON suite
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_suite_test_case BEFORE DELETE ON suite_test_case
+BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+CREATE TRIGGER inv_11_suite_left_out BEFORE DELETE ON suite_left_out
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
 CREATE TRIGGER inv_11_run BEFORE DELETE ON run
 BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;

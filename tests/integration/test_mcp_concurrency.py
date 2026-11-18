@@ -69,7 +69,7 @@ def test_every_write_tool_succeeds_while_the_runtime_connection_is_open(project)
         ("git", "analyze_changes", {}),
         ("memory", "save_impact", {"analysis_id": 1, "modules": [PRICING], "requirements": [], "not_impacted": EVERY}),
         ("memory", "add_risk", {"description": "Shipping charged wrongly.", "level": "high"}),
-        ("memory", "save_suite", {"analysis_id": 1, "items": []}),
+        ("memory", "save_suite", {"analysis_id": 1, "items": [], "left_out": []}),
         ("memory", "design_test_case", DESIGN),
         ("memory", "update_test_case", {"test_case_id": "TC-001", "fields": {"priority": "low"}}),
         ("memory", "retire_test_case", {"test_case_id": "TC-001", "reason": "Obsolete."}),

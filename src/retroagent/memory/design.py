@@ -1,4 +1,5 @@
-"""Test design and selection: tables ``test_case``, ``test_case_requirement``, ``suite`` and ``suite_test_case``."""
+"""Test design and selection: tables ``test_case``, ``test_case_requirement``, ``suite``, ``suite_test_case`` and
+``suite_left_out``."""
 
 import json
 import re
@@ -379,25 +380,58 @@ def add_to_suite(
         )
 
 
-def save_suite(conn: sqlite3.Connection, *, analysis_id: int, session_id: int, items: list[dict]) -> int:
-    """A new suite for an analysis with its items ``{test_case_id, position, selection_reason}``, in one transaction.
+def add_left_out(conn: sqlite3.Connection, suite_id: int, *, test_case_id: str, reason: str) -> None:
+    with transaction(conn):
+        require_exists(conn, "suite", "id", suite_id, "suite")
+        require_exists(conn, "test_case", "id", test_case_id, "test case")
+        conn.execute(
+            "INSERT INTO suite_left_out (suite_id, test_case_id, reason) VALUES (?, ?, ?)",
+            (suite_id, test_case_id, reason),
+        )
 
-    Unknown references fail first (INV-13); then duplicated test cases or positions, and retired test cases (INV-16),
-    are refused as ``invalid_argument``, naming each one.
+
+def test_cases_to_decide(conn: sqlite3.Connection, analysis_id: int) -> dict[str, list[str]]:
+    """The active, implemented test cases traced to an impacted requirement of the analysis, by a design or a name
+    link, each with those requirements: ``save_suite`` must find each one in its items or in its left_out."""
+    decide: dict[str, list[str]] = {}
+    for row in conn.execute(
+        "SELECT DISTINCT tc.id, ar.requirement_id FROM test_case tc"
+        " JOIN test_case_requirement tr ON tr.test_case_id = tc.id"
+        " JOIN analysis_requirement ar ON ar.requirement_id = tr.requirement_id AND ar.analysis_id = ?"
+        " WHERE tc.status = 'implemented' AND tc.retired_at IS NULL ORDER BY tc.id, ar.requirement_id",
+        (analysis_id,),
+    ):
+        decide.setdefault(row["id"], []).append(row["requirement_id"])
+    return decide
+
+
+def _repeated(values: list) -> list:
+    return sorted({value for value in values if values.count(value) > 1})
+
+
+def save_suite(
+    conn: sqlite3.Connection, *, analysis_id: int, session_id: int, items: list[dict], left_out: list[dict]
+) -> int:
+    """A new suite for an analysis with its items ``{test_case_id, position, selection_reason}`` and the test cases it
+    leaves out ``{test_case_id, reason}``, in one transaction.
+
+    Unknown references fail first (INV-13). Then every problem is refused at once as ``invalid_argument``, naming each
+    test case: repeated test cases or positions, retired items (INV-16), a test case in both lists, and a test case of
+    an impacted requirement in neither (mcp-tools.md, ``memory.save_suite``). Any other test case may be left out.
     """
     with transaction(conn):
         require_exists(conn, "analysis", "id", analysis_id, "analysis")
         test_case_ids = [item["test_case_id"] for item in items]
-        for test_case_id in dict.fromkeys(test_case_ids):
+        left_out_ids = [entry["test_case_id"] for entry in left_out]
+        for test_case_id in dict.fromkeys(test_case_ids + left_out_ids):
             require_exists(conn, "test_case", "id", test_case_id, "test case")
-        positions = [item["position"] for item in items]
         problems = []
-        repeated = sorted({t for t in test_case_ids if test_case_ids.count(t) > 1})
-        if repeated:
+        if repeated := _repeated(test_case_ids):
             problems.append(f"repeated test cases: {', '.join(repeated)}")
-        repeated_positions = sorted({p for p in positions if positions.count(p) > 1})
-        if repeated_positions:
+        if repeated_positions := _repeated([item["position"] for item in items]):
             problems.append(f"repeated positions: {', '.join(map(str, repeated_positions))}")
+        if repeated_left_out := _repeated(left_out_ids):
+            problems.append(f"repeated test cases in left_out: {', '.join(repeated_left_out)}")
         marks = ",".join("?" * len(test_case_ids))
         retired = [
             row["id"]
@@ -407,6 +441,19 @@ def save_suite(conn: sqlite3.Connection, *, analysis_id: int, session_id: int, i
         ]
         if retired:
             problems.append(f"INV-16: retired test cases cannot be added to a suite: {', '.join(retired)}")
+        if in_both := sorted(set(test_case_ids) & set(left_out_ids)):
+            problems.append(f"test cases in both items and left_out: {', '.join(in_both)}")
+        decided = set(test_case_ids) | set(left_out_ids)
+        undecided = [
+            f"{test_case_id} ({', '.join(requirement_ids)})"
+            for test_case_id, requirement_ids in test_cases_to_decide(conn, analysis_id).items()
+            if test_case_id not in decided
+        ]
+        if undecided:
+            problems.append(
+                "test cases traced to an impacted requirement are in neither items nor left_out:"
+                f" {', '.join(undecided)}; select each one or add it to left_out with a reason"
+            )
         if problems:
             raise InvariantViolation("invalid_argument: " + "; ".join(problems))
         suite_id = add_suite(conn, analysis_id=analysis_id, session_id=session_id)
@@ -418,6 +465,8 @@ def save_suite(conn: sqlite3.Connection, *, analysis_id: int, session_id: int, i
                 position=item["position"],
                 selection_reason=item["selection_reason"],
             )
+        for entry in left_out:
+            add_left_out(conn, suite_id, test_case_id=entry["test_case_id"], reason=entry["reason"])
     return suite_id
 
 
@@ -452,6 +501,13 @@ def suite_items(conn: sqlite3.Connection, suite_id: int) -> list[sqlite3.Row]:
         " tc.retired_at FROM suite_test_case AS s JOIN test_case AS tc ON tc.id = s.test_case_id"
         " WHERE s.suite_id = ? ORDER BY s.position, tc.id",
         (suite_id,),
+    ).fetchall()
+
+
+def suite_left_out(conn: sqlite3.Connection, suite_id: int) -> list[sqlite3.Row]:
+    """The test cases a suite leaves out, with the reason of each, by test case ID."""
+    return conn.execute(
+        "SELECT test_case_id, reason FROM suite_left_out WHERE suite_id = ? ORDER BY test_case_id", (suite_id,)
     ).fetchall()
 
 

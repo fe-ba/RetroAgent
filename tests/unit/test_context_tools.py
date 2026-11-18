@@ -3,14 +3,16 @@ and skills name."""
 
 import re
 from importlib.resources import files
+from pathlib import Path
 
 import pytest
-from fixtures.tool_definitions import DOCUMENTED, with_placeholders
+from fixtures.tool_definitions import DOCUMENTED, STEP_OWN_TOOLS, STEP_READ_TOOLS, with_placeholders
 
 from retroagent.context import tools
 from retroagent.llm.provider import ToolDefinition
 
 ALL = sorted(tools.normalize(name) for name in DOCUMENTED)
+REPOSITORY = Path(__file__).resolve().parents[2]
 
 # The skill of each model step of /cycle (runtime.md, Cycle command).
 STEP_SKILLS = {
@@ -66,27 +68,50 @@ def test_plan_mode_leaves_out_the_tools_that_need_a_permission():
     assert len(exposed) == len(ALL) - 3
 
 
-@pytest.mark.parametrize(
-    ("tool_set", "extra"),
-    [
-        ("analyze", []),
-        ("select", ["test_runner__run_tests"]),
-        ("design", []),
-        ("implement", ["test_runner__get_evidence", "test_runner__write_test"]),
-        ("triage", ["test_runner__get_evidence"]),
-    ],
-)
-def test_tool_sets_of_the_model_steps(tool_set, extra):
+def documented_access() -> dict[str, str]:
+    """The access column of the Summary of docs/reference/mcp-tools.md, by exposed name."""
+    text = (REPOSITORY / "docs" / "reference" / "mcp-tools.md").read_text(encoding="utf-8")
+    summary = text.split("## Summary", 1)[1].split("\n## ", 1)[0]
+    rows = re.findall(r"^\| `([a-z_]+\.[a-z_]+)` \| ([^|]+) \|", summary, re.MULTILINE)
+    return {tools.normalize(name): access.strip() for name, access in rows}
+
+
+def test_read_and_write_tools_follow_the_access_column_of_the_reference():
+    access = documented_access()
+    assert sorted(access) == ALL
+    assert tools.WRITE_TOOLS == {name for name, value in access.items() if value.startswith("write")}
+    read_of_git_and_memory = [
+        name for name, value in access.items() if value == "read" and name.split("__")[0] in ("git", "memory")
+    ]
+    assert tools.READ_TOOLS == ("runtime", *read_of_git_and_memory)
+
+
+@pytest.mark.parametrize("tool_set", sorted(STEP_OWN_TOOLS))
+def test_each_step_exposes_the_read_tools_and_only_its_own_tools(tool_set):
     exposed = names(tools.tool_definitions(servers(), mode="default", tool_set=tool_set))
-    base = [n for n in ALL if n.split("__")[0] in ("runtime", "git", "memory") and n != "memory__close_defect"]
-    assert exposed == sorted(base + extra)
+    assert exposed == sorted([*STEP_READ_TOOLS, *STEP_OWN_TOOLS[tool_set]])
 
 
-def test_the_report_tool_set():
-    exposed = names(tools.tool_definitions(servers(), mode="default", tool_set="report"))
-    assert {n.split("__")[0] for n in exposed} == {"runtime", "memory", "reports"}
-    assert "memory__close_defect" not in exposed
-    assert len(exposed) == 2 + 19 + 4
+@pytest.mark.parametrize(
+    ("tool_set", "writes"),
+    [
+        ("analyze", {"git__analyze_changes", "memory__add_risk", "memory__save_impact", "memory__sync_requirements"}),
+        ("select", {"memory__save_suite", "test_runner__run_tests"}),
+        ("design", {"memory__design_test_case", "memory__retire_test_case", "memory__update_test_case"}),
+        ("implement", {"memory__retire_test_case", "memory__update_test_case", "test_runner__write_test"}),
+        ("triage", {"memory__link_defect", "memory__register_defect", "memory__save_triage"}),
+        ("report", {"reports__evaluate", "reports__prepare_report", "reports__render_report"}),
+    ],
+)  # fmt: skip
+def test_the_exact_write_tools_of_each_step(tool_set, writes):
+    exposed = set(names(tools.tool_definitions(servers(), mode="default", tool_set=tool_set)))
+    # runtime__set_versions is a write tool of runtime, whose tools are read tools of every step
+    assert exposed & tools.WRITE_TOOLS == writes | {"runtime__set_versions"}
+
+
+def test_triage_cannot_create_an_analysis_or_sync_the_requirements():
+    exposed = names(tools.tool_definitions(servers(), mode="default", tool_set="triage"))
+    assert "git__analyze_changes" not in exposed and "memory__sync_requirements" not in exposed
 
 
 def test_plan_mode_applies_inside_a_tool_set():

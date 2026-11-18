@@ -88,3 +88,12 @@ def test_the_approval_question_shows_every_command_and_the_two_answers():
     )
     assert [display.answer_line(a, request) for a in ("approve", "deny")] == ["Approve these commands", "Deny"]
     assert [value for _, value, _ in display.choices(request)] == ["approve", "deny"]
+
+
+def test_the_recorded_line_lists_the_write_tools_of_the_turn_with_their_count():
+    recorded = (("memory__save_triage", 4), ("memory__register_defect", 1))
+    assert display.recorded_line(recorded) == "Recorded: 4 memory__save_triage, 1 memory__register_defect."
+
+
+def test_the_recorded_line_of_a_turn_that_recorded_nothing():
+    assert display.recorded_line(()) == "Nothing was recorded."

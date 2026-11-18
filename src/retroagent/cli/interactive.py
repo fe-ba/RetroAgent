@@ -43,6 +43,7 @@ class Outcome:
     """What one line did."""
 
     answer: str | None = None  # the final answer of the model
+    recorded: turn.Recorded | None = None  # what the turn of the model recorded; None when no turn ran
     runtime_error: bool = False
     usage_error: bool = False
     end: bool = False  # the session must end
@@ -53,7 +54,8 @@ Work = Callable[[turn.Ask | None, threading.Event], object]
 
 class Shell:
     """Answers lines of one session. ``keys`` is the terminal of an interactive session, None in ``-p``. ``out``
-    receives answers and tables; ``log`` the lines of the turn; ``err`` errors and warnings."""
+    receives answers and tables, and the recorded line after every turn of the model unless ``show_recorded`` is false;
+    ``log`` the lines of the turn; ``err`` errors and warnings."""
 
     def __init__(
         self,
@@ -66,10 +68,11 @@ class Shell:
         keys: "Keys | None" = None,
         confirm: Callable[[str], bool] | None = None,
         render_markdown: bool = True,
+        show_recorded: bool = True,
     ):
         self.session, self.out, self.err, self.log = session, out, err, log or out
         self.verbose, self.keys, self.confirm = verbose, keys, confirm
-        self.render_markdown = render_markdown
+        self.render_markdown, self.show_recorded = render_markdown, show_recorded
 
     # Lines --------------------------------------------------------------------------------------------------------
 
@@ -240,23 +243,31 @@ class Shell:
             self._error(str(error))
             if error.ends_session:
                 self._error("The session ends: the model did not receive the whole context.")
-            return Outcome(runtime_error=True, end=error.ends_session)
+            self._recorded(error.recorded)
+            return Outcome(runtime_error=True, end=error.ends_session, recorded=error.recorded)
         except ProviderError as error:
             self._error(str(error))
             return Outcome(runtime_error=True)
         if result.interrupted:
             self._error("Interrupted. The results of completed tool calls stay in the conversation.")
-            return Outcome(runtime_error=True)
+            self._recorded(result.recorded)
+            return Outcome(runtime_error=True, recorded=result.recorded)
         if result.limit_reached:
             self._error(result.text)
-            return Outcome(answer=result.text, runtime_error=True)
+            self._recorded(result.recorded)
+            return Outcome(answer=result.text, runtime_error=True, recorded=result.recorded)
         if self.render_markdown:
             self.out.print(Markdown(result.text))
         else:
             self.out.print(result.text, markup=False, highlight=False, soft_wrap=True)
         if result.incomplete:
             self._error("warning: the answer was cut at max_output_tokens of the model profile.")
-        return Outcome(answer=result.text)
+        self._recorded(result.recorded)
+        return Outcome(answer=result.text, recorded=result.recorded)
+
+    def _recorded(self, recorded: turn.Recorded) -> None:
+        if self.show_recorded:
+            self._say(display.recorded_line(recorded))
 
     # Doing work that can be interrupted ----------------------------------------------------------------------------
 

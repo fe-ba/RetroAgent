@@ -111,14 +111,15 @@ def test_a_tool_that_does_not_exist_is_not_found(agent):
 
 
 def test_a_tool_outside_the_tool_set_of_the_step_is_denied_and_the_message_names_its_tools(agent):
-    outside = call("git__resolve_ref", {"ref": "v1.0"})
-    _, provider = run(agent, [calls(outside), answer()], tool_set="report")
+    # the call of the real triage: a new analysis is the work of another step
+    outside = call("git__analyze_changes", {})
+    _, provider = run(agent, [calls(outside), answer()], tool_set="triage")
     error = error_of(tool_results(agent.conversation)[outside.id])
     offered = [tool.name for tool in provider.requests[0].tools]
-    assert offered and all(name.startswith(("runtime__", "memory__", "reports__")) for name in offered)
+    assert offered and "git__analyze_changes" not in offered and "memory__save_triage" in offered
     assert error == {
         "code": "denied",
-        "message": f"git__resolve_ref is not a tool of the step report; this step has: {', '.join(offered)}",
+        "message": f"git__analyze_changes is not a tool of the step triage; this step has: {', '.join(offered)}",
     }
     (row,) = tool_rows(agent.conn, agent.id)
     assert row["outcome"] == "denied"
@@ -272,3 +273,40 @@ def test_events_report_each_model_call_and_tool_call(agent):
     tool_event = events[1]
     assert (tool_event.name, tool_event.outcome, tool_event.code) == ("git__resolve_ref", "ok", None)
     assert events[0].usage is not None and events[0].characters > 0
+
+
+# What the turn recorded (runtime.md, Display)
+
+
+def test_a_turn_of_read_tools_records_nothing(agent):
+    result, _ = run(agent, [calls(call("memory__get_requirements"), call("git__resolve_ref", {"ref": "v1.0"})),
+                            answer("Read.")])  # fmt: skip
+    assert result.recorded == ()
+
+
+def test_a_refused_or_failed_call_is_not_counted_and_writes_of_earlier_turns_are_not_either(agent):
+    set_versions = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    first, _ = run(agent, [calls(set_versions), answer("Set.")])
+    assert first.recorded == (("runtime__set_versions", 1),)
+
+    again = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    analysis = call("git__analyze_changes", {})  # the call of the real triage: not a tool of the step
+    sync = call("memory__sync_requirements")  # neither
+    triage = {"execution_id": 99_999, "classification": "regression", "justification": "j"}
+    unknown = call("memory__save_triage", triage)  # a refusal of the server: not_found
+    result, _ = run(agent, [calls(again, analysis, sync, unknown), answer("Done.")], tool_set="triage")
+
+    assert result.recorded == (("runtime__set_versions", 1),)
+    outcomes = [(row["tool"], row["outcome"]) for row in tool_rows(agent.conn, agent.id)][1:]
+    assert outcomes == [
+        ("set_versions", "ok"), ("analyze_changes", "denied"), ("sync_requirements", "denied"),
+        ("save_triage", "error"),
+    ]  # fmt: skip
+
+
+def test_a_turn_that_ends_with_a_runtime_error_still_says_what_it_recorded(agent):
+    set_versions = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    cut = calls(call("git__resolve_ref", {"ref": "v1.0"}), finish_reason="length")
+    with pytest.raises(TurnError) as raised:
+        run(agent, [calls(set_versions), cut, cut])
+    assert raised.value.recorded == (("runtime__set_versions", 1),)

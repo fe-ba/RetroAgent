@@ -11,8 +11,8 @@ import pytest
 from fixtures.agent_session import Scripted, answer, tool_rows, triage_script
 from fixtures.example_project import project_copy, start
 from fixtures.reference_scenario import S1, S2, S3, S4, decision_of
+from fixtures.tool_definitions import step_tool_names
 
-from retroagent.context.tools import USER_ONLY
 from retroagent.memory import interpretation
 from retroagent.runtime import commands
 from retroagent.runtime.commands import CommandError
@@ -29,14 +29,13 @@ def test_sc13_triage_refuses_the_classifications_without_evidence_and_accepts_th
         result = commands.triage(session)
 
         assert script.remaining == 0 and "DEF-001 registered for TC-020" in result.text
+        # three refused save_triage are not counted (runtime.md, Display)
+        assert result.recorded == (("memory__save_triage", 4), ("memory__register_defect", 1))
         assert first_user_message(script.requests[0]) == (
             "Load the skill `failure-triage` and triage the failed executions of run `RUN-0004`."
         )
-        expected_tools = sorted(
-            [name for name in session.known_tools()
-             if name.split("__")[0] in ("runtime", "git", "memory") and name not in USER_ONLY]
-            + ["test_runner__get_evidence"]
-        )  # fmt: skip
+        expected_tools = step_tool_names(session.known_tools(), "triage")
+        assert "git__analyze_changes" not in expected_tools and "memory__save_triage" in expected_tools
         for request in script.requests:
             assert sorted(t.name for t in request.tools) == expected_tools
         assert session.conversation.loaded_skill == "failure-triage"

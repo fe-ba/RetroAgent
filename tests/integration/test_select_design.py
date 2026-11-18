@@ -10,9 +10,9 @@ import json
 import pytest
 from fixtures.agent_session import Scripted, analyze_script, answer, call, calls, result_in, tool_rows
 from fixtures.example_project import project_copy, start
+from fixtures.tool_definitions import step_tool_names
 
 from retroagent.cli.main import main
-from retroagent.context.tools import USER_ONLY
 from retroagent.memory import design, impact
 from retroagent.runtime import commands
 
@@ -46,12 +46,8 @@ def first_user_message(request) -> str:
     return next(m.content for m in request.messages if m.role == "user")
 
 
-def step_tools(session, *extra: str) -> list[str]:
-    """The tools of a step: every tool of runtime, git and memory except the user-only ones, and ``extra``."""
-    return sorted(
-        [name for name in session.known_tools()
-         if name.split("__")[0] in ("runtime", "git", "memory") and name not in USER_ONLY] + list(extra)
-    )  # fmt: skip
+def step_tools(session, step: str) -> list[str]:
+    return step_tool_names(session.known_tools(), step)
 
 
 def calls_of(session) -> list[tuple[str, str]]:
@@ -97,7 +93,7 @@ def test_select_records_a_suite_with_a_reason_for_every_test_case_and_reports_th
         assert result.text == "Suite saved. Gaps: REQ-002. Next step: /design." and script.remaining == 0
         assert first_user_message(script.requests[0]) == commands.SELECT
         for request in script.requests:
-            assert sorted(t.name for t in request.tools) == step_tools(session, "test_runner__run_tests")
+            assert sorted(t.name for t in request.tools) == step_tools(session, "select")
             assert "test_runner__write_test" not in [t.name for t in request.tools]
         assert calls_of(session) == [
             ("runtime", "load_skill"), ("memory", "get_analysis"), ("memory", "get_test_cases"),
@@ -164,7 +160,7 @@ def test_design_designs_for_every_uncovered_requirement_of_the_current_suite(pro
         assert script.remaining == 0 and "not executed" in result.text
         assert first_user_message(script.requests[0]) == commands.DESIGN_DEFAULT
         for request in script.requests:
-            assert sorted(t.name for t in request.tools) == step_tools(session)
+            assert sorted(t.name for t in request.tools) == step_tools(session, "design")
             assert not any(t.name.startswith("test_runner__") for t in request.tools)
         assert all(row["outcome"] == "ok" for row in tool_rows(session.conn, session.id))
         assert result_in(script.requests[2], suite.id)["suite_id"] == suite_id
@@ -200,5 +196,5 @@ def test_design_with_a_scope_names_it_in_the_template(project):
 def test_select_in_non_interactive_mode(project, fake_model, capsys):
     script = fake_model(Scripted([answer("No change since the last selection.")]))
     assert main(["-C", str(project), "-p", "/select"]) == 0
-    assert capsys.readouterr().out.strip() == "No change since the last selection."
+    assert capsys.readouterr().out.strip() == "No change since the last selection.\nNothing was recorded."
     assert first_user_message(script.requests[0]) == commands.SELECT

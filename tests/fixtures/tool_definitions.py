@@ -40,3 +40,30 @@ def with_placeholders() -> dict[str, list[ToolDefinition]]:
         server, tool = name.split(".")
         found.setdefault(server, []).append(ToolDefinition(tool, f"Description of {tool}.", {"type": "object"}))
     return found
+
+
+# The read tools that every step exposes (runtime.md, Cycle command): runtime, and the read tools of git and memory.
+STEP_READ_TOOLS = (
+    "runtime__load_skill", "runtime__set_versions",
+    "git__get_diff", "git__list_files", "git__read_file", "git__resolve_ref",
+    "memory__get_analysis", "memory__get_defects", "memory__get_executions", "memory__get_requirements",
+    "memory__get_risks", "memory__get_runs", "memory__get_suite", "memory__get_test_case_history",
+    "memory__get_test_cases",
+)  # fmt: skip
+
+# The tools of each step besides the read tools (runtime.md, Cycle command).
+STEP_OWN_TOOLS = {
+    "analyze": ("git__analyze_changes", "memory__add_risk", "memory__save_impact", "memory__sync_requirements"),
+    "select": ("memory__save_suite", "test_runner__run_tests"),
+    "design": ("memory__design_test_case", "memory__retire_test_case", "memory__update_test_case"),
+    "implement": ("memory__retire_test_case", "memory__update_test_case", "test_runner__get_evidence",
+                  "test_runner__write_test"),
+    "triage": ("memory__link_defect", "memory__register_defect", "memory__save_triage", "test_runner__get_evidence"),
+    "report": ("reports__evaluate", "reports__get_report", "reports__prepare_report", "reports__render_report"),
+}  # fmt: skip
+
+
+def step_tool_names(known, step: str) -> list[str]:
+    """The exposed names of the tools of ``step`` among ``known``, sorted, in mode default."""
+    wanted = {*STEP_READ_TOOLS, *STEP_OWN_TOOLS[step]}
+    return sorted(name for name in known if name in wanted)

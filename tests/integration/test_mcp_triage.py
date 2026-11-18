@@ -5,7 +5,7 @@ evidence and refused without it (INV-15), the history of triage, the defect tool
 
 import pytest
 from fixtures.mcp_project import dump, error_of, set_versions
-from fixtures.reference_scenario import S1, S2, S3, S4, V1_0_TESTS, decision_of
+from fixtures.reference_scenario import BASE_COMMIT, S1, S2, S3, S4, V1_0_TESTS, decision_of
 
 from retroagent.mcp_client import Client
 from retroagent.memory import connect, requirements
@@ -122,12 +122,33 @@ def test_flaky_of_s3_is_accepted_because_a_rerun_passed(shop):
     assert triage(client, project.scenario.executions[S3], "flaky")["test_case_id"] == "TC-011"
 
 
+def test_regression_of_s4_is_refused_because_it_failed_against_the_baseline(shop):
+    project, client = shop
+    message = refused(shop, lambda: triage(client, project.scenario.executions[S4], "regression"))
+    assert message == (
+        "INV-15: regression needs TC-022 not to fail against the baseline, and its result was failed in RUN-0003, the"
+        f" latest completed run on the baseline commit {BASE_COMMIT[:12]} that executed it: a failure"
+        " that the baseline already had is pre_existing"
+    )
+
+
+def test_regression_of_s1_is_accepted_because_it_passed_against_the_baseline(shop):
+    project, client = shop
+    assert triage(client, project.scenario.executions[S1], "regression")["test_case_id"] == "TC-020"
+
+
+def test_regression_of_s4_is_accepted_without_session_versions(shop):
+    project, client = shop
+    set_versions(project.path, project.scenario.session_id, None, None)
+    assert triage(client, project.scenario.executions[S4], "regression")["test_case_id"] == "TC-022"
+
+
 def test_judgments_of_the_model_need_no_evidence(shop):
     project, client = shop
     execution_id = project.scenario.executions[S1]
-    assert triage(client, execution_id, "regression")["classification"] == "regression"
     for classification in ("environment", "test_defect"):
-        assert triage(client, execution_id, classification, replace=True)["classification"] == classification
+        replace = classification == "test_defect"
+        assert triage(client, execution_id, classification, replace=replace)["classification"] == classification
 
 
 # Errors and history of save_triage

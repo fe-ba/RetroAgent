@@ -217,7 +217,9 @@ def _print_mode(started: session.Session, args, command, err: Console) -> int:
         out = Console(file=io.StringIO(), record=True, width=OUTPUT_WIDTH, color_system=None)
     else:
         out = Console() if sys.stdout.isatty() else Console(width=OUTPUT_WIDTH)
-    shell = interactive.Shell(started, out, err, log=err, verbose=args.verbose, render_markdown=False)
+    shell = interactive.Shell(
+        started, out, err, log=err, verbose=args.verbose, render_markdown=False, show_recorded=not as_json
+    )
     outcome = shell.execute(command) if command is not None else shell.handle(args.prompt)
     summary = commands.session_outcome(started)
     code = EXIT_USAGE if outcome.usage_error else commands.exit_code(outcome.runtime_error, summary)
@@ -232,6 +234,7 @@ def _print_mode(started: session.Session, args, command, err: Console) -> int:
                     "reports": summary.reports,
                     "decision": summary.decision,
                     "denied": summary.denied,
+                    "recorded": dict(outcome.recorded) if outcome.recorded is not None else None,
                     "exit_code": code,
                 },
                 ensure_ascii=False,

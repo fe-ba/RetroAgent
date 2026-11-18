@@ -19,8 +19,8 @@ from fixtures.agent_session import (
     tool_rows,
 )
 from fixtures.example_project import project_copy, start
+from fixtures.tool_definitions import step_tool_names
 
-from retroagent.context.tools import USER_ONLY
 from retroagent.llm.provider import Message
 from retroagent.memory import design, execution
 from retroagent.runtime import commands
@@ -74,11 +74,7 @@ def test_implement_writes_the_designed_test_cases_and_their_tests_run_on_both_ve
             assert script.remaining == 0 and result.text.endswith("Implemented, not executed.")
             assert first_user_message(script.requests[0]) == commands.IMPLEMENT_DEFAULT
             assert "An earlier conversation." not in [m.content for m in script.requests[0].messages]
-            expected_tools = sorted(
-                [name for name in session.known_tools()
-                 if name.split("__")[0] in ("runtime", "git", "memory") and name not in USER_ONLY]
-                + ["test_runner__get_evidence", "test_runner__write_test"]
-            )  # fmt: skip
+            expected_tools = step_tool_names(session.known_tools(), "implement")
             for request in script.requests:
                 assert sorted(t.name for t in request.tools) == expected_tools
             rows = tool_rows(session.conn, session.id)

@@ -22,12 +22,14 @@ tool memory__get_risks {}: ok, <s>
 tool git__read_file {"path": "nowhere.py"}: error invalid_argument, <s>
 model call 3: <n> characters sent, <n> input and <n> output tokens, <s>, finish stop
 Done.
+Nothing was recorded.
 """
 
 QUIET = """\
 memory__get_risks: ok
 git__read_file: error invalid_argument
 Done.
+Nothing was recorded.
 """
 
 

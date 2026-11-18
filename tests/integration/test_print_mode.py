@@ -13,8 +13,15 @@ from retroagent.cli.main import main
 from retroagent.llm import FakeProvider, ProviderUnavailable
 from retroagent.memory import connect
 
-FIELDS = {"result", "session_id", "runs", "reports", "decision", "denied", "exit_code"}
+FIELDS = {"result", "session_id", "runs", "reports", "decision", "denied", "recorded", "exit_code"}
 RUN_MISSING = {"version": "candidate", "scope": "selected", "test_case_ids": ["TC-999"]}
+# What /analyze records with analyze_script: runtime.set_versions is a call of the user, before the turn.
+ANALYZE_RECORDED = {
+    "memory__sync_requirements": 1,
+    "git__analyze_changes": 1,
+    "memory__save_impact": 1,
+    "memory__add_risk": 1,
+}
 
 
 def run_json(project, *argv) -> tuple[int, dict]:
@@ -32,7 +39,8 @@ def run_json(project, *argv) -> tuple[int, dict]:
 def test_a_free_message_prints_the_answer(agent_project, fake_model, capsys):
     provider = fake_model(FakeProvider([answer("# Title\n\nThe **answer**.")]))
     assert main(["-C", str(agent_project), "-p", "What is this project?"]) == 0
-    assert capsys.readouterr().out == "# Title\n\nThe **answer**.\n"  # Markdown source, so it can be piped
+    # Markdown source, so it can be piped, then the line of what the turn recorded
+    assert capsys.readouterr().out == "# Title\n\nThe **answer**.\nNothing was recorded.\n"
     assert provider.requests[0].messages[1].content == "What is this project?"
     assert len(provider.requests[0].tools) > 10  # a free message has every tool of the mode
 
@@ -43,6 +51,7 @@ def test_a_free_message_in_json(agent_project, fake_model):
     assert code == 0
     assert output["result"] == "Done." and output["runs"] == [] and output["reports"] == []
     assert output["decision"] is None and output["denied"] == 0 and isinstance(output["session_id"], int)
+    assert output["recorded"] == {}
 
 
 def test_a_direct_command_in_text_and_json(agent_project, fake_model, capsys):
@@ -51,6 +60,7 @@ def test_a_direct_command_in_text_and_json(agent_project, fake_model, capsys):
     assert "test_runner" in capsys.readouterr().out
     code, output = run_json(agent_project, "-p", "/status")
     assert code == 0 and "Model calls" in output["result"] and "Baseline" in output["result"]
+    assert output["recorded"] is None  # no turn of the model ran
     assert provider.requests == []
 
 
@@ -60,6 +70,7 @@ def test_a_model_command_in_json(agent_project, fake_model):
     fake_model(Scripted(analyze_script("Impact recorded.")))
     code, output = run_json(agent_project, "-p", "/analyze v1.0 v1.1")
     assert (code, output["result"], output["denied"]) == (0, "Impact recorded.", 0)
+    assert output["recorded"] == ANALYZE_RECORDED
 
 
 def test_a_tool_outside_the_step_is_refused_and_the_session_still_exits_0(agent_project, fake_model):
@@ -70,6 +81,7 @@ def test_a_tool_outside_the_step_is_refused_and_the_session_still_exits_0(agent_
     code, output = run_json(agent_project, "--trust-commands", "--mode", "auto", "-p", "/analyze")
     assert (code, output["denied"]) == (0, 0)
     assert output["result"] == "Impact recorded."
+    assert output["recorded"] == ANALYZE_RECORDED  # the refused call is not counted
     conn = connect(agent_project)
     try:
         row = conn.execute(
@@ -84,6 +96,7 @@ def test_run_tests_refused_for_lack_of_permission_exits_4(agent_project, fake_mo
     fake_model(FakeProvider([calls(call("test_runner__run_tests", RUN_MISSING)), answer("I could not run them.")]))
     code, output = run_json(agent_project, "--trust-commands", "-p", "Run the test TC-999.")  # mode default
     assert (code, output["denied"], output["result"]) == (4, 1, "I could not run them.")
+    assert output["recorded"] == {}
 
 
 def test_direct_run_without_approved_commands_exits_4(agent_project, fake_model, capsys):
@@ -105,6 +118,7 @@ def test_the_iteration_limit_is_a_runtime_error(agent_project, fake_model, tmp_p
     fake_model(FakeProvider([calls(call("memory__get_requirements"))] * 2))
     code, output = run_json(agent_project, "-p", "Loop.")
     assert code == 1 and "agent.max_iterations" in output["result"]
+    assert output["recorded"] == {}
 
 
 @pytest.mark.parametrize(

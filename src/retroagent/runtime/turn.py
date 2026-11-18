@@ -8,6 +8,10 @@ checked, asked about when needed, dispatched, and answered in the conversation.
 The turn prints nothing. It returns a ``TurnResult`` and reports events to a listener: ``ModelCalled``,
 ``ToolCalled``, ``Retried``, ``Warned``, and the ``Wait`` of the provider adapter.
 
+However the turn ends, ``recorded`` on its result or on its ``TurnError`` is computed from ``tool_call``: the write
+tools that succeeded in the turn and how many times (runtime.md, Display). The answer of the model can claim an action;
+``recorded`` is what was actually recorded.
+
 ``call_tool`` runs one tool call of the user, for a direct command, through the same path: recorded, checked, asked
 about and dispatched, but not added to the conversation (runtime.md, Slash commands).
 
@@ -16,6 +20,7 @@ run in a worker thread; the turn stops waiting for a model call, and stops the s
 its work through its stop path and is started again (runtime.md, Interruption).
 """
 
+import dataclasses
 import json
 import os
 import threading
@@ -96,12 +101,17 @@ class Warned:
 # Results ------------------------------------------------------------------------------------------------------------
 
 
+# The write tools that succeeded in a turn, by exposed name, with how many times, in the order of the first success.
+Recorded = tuple[tuple[str, int], ...]
+
+
 @dataclass(frozen=True)
 class TurnResult:
     text: str
     incomplete: bool = False  # the answer was cut by the output limit
     limit_reached: bool = False  # agent.max_iterations was reached
     interrupted: bool = False
+    recorded: Recorded = ()
 
 
 class TurnError(Exception):
@@ -111,6 +121,7 @@ class TurnError(Exception):
     def __init__(self, message: str, *, ends_session: bool = False):
         super().__init__(message)
         self.ends_session = ends_session
+        self.recorded: Recorded = ()  # set by run_turn
 
 
 class Interrupted(Exception):
@@ -167,10 +178,26 @@ def run_turn(
     or None for a free message. Raises ``TurnError``."""
     previous = session.listener
     session.listener = listener
+    before = sessions.last_tool_call_id(session.conn, session.id)
     try:
-        return _Turn(session, provider, client, ask, listener, tool_set, cycle_step, interrupt).run(message)
+        result = _Turn(session, provider, client, ask, listener, tool_set, cycle_step, interrupt).run(message)
+    except TurnError as error:
+        error.recorded = recorded_since(session, before)
+        raise
     finally:
         session.listener = previous
+    return dataclasses.replace(result, recorded=recorded_since(session, before))
+
+
+def recorded_since(session: Session, after_id: int) -> Recorded:
+    """The write tools of the calls after ``after_id`` whose outcome is ``ok``, counted. A refused call, a call that
+    failed and a call left not completed are not counted."""
+    counts: dict[str, int] = {}
+    for row in sessions.succeeded_tool_calls(session.conn, session.id, after_id):
+        name = f"{row['server']}{tools.SEPARATOR}{row['tool']}"
+        if name in tools.WRITE_TOOLS:
+            counts[name] = counts.get(name, 0) + 1
+    return tuple(counts.items())
 
 
 class _Turn:

@@ -8,9 +8,9 @@ import json
 
 import pytest
 from fixtures.agent_session import Scripted, analyze_script, tool_rows
+from fixtures.tool_definitions import step_tool_names
 
 from retroagent.cli.main import main
-from retroagent.context.tools import USER_ONLY
 from retroagent.llm import FakeProvider, Message
 from retroagent.runtime import commands
 from retroagent.servers.errors import ToolError
@@ -19,10 +19,7 @@ ANSWER = "Analysis recorded: pricing and discounts are impacted."
 
 
 def analyze_tools(session) -> list[str]:
-    return sorted(
-        name for name in session.known_tools() if name.split("__")[0] in ("runtime", "git", "memory")
-        and name not in USER_ONLY
-    )  # fmt: skip
+    return step_tool_names(session.known_tools(), "analyze")
 
 
 def first_user_message(request) -> str:
@@ -108,12 +105,14 @@ def test_a_ref_that_does_not_resolve_calls_no_model(agent):
 def test_analyze_in_non_interactive_mode_exits_0(agent_project, fake_model, capsys):
     fake_model(Scripted(analyze_script(ANSWER)))
     assert main(["-C", str(agent_project), "-p", "/analyze v1.0 v1.1"]) == 0
-    assert capsys.readouterr().out.strip() == ANSWER
+    assert capsys.readouterr().out.strip() == ANSWER + "\n" + (
+        "Recorded: 1 memory__sync_requirements, 1 git__analyze_changes, 1 memory__save_impact, 1 memory__add_risk."
+    )
 
 
 def test_analyze_with_a_ref_that_does_not_resolve_exits_2(agent_project, fake_model, capsys):
     provider = fake_model(FakeProvider())
     assert main(["-C", str(agent_project), "--output-format", "json", "-p", "/analyze v1.0 v9.9"]) == 2
     output = json.loads(capsys.readouterr().out)
-    assert output["exit_code"] == 2 and output["result"] is None
+    assert output["exit_code"] == 2 and output["result"] is None and output["recorded"] is None
     assert provider.requests == []

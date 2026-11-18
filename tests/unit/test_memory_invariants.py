@@ -384,12 +384,56 @@ SESSION = {"base_commit": BASE_COMMIT, "candidate_commit": CANDIDATE_COMMIT}
 
 
 def test_inv_15_judgments_need_no_evidence(conn, build):
-    # regression, environment and test_defect are judgments of the model
+    # environment and test_defect are judgments of the model
     _, _, execution_id = build.failed_execution()
-    triage(conn, execution_id, "regression")
-    for classification in ("environment", "test_defect"):
-        triage(conn, execution_id, classification, replace=True)
+    triage(conn, execution_id, "environment")
+    triage(conn, execution_id, "test_defect", replace=True)
     assert interpretation.current_triage(conn, execution_id)["classification"] == "test_defect"
+
+
+def test_inv_15_regression_is_accepted_when_the_baseline_never_executed_the_test_case(conn, build):
+    case = build.test_case()
+    build.finished_run(role="base", test_case_id=build.test_case(), result="failed")  # another test case failed
+    candidate_failure = build.execute(build.run(), case, "failed")
+    triage(conn, candidate_failure, "regression", **SESSION)
+    assert interpretation.current_triage(conn, candidate_failure)["classification"] == "regression"
+
+
+def test_inv_15_regression_is_accepted_without_session_versions(conn, build):
+    # no session versions, no baseline to check: as for a test case the baseline never executed
+    case = build.test_case()
+    build.finished_run(role="base", test_case_id=case, result="failed")
+    candidate_failure = build.execute(build.run(), case, "failed")
+    triage(conn, candidate_failure, "regression")
+    assert interpretation.current_triage(conn, candidate_failure)["classification"] == "regression"
+
+
+def test_inv_15_regression_is_accepted_when_the_baseline_passed(conn, build):
+    case = build.test_case()
+    build.finished_run(role="base", test_case_id=case, result="failed")
+    build.finished_run(role="base", test_case_id=case, result="passed")  # the latest baseline run passed
+    candidate_failure = build.execute(build.run(), case, "failed")
+    triage(conn, candidate_failure, "regression", **SESSION)
+    assert interpretation.current_triage(conn, candidate_failure)["classification"] == "regression"
+
+
+def test_inv_15_regression_is_refused_when_the_baseline_failed(conn, build):
+    case = build.test_case()
+    build.finished_run(role="base", test_case_id=case, result="passed")
+    baseline, _ = build.finished_run(role="base", test_case_id=case, result="error")  # the latest one did not pass
+    candidate_failure = build.execute(build.run(), case, "failed")
+    before = count_rows(conn)
+    with pytest.raises(
+        InvariantViolation,
+        match=f"INV-15: regression needs {case} not to fail against the baseline, and its result was error in"
+        f" {baseline}, .* that executed it: a failure that the baseline already had is pre_existing",
+    ):
+        triage(conn, candidate_failure, "regression", **SESSION)
+    assert count_rows(conn) == before
+    # the same execution is accepted as pre_existing
+    triage(conn, candidate_failure, "pre_existing", **SESSION)
+    # another baseline commit has no execution of the test case: regression is accepted there
+    triage(conn, candidate_failure, "regression", base_commit="a" * 40, candidate_commit=CANDIDATE_COMMIT, replace=True)
 
 
 def test_inv_15_flaky_needs_a_rerun_that_passed_or_history(conn, build):

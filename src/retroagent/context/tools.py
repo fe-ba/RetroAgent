@@ -25,16 +25,46 @@ SERVICE_PERMISSION = "start_service"
 # Called only by the runtime, for a direct command of the user; never in the tool definitions (mcp-tools.md).
 USER_ONLY = frozenset({"memory__close_defect"})
 
+# The tools whose access is write (mcp-tools.md, Summary); every other tool only reads.
+WRITE_TOOLS = frozenset({
+    "runtime__set_versions",
+    "git__analyze_changes",
+    "memory__sync_requirements", "memory__save_impact", "memory__add_risk", "memory__save_suite",
+    "memory__design_test_case", "memory__update_test_case", "memory__retire_test_case", "memory__save_triage",
+    "memory__register_defect", "memory__link_defect", "memory__close_defect",
+    "test_runner__write_test", "test_runner__run_tests",
+    "reports__evaluate", "reports__prepare_report", "reports__render_report",
+})  # fmt: skip
+
+# The read tools of the cycle steps: the tools of runtime and every tool of git and memory whose access is read
+# (runtime.md, Cycle command).
+READ_TOOLS: tuple[str, ...] = (
+    "runtime",
+    "git__resolve_ref", "git__get_diff", "git__read_file", "git__list_files",
+    "memory__get_requirements", "memory__get_analysis", "memory__get_risks", "memory__get_suite",
+    "memory__get_test_cases", "memory__get_runs", "memory__get_executions", "memory__get_test_case_history",
+    "memory__get_defects",
+)  # fmt: skip
+
 # The tools exposed by each model step of /cycle and by the model command of the same skill (runtime.md, Cycle
-# command). An entry is a server, meaning all its tools, or one tool. A free message exposes every tool.
+# command): the read tools and the write tools of the step, so that a step never redoes or undoes another one. An
+# entry is a server, meaning all its tools, or one tool. A free message exposes every tool the mode allows.
 TOOL_SETS: Mapping[str, tuple[str, ...]] = {
-    "analyze": ("runtime", "git", "memory"),
-    "select": ("runtime", "git", "memory", "test_runner__run_tests"),
-    "design": ("runtime", "git", "memory"),
-    "implement": ("runtime", "git", "memory", "test_runner__write_test", "test_runner__get_evidence"),
-    "triage": ("runtime", "git", "memory", "test_runner__get_evidence"),
-    "report": ("runtime", "memory", "reports"),
-}
+    "analyze": (
+        *READ_TOOLS, "memory__sync_requirements", "git__analyze_changes", "memory__save_impact", "memory__add_risk"
+    ),
+    "select": (*READ_TOOLS, "memory__save_suite", "test_runner__run_tests"),
+    "design": (*READ_TOOLS, "memory__design_test_case", "memory__update_test_case", "memory__retire_test_case"),
+    "implement": (
+        *READ_TOOLS, "test_runner__write_test", "test_runner__get_evidence", "memory__update_test_case",
+        "memory__retire_test_case",
+    ),
+    "triage": (
+        *READ_TOOLS, "test_runner__get_evidence", "memory__save_triage", "memory__register_defect",
+        "memory__link_defect",
+    ),
+    "report": (*READ_TOOLS, "reports"),
+}  # fmt: skip
 
 
 def exposed_name(server: str, tool: str) -> str:

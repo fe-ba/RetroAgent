@@ -13,6 +13,7 @@ KNOWN = {
     RUN_TESTS,
     WRITE_TEST,
     "git__resolve_ref",
+    "git__analyze_changes",
     "memory__get_suite",
     "memory__close_defect",
     "runtime__load_skill",
@@ -133,15 +134,16 @@ def test_the_user_calls_a_user_only_tool_in_every_mode():
 
 
 def test_a_tool_outside_the_step_is_denied_and_the_message_names_the_tools_of_the_step():
-    decision = decide("git__resolve_ref", tool_set="report")
+    decision = decide("git__analyze_changes", tool_set="triage")
     assert decision.code == "denied"
     assert decision.message == (
-        "git__resolve_ref is not a tool of the step report; this step has: memory__get_suite, runtime__load_skill"
+        "git__analyze_changes is not a tool of the step triage; this step has: git__resolve_ref, memory__get_suite,"
+        " runtime__load_skill"
     )
 
 
 def test_the_tools_of_a_step_in_plan_mode_leave_out_the_tools_that_need_a_permission():
-    decision = decide("git__resolve_ref", mode="plan", tool_set="report")
+    decision = decide("git__analyze_changes", mode="plan", tool_set="implement")
     assert "test_runner" not in decision.message
     assert permissions.step_tools(KNOWN, mode="plan", tool_set="select") == [
         "git__resolve_ref",

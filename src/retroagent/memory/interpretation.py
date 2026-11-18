@@ -1,8 +1,8 @@
 """Interpretation: tables ``triage``, ``defect`` and ``defect_execution``.
 
-A triage with classification ``expected_change``, ``flaky`` or ``pre_existing`` is stored only when its evidence is
-found here (INV-15, mcp-tools.md ``memory.save_triage``). Whether a ``Changed`` or ``Removed`` entry applies to the
-change needs git: the caller gives it as ``change_applies(version)``, so the data layer never runs git itself.
+A triage with classification ``expected_change``, ``flaky``, ``pre_existing`` or ``regression`` is stored only when its
+evidence is found here (INV-15, mcp-tools.md ``memory.save_triage``). Whether a ``Changed`` or ``Removed`` entry applies
+to the change needs git: the caller gives it as ``change_applies(version)``, so the data layer never runs git itself.
 
 A defect is closed only by the user (``close_defect``) or by a completed run against the candidate in which every
 linked test case passed (``close_defects_verified_by``, INV-14).
@@ -80,6 +80,32 @@ def _against_candidate_missing(
     return None
 
 
+def _latest_baseline_execution(conn: sqlite3.Connection, test_case_id: str, base_commit: str) -> sqlite3.Row | None:
+    """The execution of the test case in the latest completed run on the baseline commit that executed it."""
+    return conn.execute(
+        "SELECT e.result, r.id AS run_id FROM test_execution e JOIN run r ON r.id = e.run_id WHERE e.test_case_id = ?"
+        " AND r.\"commit\" = ? AND r.status = 'completed' AND e.status = 'executed'"
+        " ORDER BY r.started_at DESC, r.id DESC LIMIT 1",
+        (test_case_id, base_commit),
+    ).fetchone()
+
+
+def _regression_missing(conn: sqlite3.Connection, execution: sqlite3.Row, base_commit: str | None) -> str | None:
+    """A failure that the baseline already had is not caused by the change. Without session versions there is no
+    baseline to check, and a test case that the baseline never executed may be a regression."""
+    if base_commit is None:
+        return None
+    test_case_id = execution["test_case_id"]
+    latest = _latest_baseline_execution(conn, test_case_id, base_commit)
+    if latest is None or latest["result"] not in FAILED:
+        return None
+    return (
+        f"regression needs {test_case_id} not to fail against the baseline, and its result was {latest['result']} in"
+        f" {latest['run_id']}, the latest completed run on the baseline commit {base_commit[:12]} that executed it:"
+        " a failure that the baseline already had is pre_existing"
+    )
+
+
 def _pre_existing_missing(
     conn: sqlite3.Connection, execution: sqlite3.Row, base_commit: str | None, candidate_commit: str | None
 ) -> str | None:
@@ -87,12 +113,7 @@ def _pre_existing_missing(
     if missing:
         return missing
     test_case_id = execution["test_case_id"]
-    latest = conn.execute(
-        "SELECT e.result, r.id AS run_id FROM test_execution e JOIN run r ON r.id = e.run_id WHERE e.test_case_id = ?"
-        " AND r.\"commit\" = ? AND r.status = 'completed' AND e.status = 'executed'"
-        " ORDER BY r.started_at DESC, r.id DESC LIMIT 1",
-        (test_case_id, base_commit),
-    ).fetchone()
+    latest = _latest_baseline_execution(conn, test_case_id, base_commit)
     if latest is None:
         return (
             f"pre_existing needs a completed run on the baseline commit {base_commit[:12]} that executed"
@@ -182,6 +203,8 @@ def add_triage(
             missing = _pre_existing_missing(conn, execution, base_commit, candidate_commit)
         elif classification == "expected_change":
             missing = _expected_change_missing(conn, execution, base_commit, candidate_commit, change_applies)
+        elif classification == "regression":
+            missing = _regression_missing(conn, execution, base_commit)
         if missing:
             raise InvariantViolation(f"INV-15: {missing}")
         cursor = conn.execute(

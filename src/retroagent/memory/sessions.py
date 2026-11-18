@@ -119,3 +119,16 @@ def finish_tool_call(conn: sqlite3.Connection, tool_call_id: int, *, outcome: st
             "UPDATE tool_call SET outcome = ?, error = ?, ended_at = ? WHERE id = ?",
             (outcome, error, utc_now(), tool_call_id),
         )
+
+
+def last_tool_call_id(conn: sqlite3.Connection, session_id: int) -> int:
+    """The ID of the latest tool call of the session, 0 when there is none."""
+    return conn.execute("SELECT COALESCE(MAX(id), 0) FROM tool_call WHERE session_id = ?", (session_id,)).fetchone()[0]
+
+
+def succeeded_tool_calls(conn: sqlite3.Connection, session_id: int, after_id: int) -> list[sqlite3.Row]:
+    """``server`` and ``tool`` of the tool calls of the session after ``after_id`` whose outcome is ``ok``, in order."""
+    return conn.execute(
+        "SELECT server, tool FROM tool_call WHERE session_id = ? AND id > ? AND outcome = 'ok' ORDER BY id",
+        (session_id, after_id),
+    ).fetchall()

@@ -208,7 +208,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 |---|---|---|---|
 | `analysis_id` | integer | yes | — |
 | `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
-| `left_out` | list | yes | Test cases traced to an impacted requirement that are not selected. Each: `test_case_id`, `reason`. May be empty. |
+| `left_out` | list | yes | Test cases not selected, with the reason. Required for every test case traced to an impacted requirement; others may be listed. Each: `test_case_id`, `reason`. May be empty. |
 
 Every active, implemented test case traced to an impacted requirement of the analysis, by a design or a name link, must be decided: it appears in `items` or in `left_out`, never in both. The decision is checked by code, so that a test case of an impacted requirement is never left out in silence. The reasons of `left_out` are stored with the suite.
 

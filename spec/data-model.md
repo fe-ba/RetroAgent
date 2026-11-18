@@ -258,7 +258,7 @@ Writer of both tables: memory server. Test cases designed for the change are add
 | Column | Type | Constraints | Source | Description |
 |---|---|---|---|---|
 | `suite_id` | integer | references `suite` | code | — |
-| `test_case_id` | text | references `test_case` | model | A test case traced to an impacted requirement that was not selected. |
+| `test_case_id` | text | references `test_case` | model | A test case that was not selected. Required for every test case traced to an impacted requirement; any other test case may be listed too. |
 | `reason` | text | not null | model | Why it was left out. |
 
 Writer: memory server, in the same transaction as `suite_test_case`. A test case appears in at most one of the two tables for a suite. Metrics do not read it; it makes the exclusions reviewable.

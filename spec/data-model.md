@@ -336,6 +336,7 @@ Writer: test runner server. Attempt `1` is the original execution and gives the 
 | `execution_id` | integer | not null, references `test_execution` | code | An execution can be triaged again; every triage is kept. |
 | `classification` | text | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing` | model | `expected_change`, `flaky` and `pre_existing` are accepted only with the evidence that `mcp-tools.md` requires. |
 | `justification` | text | not null | model | — |
+| `confirmed` | integer | not null, 0 or 1, default 0 | model | 1 when the classification was kept with `confirm` after a soft check refused it (`mcp-tools.md`). |
 | `triaged_by` | text | not null | code | Model that classified it. |
 | `created_at` | text | not null | code | — |
 

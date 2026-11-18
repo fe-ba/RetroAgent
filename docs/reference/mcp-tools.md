@@ -210,7 +210,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 | `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
 | `left_out` | list | yes | Test cases not selected, with the reason. Required for every test case traced to an impacted requirement; others may be listed. Each: `test_case_id`, `reason`. May be empty. |
 
-Every active, implemented test case traced to an impacted requirement of the analysis, by a design or a name link, must be decided: it appears in `items` or in `left_out`, never in both. The decision is checked by code, so that a test case of an impacted requirement is never left out in silence. The reasons of `left_out` are stored with the suite.
+Every active, implemented test case traced to an impacted requirement of the analysis, by a design or a name link, must be decided, and so must every active test case whose verdict differs between the latest completed full runs on the baseline commit and on the candidate commit, when both exist: passed in one of them and failed or error in the other. Each one appears in `items` or in `left_out`, never in both. The decision is checked by code, so that a test case of an impacted requirement is never left out in silence. The reasons of `left_out` are stored with the suite.
 
 Returns the suite ID and `uncovered_requirements`: the impacted requirements of the analysis that no active test case of the suite is traced to, by a design or a name link. They are computed by code, so that a gap never depends on the model reading a trace correctly. `position` orders the presentation of the suite; the test framework decides the execution order. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions, for a retired test case, or when a test case traced to an impacted requirement is in neither list, naming every one.
 
@@ -315,6 +315,7 @@ Returns every execution of the test case, oldest first, with run, version, statu
 | `classification` | string | yes | `regression`, `expected_change`, `flaky`, `environment`, `test_defect` or `pre_existing`. |
 | `justification` | string | yes | — |
 | `replace` | boolean | no | Triage again an execution that already has a triage. Default: false. |
+| `confirm` | boolean | no | Keep a classification that a soft check refused, because the evidence shows otherwise. Default: false. |
 
 With `replace`, a new triage is added and becomes the current one; the earlier ones are kept and the execution is listed for review.
 
@@ -328,6 +329,13 @@ Four classifications are accepted only when code finds their evidence (INV-15):
 | `regression` | That same baseline execution, when it exists, did not fail. Without session versions there is no baseline to check, and the triage is accepted: a failure that the baseline already had is not caused by the change. A test case that the baseline never executed, such as a new or generated one, may be a `regression`. |
 
 "A run against the candidate" means a run whose commit is the candidate commit of the session versions; `expected_change` and `pre_existing` are refused with `invalid_state` while the session versions are not set.
+
+Two soft checks refuse a likely mistake with `invalid_state` and a message that gives the evidence; the same call with `confirm` `true` is accepted and the triage records that it was confirmed:
+
+| Classification | Refused when |
+|---|---|
+| `regression` | A requirement traced to the test case has a `Changed` or `Removed` entry that applies to the change. The message quotes the entry: a failure in a documented change is most likely an `expected_change`. |
+| `pre_existing` | The test case is generated. A generated test that fails against the baseline most likely does not match the code: the message says to read its evidence with `test_runner.get_evidence` and to consider `test_defect`. |
 
 `environment` and `test_defect` are judgments of the model and are not validated.
 

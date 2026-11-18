@@ -48,6 +48,15 @@ class Builder:
             design.mark_implemented(self.conn, test_case_id, f"test_case_{number}.py::test_case_{number}")
         return test_case_id
 
+    def project_test(self):
+        """A test case of the project's own tests, not generated: no soft check of save_triage applies to it."""
+        number = next(self._numbers)
+        return design.add_project_suite_test_case(
+            self.conn,
+            test_id=f"tests.test_case::test_case_{number}",
+            implementation=f"tests/test_case.py::test_case_{number}",
+        )
+
     def suite(self, *test_case_ids):
         suite_id = design.add_suite(self.conn, analysis_id=self.analysis_id, session_id=self.session_id)
         for position, test_case_id in enumerate(test_case_ids, start=1):

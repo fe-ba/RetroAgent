@@ -405,6 +405,36 @@ def test_cases_to_decide(conn: sqlite3.Connection, analysis_id: int) -> dict[str
     return decide
 
 
+def _latest_full_run(conn: sqlite3.Connection, commit: str) -> str | None:
+    row = conn.execute(
+        "SELECT id FROM run WHERE \"commit\" = ? AND scope = 'all' AND status = 'completed'"
+        " ORDER BY started_at DESC, id DESC LIMIT 1",
+        (commit,),
+    ).fetchone()
+    return None if row is None else row["id"]
+
+
+def verdict_changes(conn: sqlite3.Connection, base_commit: str, candidate_commit: str) -> dict[str, tuple[str, ...]]:
+    """The active test cases whose verdict differs between the latest completed full runs on the two commits, when
+    both exist: passed in one and failed or error in the other. Each maps to ``(base_run, base_result,
+    candidate_run, candidate_result)``. The result of an execution is the one of its first attempt, so a flaky one
+    is a failure (ADR-0022); a test case that one of the runs did not execute has no verdict there."""
+    base_run, candidate_run = _latest_full_run(conn, base_commit), _latest_full_run(conn, candidate_commit)
+    if base_run is None or candidate_run is None:
+        return {}
+    changes = {}
+    for row in conn.execute(
+        "SELECT b.test_case_id, b.result AS base_result, c.result AS candidate_result FROM test_execution b"
+        " JOIN test_execution c ON c.test_case_id = b.test_case_id AND c.run_id = ? AND c.status = 'executed'"
+        " JOIN test_case tc ON tc.id = b.test_case_id AND tc.retired_at IS NULL"
+        " WHERE b.run_id = ? AND b.status = 'executed' ORDER BY b.test_case_id",
+        (candidate_run, base_run),
+    ):
+        if (row["base_result"] == "passed") != (row["candidate_result"] == "passed"):
+            changes[row["test_case_id"]] = (base_run, row["base_result"], candidate_run, row["candidate_result"])
+    return changes
+
+
 def _repeated(values: list) -> list:
     return sorted({value for value in values if values.count(value) > 1})
 
@@ -416,11 +446,15 @@ def save_suite(
     leaves out ``{test_case_id, reason}``, in one transaction.
 
     Unknown references fail first (INV-13). Then every problem is refused at once as ``invalid_argument``, naming each
-    test case: repeated test cases or positions, retired items (INV-16), a test case in both lists, and a test case of
-    an impacted requirement in neither (mcp-tools.md, ``memory.save_suite``). Any other test case may be left out.
+    test case: repeated test cases or positions, retired items (INV-16), a test case in both lists, and in neither a
+    test case of an impacted requirement or one whose verdict differs between the latest full runs on the commits of
+    the analysis (mcp-tools.md, ``memory.save_suite``). Any other test case may be left out.
     """
     with transaction(conn):
         require_exists(conn, "analysis", "id", analysis_id, "analysis")
+        analysis = conn.execute(
+            "SELECT base_commit, candidate_commit FROM analysis WHERE id = ?", (analysis_id,)
+        ).fetchone()
         test_case_ids = [item["test_case_id"] for item in items]
         left_out_ids = [entry["test_case_id"] for entry in left_out]
         for test_case_id in dict.fromkeys(test_case_ids + left_out_ids):
@@ -453,6 +487,20 @@ def save_suite(
             problems.append(
                 "test cases traced to an impacted requirement are in neither items nor left_out:"
                 f" {', '.join(undecided)}; select each one or add it to left_out with a reason"
+            )
+        changed = [
+            f"{test_case_id} ({base_result} in {base_run} on the baseline, {candidate_result} in {candidate_run} on"
+            " the candidate)"
+            for test_case_id, (base_run, base_result, candidate_run, candidate_result) in verdict_changes(
+                conn, analysis["base_commit"], analysis["candidate_commit"]
+            ).items()
+            if test_case_id not in decided
+        ]
+        if changed:
+            problems.append(
+                "test cases whose verdict differs between the latest full runs of the baseline and the candidate are"
+                f" in neither items nor left_out: {', '.join(changed)}; select each one or add it to left_out with a"
+                " reason"
             )
         if problems:
             raise InvariantViolation("invalid_argument: " + "; ".join(problems))

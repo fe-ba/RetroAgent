@@ -434,7 +434,12 @@ def get_test_case_history(context: Context, test_case_id: str) -> dict:
 
 
 def save_triage(
-    context: Context, execution_id: int, classification: str, justification: str, replace: bool = False
+    context: Context,
+    execution_id: int,
+    classification: str,
+    justification: str,
+    replace: bool = False,
+    confirm: bool = False,
 ) -> dict:
     with context.connection() as conn:
         session = context.session(conn)
@@ -459,6 +464,7 @@ def save_triage(
             candidate_commit=candidate_commit,
             change_applies=change_applies,
             replace=replace,
+            confirm=confirm,
         )
         row = conn.execute("SELECT test_case_id FROM test_execution WHERE id = ?", (execution_id,)).fetchone()
         test_case_id = row["test_case_id"]
@@ -620,9 +626,9 @@ TOOLS = [
     ),
     Tool(
         "save_suite",
-        "Save the suite selected for the latest analysis; it becomes the current suite. Every implemented test case "
-        "traced to an impacted requirement goes in items or in left_out, never both. Returns the suite ID and "
-        "uncovered_requirements: impacted requirements without a traced test case.",
+        "Save the suite of the latest analysis; it becomes the current suite. Every implemented test case of an "
+        "impacted requirement, and every one whose verdict differs between the full runs of the two versions, goes in "
+        "items or in left_out. Returns the suite ID and uncovered_requirements.",
         schema(
             {
                 "analysis_id": {"type": "integer", "description": "The latest analysis of the session versions."},
@@ -647,8 +653,8 @@ TOOLS = [
                 },
                 "left_out": {
                     "type": "array",
-                    "description": "The test cases not selected, with the reason. Required for every implemented "
-                    "test case traced to an impacted requirement. May be empty.",
+                    "description": "Test cases not selected, with the reason. Required for each one of an impacted "
+                    "requirement or whose full-run verdict changed. May be empty.",
                     "items": schema(
                         {
                             "test_case_id": {**TEXT, "description": "Test case ID, e.g. TC-013."},
@@ -835,8 +841,9 @@ TOOLS = [
     ),
     Tool(
         "save_triage",
-        "Classify a failed or error execution, with a justification that cites the evidence. Code checks the evidence "
-        "of flaky, expected_change and pre_existing and refuses them without it.",
+        "Classify a failed or error execution, with a justification citing the evidence. Code refuses flaky, "
+        "expected_change, pre_existing and regression without their evidence, and with the evidence a regression of "
+        "a documented change or a pre_existing generated test, unless confirm is true.",
         schema(
             {
                 "execution_id": {"type": "integer", "description": "A failed or error execution."},
@@ -849,6 +856,11 @@ TOOLS = [
                 "replace": {
                     "type": "boolean",
                     "description": "Triage again an execution that already has a triage; the earlier one is kept.",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Keep a classification that a soft check refused, because the evidence shows "
+                    "otherwise.",
                 },
             },
             ("execution_id", "classification", "justification"),

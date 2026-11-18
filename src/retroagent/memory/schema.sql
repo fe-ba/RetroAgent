@@ -231,6 +231,7 @@ CREATE TABLE triage (
                    CHECK (classification IN
                           ('regression', 'expected_change', 'flaky', 'environment', 'test_defect', 'pre_existing')),
     justification  TEXT NOT NULL,
+    confirmed      INTEGER NOT NULL DEFAULT 0 CHECK (confirmed IN (0, 1)),
     triaged_by     TEXT NOT NULL,
     created_at     TEXT NOT NULL
 );

@@ -210,6 +210,56 @@ def test_save_suite_refuses_the_test_cases_of_req_004_left_in_neither_list_and_n
     assert dump(shop.path) == before
 
 
+def verdicts(client, run_id: str) -> dict[str, str]:
+    return {e["test_case_id"]: e["result"] for e in client.call("memory", "get_executions", {"run_id": run_id})[
+        "executions"] if e["status"] == "executed"}  # fmt: skip
+
+
+def test_save_suite_refuses_tc_020_left_in_neither_list_naming_both_full_runs(tmp_path_factory, shop_after_both_runs):
+    # The selection of the real model: REQ-005 and REQ-007 judged not impacted, so TC-020, the seeded regression, was
+    # left out in silence although it passed in RUN-0001 (v1.0) and failed in RUN-0002 (v1.1).
+    with project_copy(tmp_path_factory, shop_after_both_runs.path) as path:
+        with Client(path, open_session(path, "v1.0", "v1.1")) as client:
+            client.call("memory", "sync_requirements")
+            analysis = client.call("git", "analyze_changes")
+            impacted = ["REQ-002", "REQ-003", "REQ-004", "REQ-006", "REQ-008"]
+            client.call("memory", "save_impact", {
+                "analysis_id": analysis["analysis_id"],
+                "modules": [{"module": "shop", "files": [f["path"] for f in analysis["files"]], "risk_level": "high",
+                             "reason": "Changed."}],
+                "requirements": [{"requirement_id": r, "reason": "Impacted."} for r in impacted],
+                "not_impacted": [{"requirement_id": r, "reason": "Not impacted."}
+                                 for r in ("REQ-001", "REQ-005", "REQ-007")],
+            })  # fmt: skip
+            test_cases = client.call("memory", "get_test_cases")["test_cases"]
+            tc_020 = next(t["id"] for t in test_cases if t["test_id"].endswith(SHIPPING))
+            traced = [
+                {"test_case_id": t["id"], "reason": "Not selected."}
+                for t in test_cases
+                if t["status"] == "implemented" and any(r["requirement_id"] in impacted for r in t["requirements"])
+            ]
+            arguments = {"analysis_id": analysis["analysis_id"], "items": [], "left_out": traced}
+            before = dump(path)
+            error = error_of(lambda: client.call("memory", "save_suite", arguments))
+            assert error.code == "invalid_argument"
+            assert (
+                f"{tc_020} (passed in RUN-0001 on the baseline, failed in RUN-0002 on the candidate)" in error.message
+            )
+            assert dump(path) == before
+            # Every test case it names, decided in one more call, is accepted.
+            base, candidate = verdicts(client, "RUN-0001"), verdicts(client, "RUN-0002")
+            changed = sorted(
+                t for t in base.keys() & candidate.keys() if (base[t] == "passed") != (candidate[t] == "passed")
+            )
+            undecided = [t for t in changed if t not in {entry["test_case_id"] for entry in traced}]
+            assert tc_020 in undecided and all(f"{t} (" in error.message for t in undecided)
+            arguments["items"] = [
+                item(t, n, "Its verdict changed between the full runs.") for n, t in enumerate(changed, 1)
+            ]
+            arguments["left_out"] = [entry for entry in traced if entry["test_case_id"] not in changed]
+            assert client.call("memory", "save_suite", arguments)["test_cases"] == len(changed)
+
+
 def test_get_suite_returns_the_test_cases_left_out_with_their_reasons(shop):
     req_004 = to_decide(shop, ["REQ-004"])
     items = [item(test_case_id, n, "REQ-004 changed.") for n, test_case_id in enumerate(req_004, start=1)]

@@ -5,10 +5,10 @@ evidence and refused without it (INV-15), the history of triage, the defect tool
 
 import pytest
 from fixtures.mcp_project import dump, error_of, set_versions
-from fixtures.reference_scenario import BASE_COMMIT, S1, S2, S3, S4, V1_0_TESTS, decision_of
+from fixtures.reference_scenario import BASE_COMMIT, S1, S2, S3, S4, V1_0_TESTS, _execute, _start, decision_of
 
 from retroagent.mcp_client import Client
-from retroagent.memory import connect, requirements
+from retroagent.memory import connect, execution, requirements
 
 
 @pytest.fixture
@@ -149,6 +149,86 @@ def test_judgments_of_the_model_need_no_evidence(shop):
     for classification in ("environment", "test_defect"):
         replace = classification == "test_defect"
         assert triage(client, execution_id, classification, replace=replace)["classification"] == classification
+
+
+# Soft checks: refused with the evidence, kept with confirm (mcp-tools.md, memory.save_triage)
+
+
+def confirmed(project, triage_id: int) -> int:
+    conn = connect(project.path)
+    try:
+        return conn.execute("SELECT confirmed FROM triage WHERE id = ?", (triage_id,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def generated_failure(project) -> int:
+    """TC-027, the generated test, failed in a new baseline run and in a new candidate run: the execution of the
+    candidate. Typed records, as the reference scenario loads them; no result of this machine."""
+    conn = connect(project.path)
+    try:
+        attempts = [{"result": "failed", "duration": 0.001, "failure_message": "AssertionError: status 422, not 409"}]
+        failures = []
+        for role in ("base", "candidate"):
+            run_id = _start(conn, project.scenario.session_id, role=role, scope="selected")
+            failures.append(_execute(conn, run_id, project.scenario.tc_027, attempts, test_revision=1))
+            execution.finish_run(conn, run_id, status="completed", exit_code=1)
+        return failures[1]
+    finally:
+        conn.close()
+
+
+def test_regression_of_s2_is_refused_with_the_documented_change_and_kept_with_confirm(shop):
+    project, client = shop
+    execution_id = project.scenario.executions[S2]
+    message = refused(shop, lambda: triage(client, execution_id, "regression"))
+    assert message == (
+        'TC-014 traces REQ-004 "Changed: v1.1 - Two different coupons can be combined; before, only one coupon applied'
+        ' per order.", which applies to the change between the session versions: a failure in a documented change is'
+        " most likely an expected_change. Classify it as expected_change, or call again with confirm true if the"
+        " evidence shows a regression"
+    )
+    saved = triage(client, execution_id, "regression", confirm=True)
+    assert saved["classification"] == "regression" and confirmed(project, saved["triage_id"]) == 1
+
+
+def test_pre_existing_of_a_generated_test_is_refused_with_its_evidence_and_kept_with_confirm(shop):
+    project, client = shop
+    execution_id = generated_failure(project)
+    message = refused(shop, lambda: triage(client, execution_id, "pre_existing"))
+    assert message == (
+        "TC-027 is a generated test: a generated test that fails against the baseline most likely does not match the"
+        " code. Read its evidence with test_runner__get_evidence and consider test_defect; call again with confirm"
+        " true only if the evidence shows that the product fails"
+    )
+    saved = triage(client, execution_id, "pre_existing", confirm=True)
+    assert saved["classification"] == "pre_existing" and confirmed(project, saved["triage_id"]) == 1
+    # test_defect, the likely classification, needs no confirmation
+    replaced = triage(client, execution_id, "test_defect", replace=True)
+    assert confirmed(project, replaced["triage_id"]) == 0
+
+
+def test_the_soft_checks_do_not_touch_a_regression_without_documented_change_or_a_project_test(shop):
+    project, client = shop
+    regression = triage(client, project.scenario.executions[S1], "regression")  # REQ-005 has no Changed entry
+    pre_existing = triage(client, project.scenario.executions[S4], "pre_existing")  # TC-022 is a project test
+    assert [confirmed(project, t["triage_id"]) for t in (regression, pre_existing)] == [0, 0]
+
+
+def test_confirm_on_a_classification_that_no_soft_check_refuses_is_stored_as_not_confirmed(shop):
+    project, client = shop
+    saved = [
+        triage(client, project.scenario.executions[S1], "regression", confirm=True),
+        triage(client, project.scenario.executions[S4], "pre_existing", confirm=True),
+        triage(client, project.scenario.executions[S2], "expected_change", confirm=True),
+    ]
+    assert [confirmed(project, t["triage_id"]) for t in saved] == [0, 0, 0]
+
+
+def test_confirm_never_replaces_the_evidence_of_inv_15(shop):
+    project, client = shop
+    message = refused(shop, lambda: triage(client, project.scenario.executions[S4], "regression", confirm=True))
+    assert message.startswith("INV-15: regression needs TC-022 not to fail against the baseline")
 
 
 # Errors and history of save_triage

@@ -418,7 +418,7 @@ def test_inv_15_regression_is_accepted_when_the_baseline_passed(conn, build):
 
 
 def test_inv_15_regression_is_refused_when_the_baseline_failed(conn, build):
-    case = build.test_case()
+    case = build.project_test()  # a generated one is a soft check
     build.finished_run(role="base", test_case_id=case, result="passed")
     baseline, _ = build.finished_run(role="base", test_case_id=case, result="error")  # the latest one did not pass
     candidate_failure = build.execute(build.run(), case, "failed")
@@ -463,7 +463,7 @@ def test_inv_15_flaky_needs_a_rerun_that_passed_or_history(conn, build):
 
 
 def test_inv_15_pre_existing_needs_a_failure_in_the_latest_baseline_run(conn, build):
-    case = build.test_case()
+    case = build.project_test()  # a generated one is a soft check
     candidate_failure = build.execute(build.run(), case, "failed")
     with pytest.raises(InvariantViolation, match="INV-15: pre_existing needs the session versions"):
         triage(conn, candidate_failure, "pre_existing")

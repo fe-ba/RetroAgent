@@ -2,6 +2,7 @@ import pathlib
 import sqlite3
 
 import pytest
+from fixtures.memory_records import populate_every_table
 
 from retroagent.memory import connect, database_path, migrations
 from retroagent.memory.errors import SchemaTooNew
@@ -92,7 +93,7 @@ TABLES = {
     ],
     "test_execution": ["id", "run_id", "test_case_id", "status", "result", "reason", "duration", "test_revision"],
     "attempt": ["execution_id", "number", "result", "duration", "failure_message"],
-    "triage": ["id", "execution_id", "classification", "justification", "triaged_by", "created_at"],
+    "triage": ["id", "execution_id", "classification", "justification", "confirmed", "triaged_by", "created_at"],
     "defect": [
         "id",
         "title",
@@ -186,11 +187,39 @@ def schema_objects(conn) -> set[tuple[str, str, str]]:
 
 
 # What each older schema version lacks, as the statements that take a new database back to it.
-WITHOUT_VERSION_3 = "DROP TABLE suite_left_out;"
+WITHOUT_VERSION_4 = """
+DROP TABLE triage;
+CREATE TABLE triage (
+    id             INTEGER PRIMARY KEY,
+    execution_id   INTEGER NOT NULL REFERENCES test_execution (id),
+    classification TEXT NOT NULL
+                   CHECK (classification IN
+                          ('regression', 'expected_change', 'flaky', 'environment', 'test_defect', 'pre_existing')),
+    justification  TEXT NOT NULL,
+    triaged_by     TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+CREATE TRIGGER inv_08_triage_of_failure
+BEFORE INSERT ON triage
+WHEN COALESCE((SELECT result FROM test_execution WHERE id = NEW.execution_id), '') NOT IN ('failed', 'error')
+BEGIN
+    SELECT RAISE(ABORT, 'INV-08: a triage refers only to an execution with result failed or error');
+END;
+CREATE TRIGGER inv_10_triage_is_final
+BEFORE UPDATE ON triage
+BEGIN
+    SELECT RAISE(ABORT, 'INV-10: a triage is never updated');
+END;
+CREATE TRIGGER inv_11_triage BEFORE DELETE ON triage
+BEGIN SELECT RAISE(ABORT, 'INV-11: records are never deleted'); END;
+"""
+WITHOUT_VERSION_3 = WITHOUT_VERSION_4 + " DROP TABLE suite_left_out;"
 WITHOUT_VERSION_2 = WITHOUT_VERSION_3 + " DROP TABLE analysis_requirement_not_impacted;"
 
 
-@pytest.mark.parametrize("version, statements", [(1, WITHOUT_VERSION_2), (2, WITHOUT_VERSION_3)])
+@pytest.mark.parametrize(
+    "version, statements", [(1, WITHOUT_VERSION_2), (2, WITHOUT_VERSION_3), (3, WITHOUT_VERSION_4)]
+)
 def test_an_older_database_migrates_to_the_current_version_and_equals_a_new_one(tmp_path, version, statements):
     new = connect(tmp_path / "new")
     expected = schema_objects(new)
@@ -203,8 +232,24 @@ def test_an_older_database_migrates_to_the_current_version_and_equals_a_new_one(
     migrated = connect(old)
     assert (old / ".retro" / f"retro.db.bak-{version}").exists()
     current = migrated.execute("SELECT value FROM schema_info WHERE key = 'schema_version'").fetchone()[0]
-    assert current == str(migrations.SCHEMA_VERSION) == "3"
+    assert current == str(migrations.SCHEMA_VERSION) == "4"
     assert schema_objects(migrated) == expected
+
+
+def test_the_triages_of_a_version_3_database_are_kept_and_not_confirmed(tmp_path, conn, build):
+    populate_every_table(build)
+    before = [tuple(row) for row in conn.execute("SELECT * FROM triage")]
+    conn.close()
+    raw = sqlite3.connect(database_path(tmp_path))
+    raw.executescript(
+        "ALTER TABLE triage DROP COLUMN confirmed; UPDATE schema_info SET value = '3' WHERE key = 'schema_version';"
+    )
+    raw.close()
+    migrated = connect(tmp_path)
+    after = migrated.execute("SELECT id, execution_id, classification, justification, triaged_by, created_at, confirmed"
+                             " FROM triage").fetchall()  # fmt: skip
+    assert [tuple(row)[:-1] for row in after] == [row[:4] + row[5:] for row in before]
+    assert [row["confirmed"] for row in after] == [0] * len(before) != []
 
 
 def test_enumerations_use_the_glossary_values(conn, build):

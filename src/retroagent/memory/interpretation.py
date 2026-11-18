@@ -4,6 +4,9 @@ A triage with classification ``expected_change``, ``flaky``, ``pre_existing`` or
 evidence is found here (INV-15, mcp-tools.md ``memory.save_triage``). Whether a ``Changed`` or ``Removed`` entry applies
 to the change needs git: the caller gives it as ``change_applies(version)``, so the data layer never runs git itself.
 
+Two soft checks refuse a likely mistake, a ``regression`` in a requirement with a documented change and a
+``pre_existing`` failure of a generated test, unless the call confirms it; the triage records ``confirmed``.
+
 A defect is closed only by the user (``close_defect``) or by a completed run against the candidate in which every
 linked test case passed (``close_defects_verified_by``, INV-14).
 """
@@ -127,6 +130,27 @@ def _pre_existing_missing(
     return None
 
 
+def _traced(conn: sqlite3.Connection, test_case_id: str) -> list[str]:
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT requirement_id FROM test_case_requirement WHERE test_case_id = ? ORDER BY requirement_id",
+            (test_case_id,),
+        )
+    ]
+
+
+def _change_entries(conn: sqlite3.Connection, requirement_ids: list[str]) -> list[sqlite3.Row]:
+    """The ``Changed`` and ``Removed`` entries of the requirements; a ``Removed`` entry has no description."""
+    marks = ", ".join("?" * len(requirement_ids))
+    return conn.execute(
+        f"SELECT requirement_id, version, description FROM requirement_change WHERE requirement_id IN ({marks})"
+        f" UNION ALL SELECT id, removed, NULL FROM requirement WHERE id IN ({marks}) AND removed IS NOT NULL"
+        " ORDER BY 1, 2",
+        (*requirement_ids, *requirement_ids),
+    ).fetchall()
+
+
 def _expected_change_missing(
     conn: sqlite3.Connection,
     execution: sqlite3.Row,
@@ -140,22 +164,10 @@ def _expected_change_missing(
     if change_applies is None:
         return "expected_change needs the session versions, and they are not set"
     test_case_id = execution["test_case_id"]
-    traced = [
-        row[0]
-        for row in conn.execute(
-            "SELECT DISTINCT requirement_id FROM test_case_requirement WHERE test_case_id = ? ORDER BY requirement_id",
-            (test_case_id,),
-        )
-    ]
+    traced = _traced(conn, test_case_id)
     if not traced:
         return f"expected_change needs a requirement traced to {test_case_id}, and it traces none"
-    entries = conn.execute(
-        "SELECT requirement_id, version FROM requirement_change"
-        f" WHERE requirement_id IN ({', '.join('?' * len(traced))})"
-        " UNION ALL SELECT id, removed FROM requirement"
-        f" WHERE id IN ({', '.join('?' * len(traced))}) AND removed IS NOT NULL",
-        (*traced, *traced),
-    ).fetchall()
+    entries = _change_entries(conn, traced)
     if any(change_applies(entry["version"]) for entry in entries):
         return None
     names = ", ".join(traced)
@@ -170,6 +182,48 @@ def _expected_change_missing(
     )
 
 
+# Soft checks (mcp-tools.md, ``memory.save_triage``). Each returns None, or the evidence that the classification is a
+# likely mistake; ``confirm`` keeps it.
+
+
+def _documented_change(
+    conn: sqlite3.Connection, execution: sqlite3.Row, change_applies: Callable[[str], bool] | None
+) -> str | None:
+    """Without session versions there is no change for an entry to apply to."""
+    if change_applies is None:
+        return None
+    test_case_id = execution["test_case_id"]
+    traced = _traced(conn, test_case_id)
+    if not traced:
+        return None
+    quoted = [
+        f'{entry["requirement_id"]} "Changed: {entry["version"]} - {entry["description"]}"'
+        if entry["description"] is not None
+        else f'{entry["requirement_id"]} "Removed: {entry["version"]}"'
+        for entry in _change_entries(conn, traced)
+        if change_applies(entry["version"])
+    ]
+    if not quoted:
+        return None
+    return (
+        f"{test_case_id} traces {', '.join(quoted)}, which applies to the change between the session versions: a"
+        " failure in a documented change is most likely an expected_change. Classify it as expected_change, or call"
+        " again with confirm true if the evidence shows a regression"
+    )
+
+
+def _generated_test(conn: sqlite3.Connection, execution: sqlite3.Row) -> str | None:
+    test_case_id = execution["test_case_id"]
+    origin = conn.execute("SELECT origin FROM test_case WHERE id = ?", (test_case_id,)).fetchone()["origin"]
+    if origin != "designed":
+        return None
+    return (
+        f"{test_case_id} is a generated test: a generated test that fails against the baseline most likely does not"
+        " match the code. Read its evidence with test_runner__get_evidence and consider test_defect; call again with"
+        " confirm true only if the evidence shows that the product fails"
+    )
+
+
 def add_triage(
     conn: sqlite3.Connection,
     *,
@@ -181,12 +235,16 @@ def add_triage(
     candidate_commit: str | None = None,
     change_applies: Callable[[str], bool] | None = None,
     replace: bool = False,
+    confirm: bool = False,
 ) -> int:
     """Classify a failed execution. Every triage is kept; the latest is the current one.
 
     ``base_commit`` and ``candidate_commit`` are the commits of the session versions, None while they are not set.
     ``change_applies(version)`` tells whether a ``Changed`` or ``Removed`` entry of that version applies to the change
     between them. An execution that already has a triage is triaged again only with ``replace``.
+
+    The evidence of INV-15 is checked first: ``confirm`` never replaces it. Then a soft check that refuses the
+    classification is passed only with ``confirm``, and the triage is stored as ``confirmed``.
     """
     with transaction(conn):
         execution = _failed_execution(conn, execution_id)
@@ -207,10 +265,17 @@ def add_triage(
             missing = _regression_missing(conn, execution, base_commit)
         if missing:
             raise InvariantViolation(f"INV-15: {missing}")
+        doubt = None
+        if classification == "regression":
+            doubt = _documented_change(conn, execution, change_applies)
+        elif classification == "pre_existing":
+            doubt = _generated_test(conn, execution)
+        if doubt and not confirm:
+            raise InvariantViolation(f"invalid_state: {doubt}")
         cursor = conn.execute(
-            "INSERT INTO triage (execution_id, classification, justification, triaged_by, created_at)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (execution_id, classification, justification, triaged_by, utc_now()),
+            "INSERT INTO triage (execution_id, classification, justification, confirmed, triaged_by, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (execution_id, classification, justification, int(bool(doubt)), triaged_by, utc_now()),
         )
         return cursor.lastrowid
 

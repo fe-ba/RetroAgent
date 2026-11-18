@@ -7,7 +7,7 @@ import json
 import pytest
 from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, no_removal
 
-from retroagent.memory import design, impact, requirements
+from retroagent.memory import design, execution, impact, requirements
 from retroagent.memory.errors import InvariantViolation
 
 
@@ -399,3 +399,73 @@ def test_an_unknown_test_case_in_left_out_is_not_found(conn, build, impacted):
 def test_a_test_case_repeated_in_left_out_is_refused(conn, build, impacted):
     chosen = build.test_case(requirement_ids=["REQ-004"])
     assert f"repeated test cases in left_out: {chosen}" in refused(conn, build, [], left(chosen, chosen))
+
+
+# The test cases whose verdict differs between the full runs of the two versions (mcp-tools.md, save_suite)
+
+
+def full_run(conn, build, role, results: dict, status="completed", scope="all"):
+    """A run on the commit of the role, with one execution per test case: a result, a result and its reruns, or
+    ``"blocked"``."""
+    run_id = build.run(role=role, scope=scope)
+    for test_case_id, result in results.items():
+        if result == "blocked":
+            execution.record_test_execution(
+                conn, run_id=run_id, test_case_id=test_case_id, status="blocked", reason="not_reported"
+            )
+        else:
+            build.execute(run_id, test_case_id, *result.split("+"))
+    execution.finish_run(conn, run_id, status=status, exit_code=0 if status == "completed" else None)
+    return run_id
+
+
+def test_a_test_case_whose_verdict_changed_between_the_full_runs_must_be_decided(conn, build, impacted):
+    case = build.test_case(requirement_ids=["REQ-001"])  # REQ-001 is not impacted
+    base = full_run(conn, build, "base", {case: "passed"})
+    candidate = full_run(conn, build, "candidate", {case: "failed"})
+    assert refused(conn, build, [], []) == (
+        "invalid_argument: test cases whose verdict differs between the latest full runs of the baseline and the"
+        f" candidate are in neither items nor left_out: {case} (passed in {base} on the baseline, failed in"
+        f" {candidate} on the candidate); select each one or add it to left_out with a reason"
+    )
+    suite_id = save(conn, build, [], left(case, reason="Not selected."))
+    assert [tuple(row) for row in design.suite_left_out(conn, suite_id)] == [(case, "Not selected.")]
+
+
+def test_a_test_case_that_is_traced_and_changed_is_named_with_both_evidences(conn, build, impacted):
+    case = build.test_case(requirement_ids=["REQ-005"])
+    base = full_run(conn, build, "base", {case: "error"})
+    candidate = full_run(conn, build, "candidate", {case: "passed"})
+    message = refused(conn, build, [], [])
+    assert f"neither items nor left_out: {case} (REQ-005);" in message
+    assert f"{case} (error in {base} on the baseline, passed in {candidate} on the candidate)" in message
+    save(conn, build, selected(case), [])
+
+
+@pytest.mark.parametrize("missing", ["base", "candidate"])
+def test_no_decision_is_required_without_a_completed_full_run_on_both_commits(conn, build, impacted, missing):
+    case = build.test_case(requirement_ids=["REQ-001"])
+    verdicts = {"base": "passed", "candidate": "failed"}
+    present = "candidate" if missing == "base" else "base"
+    full_run(conn, build, present, {case: verdicts[present]})
+    full_run(conn, build, missing, {case: verdicts[missing]}, scope="selected")  # not a full run
+    full_run(conn, build, missing, {case: verdicts[missing]}, status="error")  # not completed
+    assert design.verdict_changes(conn, BASE_COMMIT, CANDIDATE_COMMIT) == {}
+    save(conn, build, [], [])
+
+
+def test_the_latest_full_runs_decide_and_a_flaky_execution_is_a_failure(conn, build, impacted):
+    flaky, fixed = build.test_case(requirement_ids=["REQ-001"]), build.test_case(requirement_ids=["REQ-001"])
+    full_run(conn, build, "base", {flaky: "passed", fixed: "passed"})
+    base = full_run(conn, build, "base", {flaky: "passed", fixed: "failed"})  # the latest one decides
+    candidate = full_run(conn, build, "candidate", {flaky: "failed+passed", fixed: "failed"})
+    assert design.verdict_changes(conn, BASE_COMMIT, CANDIDATE_COMMIT) == {flaky: (base, "passed", candidate, "failed")}
+
+
+def test_retired_unexecuted_and_both_failing_test_cases_need_no_decision(conn, build, impacted):
+    retired, blocked, absent, failing = (build.test_case(requirement_ids=["REQ-001"]) for _ in range(4))
+    full_run(conn, build, "base", {retired: "passed", blocked: "passed", absent: "passed", failing: "failed"})
+    full_run(conn, build, "candidate", {retired: "failed", blocked: "blocked", failing: "error"})
+    design.retire_test_case(conn, retired, reason="obsolete", retired_by="fake/model")
+    assert design.verdict_changes(conn, BASE_COMMIT, CANDIDATE_COMMIT) == {}
+    save(conn, build, [], [])

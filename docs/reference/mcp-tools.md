@@ -434,7 +434,7 @@ Computes metrics, exit criteria and the release decision, following `metrics.md`
 |---|---|---|---|
 | `run_id` | string | no | Evaluated run. Default: as defined in `metrics.md`. |
 
-Returns the metrics, the state of each criterion and the decision. Errors: `invalid_state` when the run is not a completed run with scope `suite` against the candidate.
+Returns the metrics, the state of each criterion and the decision, with values formatted as the report shows them (`reports.md`). Errors: `not_found` for an unknown run; `invalid_state` when the run is not a completed run with scope `suite` against the candidate.
 
 ### `reports.prepare_report`
 
@@ -446,7 +446,7 @@ First step of report generation: computes everything, writes the computed sectio
 | `run_id` | string | no | For `status`, `defects` and `completion`. Defaults as in `reports.md`. |
 | `formats` | list of strings | no | `md`, `pdf`. Default: `reports.default_format`. |
 
-Returns the report ID, the computed data of the report and the agent sections to write, each with its purpose from `reports.md`. The computed data is the Markdown of the draft, with the markers of the agent sections still in place. Errors: `invalid_argument` when `run_id` is given for a type that does not use it.
+Returns the report ID, the computed data of the report and the agent sections to write, each with its purpose from `reports.md`. The computed data is the Markdown of the draft, with the markers of the agent sections still in place. When it exceeds the result limit it is cut at a line, with `truncated` `true`; the whole draft is in the folder of the report. Errors: `invalid_argument` when `run_id` is given for a type that does not use it.
 
 ### `reports.render_report`
 

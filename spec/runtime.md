@@ -180,8 +180,8 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | `result` | Final answer of the model. |
 | `session_id` | Session record. |
 | `runs` | IDs of the runs created in the session. |
-| `reports` | IDs and paths of the reports rendered in the session. |
-| `decision` | Decision of the latest evaluation of the session, or null. |
+| `reports` | IDs and paths of the reports rendered in the session: reports with status `rendered` created after the session started. |
+| `decision` | Decision of the latest evaluation created after the session started, or null. The session lock makes the session the only writer in that time. |
 | `denied` | Number of tool calls refused. |
 | `recorded` | Write tools that succeeded in the turns of the model, with how many times each, such as `{"memory__save_triage": 4}`. Empty when nothing was recorded; null when no turn of the model ran. |
 | `exit_code` | Exit code of the session. |

@@ -29,6 +29,8 @@ Find what the change between the session versions can break, and record it so th
    - it has a `Changed` or `Removed` entry for the candidate version. Mark the reason as a documented change: failures in that area may be `expected_change` during triage;
    - it is new in the candidate version. Say so in the reason.
 
+   Use the module table of `RETRO.md` and the description of each requirement to find the files that take part in it. When one of them is in the change set, the requirement is impacted unless its diff shows that the part it takes in did not change; "unchanged" without naming the diff that shows it is not a reason.
+
    When in doubt, mark it impacted: a requirement left out is not tested, and one too many only adds tests. Leave out only the requirements whose behavior no changed file takes part in, and name them in the answer with that reason.
 7. **Record.** Call `memory__save_impact` with the analysis ID, the modules (files exactly as in the change set), the impacted requirements in `requirements` and the other requirements in `not_impacted`, each with its reason. Every requirement must be in one of the two lists: the tool refuses a call that leaves one out and names it. Then decide that one and call again.
 8. **Risks.** Call `memory__add_risk` for each distinct way the change could harm the product, linked to its requirements. Consolidate: one risk per failure scenario, not one per file. Also register a risk when an impacted area has no requirement or no test case.

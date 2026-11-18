@@ -28,7 +28,7 @@ Long-term memory of a target project, stored in `.retro/retro.db` (SQLite, ADR-0
 | Sessions and audit | `schema_info`, `session`, `tool_call` |
 | Requirements | `requirement`, `requirement_change` |
 | Impact analysis | `analysis`, `analysis_file`, `analysis_module`, `analysis_requirement`, `analysis_requirement_not_impacted`, `risk`, `risk_requirement` |
-| Test design and selection | `test_case`, `test_case_requirement`, `suite`, `suite_test_case` |
+| Test design and selection | `test_case`, `test_case_requirement`, `suite`, `suite_test_case`, `suite_left_out` |
 | Execution | `run`, `test_execution`, `attempt` |
 | Interpretation | `triage`, `defect`, `defect_execution` |
 | Reporting | `evaluation`, `report` |
@@ -252,6 +252,16 @@ The **current suite** is the latest suite of the latest analysis of the session 
 | `selection_reason` | text | not null | model | Justification of the inclusion (FR-14). |
 
 Writer of both tables: memory server. Test cases designed for the change are added to the current suite when they are designed.
+
+### `suite_left_out`
+
+| Column | Type | Constraints | Source | Description |
+|---|---|---|---|---|
+| `suite_id` | integer | references `suite` | code | — |
+| `test_case_id` | text | references `test_case` | model | A test case traced to an impacted requirement that was not selected. |
+| `reason` | text | not null | model | Why it was left out. |
+
+Writer: memory server, in the same transaction as `suite_test_case`. A test case appears in at most one of the two tables for a suite. Metrics do not read it; it makes the exclusions reviewable.
 
 ## Execution
 

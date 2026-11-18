@@ -154,7 +154,7 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | Step | Kind | Tools exposed | Outcome checked by code |
 |---|---|---|---|
 | `analyze` | Model, skill `impact-analysis` | Read tools, `memory__sync_requirements`, `git__analyze_changes`, `memory__save_impact`, `memory__add_risk` | An analysis of the session versions has an impact. |
-| `discover` | Direct: full run against the baseline | — | The run is `completed`. Skipped when project tests are already known. |
+| `discover` | Direct: full run against the baseline, then a full run against the candidate when the change set of the analysis adds or modifies test files | — | The runs are `completed`. Each one is skipped when a completed full run on its commit already exists. |
 | `select` | Model, skill `test-selection` | Read tools, `memory__save_suite`, `test_runner__run_tests` | The analysis has a suite. |
 | `design` | Model, skill `test-design` | Read tools, `memory__design_test_case`, `memory__update_test_case`, `memory__retire_test_case` | None: gaps may remain, and the step says so. |
 | `implement` | Model, skill `test-design` | Read tools, `test_runner__write_test`, `test_runner__get_evidence`, `memory__update_test_case`, `memory__retire_test_case` | None: test cases left `designed` become a condition of the decision. |

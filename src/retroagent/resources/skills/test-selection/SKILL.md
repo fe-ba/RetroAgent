@@ -11,7 +11,9 @@ Choose the test cases that can reveal whether the change broke something, order 
 
 1. **Analysis.** Call `memory__get_analysis`. If there is none for the session versions, the impact analysis comes first: load the skill `impact-analysis`.
 2. **Candidates.** Call `memory__get_test_cases`.
-   - If no test case has origin `project_suite` and the project has tests of its own (see `RETRO.md` or `git__list_files`), the project suite has not been discovered yet. Call `test_runner__run_tests` with `version` `base` and `scope` `all`. When the change set adds or modifies test files (`memory__get_analysis`), also run `version` `candidate` with `scope` `all`, so that the tests added by the change are known. Then read the test cases again. If the call is refused, continue with the known test cases and state that the project suite is missing from the selection.
+   - If no test case has origin `project_suite` and the project has tests of its own (see `RETRO.md` or `git__list_files`), the project suite has not been discovered yet. Call `test_runner__run_tests` with `version` `base` and `scope` `all`.
+   - When the change set adds or modifies test files (`memory__get_analysis`) and no full run against the candidate exists (`memory__get_runs` with `version_role` `candidate`), run `version` `candidate` with `scope` `all`, so that the tests added by the change are known. This applies also when the project suite was already discovered.
+   - After a run, read the test cases again. If a call is refused, continue with the known test cases and state what is missing from the selection.
 3. **Context.** Call `memory__get_risks`, and `memory__get_requirements` for the impacted requirements. For candidates with doubtful relevance, check their implementation file and their history (`memory__get_test_case_history`).
 4. **Select.** Include a test case when at least one applies:
    - it is traced to an impacted requirement;

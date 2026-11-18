@@ -201,13 +201,18 @@ def _criterion_value(criterion) -> str:
 
 
 def decision_reasons(ctx: Context) -> str:
-    decision = ctx.evaluation.decision if ctx.evaluation else None
+    return bullets(decision_lines(ctx.evaluation))
+
+
+def decision_lines(evaluation: Evaluation | None) -> list[str]:
+    """The items of ``list:decision_reasons`` (reports.md, Decision reasons)."""
+    decision = evaluation.decision if evaluation else None
     if decision is None:
-        return bullets(["Exit criteria are only evaluated for runs against the candidate."])
+        return ["Exit criteria are only evaluated for runs against the candidate."]
     if decision.outcome == "do_not_release":
-        return bullets([_criterion_line(c) for c in decision.reasons])
+        return [_criterion_line(c) for c in decision.reasons]
     if decision.outcome == "release":
-        return bullets(["All exit criteria are met."])
+        return ["All exit criteria are met."]
     lines = []
     for condition in decision.conditions:
         ids = ", ".join(t["test_case_id"] for t in condition.test_cases)
@@ -223,7 +228,27 @@ def decision_reasons(ctx: Context) -> str:
             lines.append(f"Test cases that already failed against the baseline {condition.baseline_run_id}: {ids}.")
         else:
             lines.append(f"Planned test cases never implemented: {ids}.")
-    return bullets(lines)
+    return lines
+
+
+def criterion_view(criterion) -> dict:
+    """A criterion with its value and threshold as the report shows them (``reports.evaluate``)."""
+    view = {
+        "id": criterion.id,
+        "name": criterion.name,
+        "state": criterion.state,
+        "value": _criterion_value(criterion),
+        "threshold": _threshold(criterion),
+        "blocking": criterion.blocking,
+    }
+    if criterion.reason:
+        view["reason"] = criterion.reason
+    return view
+
+
+def metric_views(metrics: dict) -> dict:
+    """Every metric as the report shows it: ``88.9%``, ``12``, ``42.3 s`` or ``not evaluable``."""
+    return {name: metric_views(value) if isinstance(value, dict) else fmt(value) for name, value in metrics.items()}
 
 
 def _criterion_line(criterion) -> str:

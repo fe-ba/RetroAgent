@@ -2,6 +2,7 @@
 
 import re
 
+from fixtures.mcp_project import reports_server
 from fixtures.reference_scenario import GENERATED
 
 from retroagent.servers.reports import server
@@ -62,3 +63,16 @@ def test_it_has_no_agent_section_and_no_chart(reference):
     assert prepared["sections"] == [] and "Agent analysis" not in text
     assert not (folder / "charts").exists()
     assert "{{" not in text and "<!--" not in text
+
+
+def test_through_the_server_tc_027_and_tc_028_are_specified(reference):
+    """SC-12 through the reports MCP server."""
+    session, scenario = reference
+    with reports_server(session) as client:
+        prepared = client.call("reports", "prepare_report", {"type": "test-cases", "formats": ["md"]})
+        client.call("reports", "render_report", {"report_id": prepared["report_id"], "sections": {}})
+    text = (session.project_dir / prepared["path"] / "report.md").read_text(encoding="utf-8")
+    tc_027, tc_028 = item(text, scenario.tc_027), item(text, scenario.tc_028)
+    assert "| Requirements | REQ-002 |" in tc_027 and f"| Implementation | {GENERATED} |" in tc_027
+    assert "#### Expected result\n\nThe request is rejected and the cart stays empty." in tc_027
+    assert "| Status | `designed` |" in tc_028 and "| Implementation | none |" in tc_028

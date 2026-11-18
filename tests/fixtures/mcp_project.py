@@ -3,8 +3,11 @@ ADR-0026 allows, the database as text, and the processes of the servers."""
 
 import os
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
+from retroagent.mcp_client import Client
+from retroagent.mcp_client.client import bundled_command
 from retroagent.memory import connect, sessions
 from retroagent.runtime.session import resolve_commit
 from retroagent.servers.errors import ToolError
@@ -49,6 +52,14 @@ def set_versions(path: Path, session_id: int, base: str | None, candidate: str |
         )
     finally:
         conn.close()
+
+
+@contextmanager
+def reports_server(context):
+    """A client with only the reports server, started for the project and the session of ``context``."""
+    command = bundled_command("reports", context.project_dir, context.session_id)
+    with Client(context.project_dir, context.session_id, commands={"reports": command}) as client:
+        yield client
 
 
 def dump(path: Path) -> list[str]:

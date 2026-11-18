@@ -118,7 +118,7 @@ def test_skills_mcp_and_help_list_what_exists(shell):
     for skill in ("impact-analysis", "test-selection", "test-design", "failure-triage", "test-reporting"):
         assert skill in output
     assert "bundled" in output
-    for server in ("git", "memory", "test_runner", "runtime (built in, not an MCP server)"):
+    for server in ("git", "memory", "test_runner", "reports", "runtime (built in, not an MCP server)"):
         assert server in output
     assert "analyze_changes" in output and "set_versions" in output
     assert "/cycle [base] [candidate]" in output and "Not available yet in this build." in output

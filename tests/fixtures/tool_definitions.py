@@ -4,6 +4,7 @@ the tools of mcp-tools.md (Summary) that have no definition yet."""
 from retroagent.llm.provider import ToolDefinition
 from retroagent.servers.git.server import TOOLS as GIT
 from retroagent.servers.memory.server import TOOLS as MEMORY
+from retroagent.servers.reports.server import TOOLS as REPORTS
 from retroagent.servers.test_runner.server import TOOLS as TEST_RUNNER
 
 # The tools of mcp-tools.md (Summary), as <server>.<tool>.
@@ -23,7 +24,7 @@ def existing() -> dict[str, list[ToolDefinition]]:
     """The definitions that the bundled servers report, with bare names."""
     return {
         server: [ToolDefinition(t.name, t.description, t.parameters) for t in tools]
-        for server, tools in (("git", GIT), ("memory", MEMORY), ("test_runner", TEST_RUNNER))
+        for server, tools in (("git", GIT), ("memory", MEMORY), ("test_runner", TEST_RUNNER), ("reports", REPORTS))
     }
 
 

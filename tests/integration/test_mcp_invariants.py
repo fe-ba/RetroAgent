@@ -53,6 +53,10 @@ UNKNOWN_REFERENCES = [
     ("test_runner", "write_test",
      {"test_case_id": "TC-999", "file": "test_x.py", "test_name": "test_x", "code": "x = 1\n"}),
     ("test_runner", "get_evidence", {"run_id": "RUN-9999"}),
+    ("reports", "evaluate", {"run_id": "RUN-9999"}),
+    ("reports", "prepare_report", {"type": "completion", "run_id": "RUN-9999"}),
+    ("reports", "render_report", {"report_id": "RPT-9999", "sections": {}}),
+    ("reports", "get_report", {"report_id": "RPT-9999"}),
 ]  # fmt: skip
 WITHOUT_REFERENCES = {
     "git.analyze_changes",

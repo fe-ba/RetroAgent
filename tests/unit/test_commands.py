@@ -21,6 +21,7 @@ from retroagent.runtime.commands import (
     help_rows,
     implement_message,
     parse,
+    report_message,
 )
 from retroagent.runtime.session import Version
 from retroagent.servers.errors import ToolError
@@ -70,6 +71,13 @@ from retroagent.servers.errors import ToolError
             '/defects close DEF-001 "no longer applies"',
             Command("/defects", defect_id="DEF-001", reason="no longer applies"),
         ),
+        ("/report completion", Command("/report", report_type="completion")),
+        ("/report test-cases", Command("/report", report_type="test-cases")),
+        (
+            "/report completion --run RUN-0004 --format pdf",
+            Command("/report", report_type="completion", run_id="RUN-0004", format="pdf"),
+        ),
+        ("/report --format md completion", Command("/report", report_type="completion", format="md")),
     ],
 )
 def test_parse(line, command):
@@ -95,6 +103,14 @@ def test_parse(line, command):
         ("/defects close DEF-001", "usage: /defects close <id> <reason>"),
         ("/defects --open", "usage: /defects [--all], or /defects close <id> <reason>"),
         ("/defects --all DEF-001", "usage: /defects [--all], or /defects close <id> <reason>"),
+        ("/report", "usage: /report <type>"),
+        ("/report summary", "usage: /report <type>"),
+        ("/report completion test-cases", "usage: /report <type>"),
+        ("/report completion --run", "usage: /report <type>"),
+        ("/report completion --format pdf --format md", "usage: /report <type>"),
+        ("/report completion --format docx", "unknown format docx; use md or pdf"),
+        ("/report completion --fast", "unknown option --fast"),
+        ("/report test-cases --run RUN-0004", "the test-cases report does not use --run"),
         ("/nowhere", "unknown command /nowhere"),
         ("what changed?", "not a command"),
     ],
@@ -120,11 +136,28 @@ def row(status="completed", **counts):
     )
 
 
-@pytest.mark.parametrize("name", ["/cycle", "/report"])
-def test_the_commands_of_later_sessions_are_known_and_not_available(name):
+def test_the_commands_of_later_sessions_are_known_and_not_available():
     with pytest.raises(NotAvailable, match="is not available yet"):
-        parse(name)
-    assert help_rows(name)[0][1].endswith("Not available yet in this build.")
+        parse("/cycle")
+    assert help_rows("/cycle")[0][1].endswith("Not available yet in this build.")
+
+
+@pytest.mark.parametrize("report_type", ["test-plan", "status", "defects"])
+def test_the_should_reports_are_known_and_not_available(report_type):
+    with pytest.raises(NotAvailable, match=f"the {report_type} report is not available in this build"):
+        parse(f"/report {report_type}")
+
+
+def test_the_template_of_report():
+    """runtime.md, Model commands: the type, then the run and the format when they are given."""
+    assert report_message("completion") == ("Load the skill `test-reporting` and generate the `completion` report.")
+    assert report_message("completion", "RUN-0004", "pdf") == (
+        "Load the skill `test-reporting` and generate the `completion` report for run `RUN-0004` in format `pdf`."
+    )
+    assert report_message("test-cases", format="md") == (
+        "Load the skill `test-reporting` and generate the `test-cases` report in format `md`."
+    )
+    assert not help_rows("/report")[0][1].endswith("Not available yet in this build.")
 
 
 def test_the_templates_of_select_and_design():

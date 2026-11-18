@@ -1,6 +1,7 @@
 """Fixtures of the integration tests."""
 
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -124,15 +125,29 @@ class ReferenceProject:
     scenario: ReferenceScenario
 
 
+@contextmanager
+def _reference_copy(tmp_path_factory, source: Path, triage: bool):
+    with project_copy(tmp_path_factory, source) as path:
+        conn = connect(path)
+        try:
+            scenario = load_reference_scenario(conn, triage=triage)
+        finally:
+            conn.close()
+        yield ReferenceProject(path, scenario)
+
+
 @pytest.fixture
 def reference_project(tmp_path_factory, pristine_example) -> ReferenceProject:
     """A copy of the example project, with its git repository, holding the records of the reference scenario, cycle
     1, without triage and without DEF-001: the failures of RUN-0004 wait for triage. The session of the scenario has
     the versions v1.0 and v1.1 at their real commits, so the git check of ``expected_change`` runs."""
-    with project_copy(tmp_path_factory, pristine_example) as path:
-        conn = connect(path)
-        try:
-            scenario = load_reference_scenario(conn, triage=False)
-        finally:
-            conn.close()
-        yield ReferenceProject(path, scenario)
+    with _reference_copy(tmp_path_factory, pristine_example, triage=False) as project:
+        yield project
+
+
+@pytest.fixture
+def triaged_reference_project(tmp_path_factory, pristine_example, local_time) -> ReferenceProject:
+    """The same, with the whole of cycle 1: triage and DEF-001. Ready for the completion report, in the local time
+    zone of the expected report (UTC-5), which the bundled servers inherit."""
+    with _reference_copy(tmp_path_factory, pristine_example, triage=True) as project:
+        yield project

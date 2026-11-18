@@ -203,7 +203,7 @@ def test_an_unknown_mode_is_a_usage_error(repo):
 def test_the_bundled_servers_start_with_the_session_and_stop_at_its_end(repo):
     with session.start(Options(project=repo), provider_factory=fake()) as started:
         servers = started.client.tools()
-        assert set(servers) == {"git", "memory", "test_runner"} and all(servers.values())
+        assert set(servers) == {"git", "memory", "test_runner", "reports"} and all(servers.values())
         assert children(b"retroagent.servers.")
     assert started.client is None
     assert not children(b"retroagent.servers.")

@@ -9,13 +9,17 @@ import pytest
 
 from retroagent.servers.git.server import TOOLS as GIT
 from retroagent.servers.memory.server import TOOLS as MEMORY
+from retroagent.servers.reports.server import TOOLS as REPORTS
 from retroagent.servers.test_runner.server import TOOLS as TEST_RUNNER
 
-TOOLS = {"git": GIT, "memory": MEMORY, "test_runner": TEST_RUNNER}
+TOOLS = {"git": GIT, "memory": MEMORY, "test_runner": TEST_RUNNER, "reports": REPORTS}
 ALL = [(server, tool) for server, tools in TOOLS.items() for tool in tools]
 IDS = [f"{server}.{tool.name}" for server, tool in ALL]
 
 TOOL_LIMIT, PARAMETER_LIMIT = 300, 150
+# Objects whose property names are data, checked by the tool: the agent sections of a report are named per report,
+# such as analysis.DEF-001 (mcp-tools.md, reports.render_report).
+OPEN_OBJECTS = {("reports.render_report", "/sections")}
 RESULT_WORDS = {"status", "result", "results", "outcome", "verdict", "passed", "failed", "attempts", "flaky"}
 
 
@@ -38,7 +42,7 @@ def parameters(schema: dict, path: str = ""):
         yield from parameters(schema["items"], f"{path}[]")
 
 
-def test_the_bundled_tools_built_so_far():
+def test_the_bundled_tools():
     assert {server: [t.name for t in tools] for server, tools in TOOLS.items()} == {
         "git": ["resolve_ref", "analyze_changes", "get_diff", "read_file", "list_files"],
         "memory": [
@@ -48,6 +52,7 @@ def test_the_bundled_tools_built_so_far():
             "close_defect", "get_defects",
         ],
         "test_runner": ["run_tests", "write_test", "get_evidence"],
+        "reports": ["evaluate", "prepare_report", "render_report", "get_report"],
     }  # fmt: skip
 
 
@@ -66,6 +71,9 @@ def test_descriptions_fit_their_limits(server, tool):
 def test_schemas_are_valid_and_accept_no_other_property(server, tool):
     jsonschema.Draft202012Validator.check_schema(tool.parameters)
     for path, schema in schemas(tool.parameters):
+        if (f"{server}.{tool.name}", path) in OPEN_OBJECTS:
+            assert schema["additionalProperties"] == {"type": "string"} and "properties" not in schema, path
+            continue
         assert schema.get("additionalProperties") is False, path
 
 

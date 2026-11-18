@@ -30,7 +30,7 @@ from retroagent.llm.provider import ToolDefinition
 from retroagent.servers.errors import ToolError
 from retroagent.servers.test_runner.process import GRACE_SECONDS, clean_environment
 
-BUNDLED = ("git", "memory", "test_runner")
+BUNDLED = ("git", "memory", "test_runner", "reports")
 
 START_TIMEOUT = 30.0  # seconds to start a server and list its tools
 CALL_TIMEOUT = 120.0  # seconds for a tool call, unless the caller gives another bound

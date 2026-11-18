@@ -280,3 +280,38 @@ def triage_script(severity: str = "high", wrong_first: bool = True, extra: list 
         ),
     ]
     return Scripted(script)
+
+
+# /report completion as the skill test-reporting makes it on the reference scenario: the checks of triage and of the
+# baseline run, then prepare, the agent sections written from the computed data, and render.
+REPORT_SECTIONS = {
+    "conclusions": "The decision is `do_not_release`: EC-01, EC-05 and EC-09 are not met. Fix DEF-001 (TC-020) first,"
+    " then update TC-014 for the documented change of REQ-004.",
+    "summary": "The suite of 28 test cases ran against v1.1 in RUN-0004 and against v1.0 in RUN-0003.",
+    "deviations": "TC-028 was designed and never implemented, so it was not executed.",
+    "residual_risks": "DEF-001 stays open. TC-011 is flaky, so the search may still fail intermittently.",
+    "limitations": "TC-027 and TC-028 were designed by a model; their expected results are a hypothesis.",
+}
+
+
+def report_script(text: str = "RPT-0001 is rendered. The decision is `do_not_release`.") -> list:
+    """A model that follows the skill ``test-reporting`` for ``/report completion --format pdf`` on the reference
+    scenario: it loads the skill, checks that no failure waits for triage and that a baseline run exists, prepares the
+    report, writes every listed section from the computed data and renders it."""
+    prepare = call("reports__prepare_report", {"type": "completion", "formats": ["pdf"]})
+
+    def render(request) -> Response:
+        prepared = result_in(request, prepare.id)
+        sections = {s["name"]: REPORT_SECTIONS[s["name"]] for s in prepared["sections"]}
+        return calls(call("reports__render_report", {"report_id": prepared["report_id"], "sections": sections}))
+
+    return [
+        calls(call("runtime__load_skill", {"name": "test-reporting"})),
+        calls(
+            call("memory__get_executions", {"run_id": TRIAGE_RUN, "untriaged": True}),
+            call("memory__get_runs", {"version_role": "base"}),
+        ),
+        calls(prepare),
+        render,
+        answer(text),
+    ]

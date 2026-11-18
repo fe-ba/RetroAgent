@@ -5,8 +5,8 @@ same checks, question and ``tool_call`` row as a call of the model, dispatched t
 its output are not added to the conversation.
 
 **Model** commands empty the conversation and send a fixed template with the tool set of their step. This build
-has ``/analyze``, ``/select``, ``/design``, ``/implement`` and ``/triage``; the other commands of cli.md are parsed and
-answered as not available yet.
+has ``/analyze``, ``/select``, ``/design``, ``/implement``, ``/triage`` and ``/report`` (the Must report types only);
+``/cycle`` is parsed and answered as not available yet.
 
 ``/defects`` reads the defects from project memory, as ``/history`` reads the runs; ``/defects close`` calls the
 user-only tool ``memory.close_defect`` through ``turn.call_tool``, the only way to reach it (INV-14).
@@ -14,7 +14,6 @@ user-only tool ``memory.close_defect`` through ``turn.call_tool``, the only way 
 Counts and statuses come from stored records; no function here takes or computes a test result.
 """
 
-import json
 import shlex
 import threading
 from collections.abc import Callable, Sequence
@@ -48,6 +47,12 @@ IMPLEMENT_DEFAULT = "Load the skill `test-design` and implement all designed tes
 IMPLEMENT_TOOL_SET = "implement"
 TRIAGE = "Load the skill `failure-triage` and triage the failed executions of run `{run_id}`."
 TRIAGE_TOOL_SET = "triage"
+REPORT = "Load the skill `test-reporting` and generate the `{type}` report"
+REPORT_TOOL_SET = "report"
+REPORT_TYPES = ("test-plan", "test-cases", "status", "defects", "completion")
+REPORT_TYPES_BUILT = ("test-cases", "completion")  # FR-25; the others are Should (FR-37)
+REPORT_USES_RUN = ("status", "defects", "completion")
+REPORT_FORMATS = ("md", "pdf")
 CLOSE_DEFECT = "memory__close_defect"
 
 # Every slash command of cli.md: usage, description, and whether this build has it.
@@ -63,7 +68,8 @@ HELP = (
     ("/run [target] [--on <version>]", "Execute tests. target: suite (default), all, or test case IDs separated by"
      " spaces. --on: base, candidate (default) or both.", True),
     ("/triage [run_id]", "Classify the failures of a run. Default: last run.", True),
-    ("/report <type> [--run <run_id>] [--format <format>]", "Generate a report.", False),
+    ("/report <type> [--run <run_id>] [--format <format>]", "Generate a report. type: test-plan, test-cases,"
+     " status, defects, completion. format: md or pdf; default from reports.default_format.", True),
     ("/status", "Session versions, test cases by status, the current suite, the latest run, the mode, and the model"
      " calls and tokens of the session.", True),
     ("/history [n]", "The last n runs. Default: 10.", True),
@@ -79,7 +85,7 @@ HELP = (
 )  # fmt: skip
 COMMANDS = tuple(usage.split()[0] for usage, _, _ in HELP)
 AVAILABLE = tuple(usage.split()[0] for usage, _, available in HELP if available)
-MODEL_COMMANDS = ("/analyze", "/select", "/design", "/implement", "/triage")
+MODEL_COMMANDS = ("/analyze", "/select", "/design", "/implement", "/triage", "/report")
 
 
 class CommandError(Exception):
@@ -104,6 +110,8 @@ class Command:
     include_closed: bool = False  # /defects --all
     defect_id: str | None = None  # /defects close
     reason: str | None = None  # /defects close: the words after the ID, joined by one space
+    report_type: str | None = None  # /report
+    format: str | None = None  # /report --format
 
 
 def is_command(line: str) -> bool:
@@ -144,6 +152,8 @@ def parse(line: str) -> Command:
         return Command(name, run_id=args[0] if args else None)
     if name == "/defects":
         return _parse_defects(args)
+    if name == "/report":
+        return _parse_report(args)
     if name in ("/model", "/mode", "/help"):
         if len(args) > 1:
             raise CommandError(f"usage: {name} [{'name' if name == '/model' else name[1:]}]")
@@ -190,6 +200,39 @@ def _parse_defects(args: list[str]) -> Command:
             raise CommandError("usage: /defects close <id> <reason>")
         return Command("/defects", defect_id=args[1], reason=" ".join(args[2:]))
     raise CommandError("usage: /defects [--all], or /defects close <id> <reason>")
+
+
+REPORT_USAGE = "usage: /report <type> [--run <run_id>] [--format <format>], type one of " + ", ".join(REPORT_TYPES)
+
+
+def _parse_report(args: list[str]) -> Command:
+    """``/report <type> [--run <run_id>] [--format <format>]``. Raises ``NotAvailable`` for a type of a later slice."""
+    options: dict[str, str] = {}
+    words = []
+    position = 0
+    while position < len(args):
+        word = args[position]
+        if word in ("--run", "--format"):
+            if position + 1 == len(args) or word in options:
+                raise CommandError(REPORT_USAGE)
+            options[word] = args[position + 1]
+            position += 2
+            continue
+        if word.startswith("-"):
+            raise CommandError(f"unknown option {word}")
+        words.append(word)
+        position += 1
+    if len(words) != 1 or words[0] not in REPORT_TYPES:
+        raise CommandError(REPORT_USAGE)
+    report_type = words[0]
+    if report_type not in REPORT_TYPES_BUILT:
+        raise NotAvailable(f"the {report_type} report is not available in this build")
+    run_id, format = options.get("--run"), options.get("--format")
+    if run_id is not None and report_type not in REPORT_USES_RUN:
+        raise CommandError(f"the {report_type} report does not use --run")
+    if format is not None and format not in REPORT_FORMATS:
+        raise CommandError(f"unknown format {format}; use md or pdf")
+    return Command("/report", report_type=report_type, run_id=run_id, format=format)
 
 
 def help_rows(command: str | None = None) -> list[tuple[str, str]]:
@@ -491,6 +534,39 @@ def triage(
     return _model_command(session, message, TRIAGE_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
 
 
+def report_message(report_type: str, run_id: str | None = None, format: str | None = None) -> str:
+    """The message of ``/report <type> [--run <run_id>] [--format <format>]``."""
+    message = REPORT.format(type=report_type)
+    if run_id is not None:
+        message += f" for run `{run_id}`"
+    if format is not None:
+        message += f" in format `{format}`"
+    return message + "."
+
+
+def check_report_run(session: Session, run_id: str | None) -> None:
+    """The run of ``/report --run`` must exist. Raises ``CommandError`` before any model call."""
+    if run_id is not None and execution.get_run(session.conn, run_id) is None:
+        raise CommandError(f"run {run_id} does not exist; /history lists the runs")
+
+
+def report(
+    session: Session,
+    report_type: str,
+    run_id: str | None = None,
+    format: str | None = None,
+    *,
+    ask: turn.Ask | None = None,
+    listener: Callable[[object], None] | None = None,
+    interrupt: threading.Event | None = None,
+) -> turn.TurnResult:
+    """``/report <type> [--run <run_id>] [--format <format>]``: an empty conversation, then the template with the
+    tools of the step ``report``. Raises ``CommandError`` when the run does not exist, and ``turn.TurnError``."""
+    check_report_run(session, run_id)
+    message = report_message(report_type, run_id, format)
+    return _model_command(session, message, REPORT_TOOL_SET, ask=ask, listener=listener, interrupt=interrupt)
+
+
 def _model_command(session: Session, message: str, tool_set: str, *, ask, listener, interrupt) -> turn.TurnResult:
     """A model command: the conversation is emptied, then one turn with the tools of the step."""
     session.conversation.clear()
@@ -566,24 +642,23 @@ class SessionOutcome:
 
 def session_outcome(session: Session) -> SessionOutcome:
     """The runs, reports and decision of this session, and its calls refused by the mode, a permission or the
-    approval of the project commands (runtime.md, Non-interactive mode)."""
+    approval of the project commands (runtime.md, Non-interactive mode).
+
+    Reports and evaluations have no session column: those created after the session started belong to it, because
+    the session lock makes it the only writer in that time.
+    """
     conn = session.conn
+    started_at = conn.execute("SELECT started_at FROM session WHERE id = ?", (session.id,)).fetchone()[0]
     runs = [row["id"] for row in conn.execute("SELECT id FROM run WHERE session_id = ? ORDER BY id", (session.id,))]
     row = conn.execute(
-        "SELECT e.decision FROM evaluation e JOIN run r ON r.id = e.run_id WHERE r.session_id = ?"
-        " ORDER BY e.id DESC LIMIT 1",
-        (session.id,),
+        "SELECT decision FROM evaluation WHERE created_at >= ? ORDER BY id DESC LIMIT 1", (started_at,)
     ).fetchone()
-    reports = []
-    for call in conn.execute(
-        "SELECT arguments FROM tool_call WHERE session_id = ? AND server = 'reports' AND tool = 'render_report'"
-        " AND outcome = 'ok' ORDER BY id",
-        (session.id,),
-    ):
-        report_id = json.loads(call["arguments"]).get("report_id")
-        report = conn.execute("SELECT id, path FROM report WHERE id = ?", (report_id,)).fetchone()
-        if report is not None:
-            reports.append({"id": report["id"], "path": report["path"]})
+    reports = [
+        {"id": report["id"], "path": report["path"]}
+        for report in conn.execute(
+            "SELECT id, path FROM report WHERE status = 'rendered' AND created_at >= ? ORDER BY id", (started_at,)
+        )
+    ]
     return SessionOutcome(runs, reports, row["decision"] if row else None, session.permission_refusals)
 
 

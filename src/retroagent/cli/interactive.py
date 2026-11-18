@@ -120,6 +120,16 @@ class Shell:
             return self._model(lambda ask, interrupt: commands.triage(
                 self.session, run_id, ask=ask, listener=self._listener, interrupt=interrupt
             ))  # fmt: skip
+        if name == "/report":
+            try:
+                commands.check_report_run(self.session, command.run_id)
+            except CommandError as error:
+                self._error(str(error))
+                return Outcome(usage_error=True)
+            return self._model(lambda ask, interrupt: commands.report(
+                self.session, command.report_type, command.run_id, command.format, ask=ask,
+                listener=self._listener, interrupt=interrupt,
+            ))  # fmt: skip
         if name == "/run":
             return self._run(command)
         try:

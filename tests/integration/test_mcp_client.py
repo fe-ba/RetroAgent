@@ -69,7 +69,7 @@ def test_stop_leaves_no_server_process(shop):
     client = Client(shop, open_session(shop))
     client.start()
     pids = children(b"retroagent.servers.")
-    assert len(pids) == 3
+    assert len(pids) == len(BUNDLED)
     client.stop()
     client.stop()  # a second stop does nothing
     assert children(b"retroagent.servers.") == []

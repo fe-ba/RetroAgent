@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from fixtures.chart_text import overflowing
+from fixtures.mcp_project import reports_server
 from fixtures.reference_scenario import S4
 
 from retroagent.memory import interpretation
@@ -199,3 +200,23 @@ def test_no_label_of_the_reference_charts_leaves_the_canvas(reference, name):
     session, _ = reference
     folder, _ = generate(session)
     assert overflowing((folder / "charts" / name).read_bytes()) == []
+
+
+def test_through_the_server_the_computed_sections_equal_the_expected_report_and_the_pdf_exists(reference):
+    """SC-11 through the reports MCP server, as the model reaches it: prepare, then render with md and pdf."""
+    pytest.importorskip("markdown")
+    try:
+        import weasyprint  # noqa: F401
+    except OSError:
+        pytest.skip("the Pango system library is not installed")
+    session, _ = reference
+    with reports_server(session) as client:
+        prepared = client.call("reports", "prepare_report", {"type": "completion", "formats": ["pdf"]})
+        rendered = client.call("reports", "render_report", {"report_id": prepared["report_id"], "sections": SECTIONS})
+    folder = session.project_dir / prepared["path"]
+    assert rendered["files"] == [f"{prepared['path']}report.md", f"{prepared['path']}report.pdf"]
+    expected = computed((EXPECTED / "test-completion-report.md").read_text(encoding="utf-8"))
+    actual = computed((folder / "report.md").read_text(encoding="utf-8"))
+    assert actual == expected, "\n" + difference(expected, actual)
+    assert sorted(p.name for p in (folder / "charts").iterdir()) == ["comparison.svg", "criteria.svg", "outcomes.svg"]
+    assert pdf_pages(folder / "report.pdf") > 1

@@ -16,7 +16,6 @@ from fixtures.mcp_project import error_of
 from retroagent.config import retro_home
 from retroagent.memory import design
 from retroagent.runtime import commands, permissions, turn
-from retroagent.servers.reports import server as reports
 
 pytestmark = pytest.mark.network
 
@@ -79,8 +78,10 @@ def test_sc04_credentials_are_absent_from_test_files_logs_tool_calls_and_reports
 
             outcome = commands.run(session, "suite", "both", ask=lambda request: permissions.ONCE)
             assert [run.status for run in outcome.runs] == ["completed", "completed"]
-            prepared = reports.prepare_report(session, "completion")
-            rendered = reports.render_report(session, prepared["report_id"], {})
+            prepared = turn.call_tool(session, "reports__prepare_report", {"type": "completion"}, ask=None)
+            rendered = turn.call_tool(
+                session, "reports__render_report", {"report_id": prepared["report_id"], "sections": {}}, ask=None
+            )
 
             rows = [dict(row) for row in session.conn.execute("SELECT * FROM tool_call WHERE session_id = ?",
                                                               (session.id,))]  # fmt: skip

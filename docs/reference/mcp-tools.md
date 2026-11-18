@@ -220,7 +220,7 @@ Returns the suite ID and `uncovered_requirements`: the impacted requirements of 
 |---|---|---|---|
 | `suite_id` | integer | no | Default: the current suite. |
 
-Returns the suite with each test case, its position and its selection reason, and its `uncovered_requirements`, computed when read: a test case designed later for a requirement removes it from the list.
+Returns the suite with each test case, its position and its selection reason, the test cases left out with their reasons, and its `uncovered_requirements`, computed when read: a test case designed later for a requirement removes it from the list.
 
 ### `memory.design_test_case`
 

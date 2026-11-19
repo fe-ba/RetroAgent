@@ -108,9 +108,15 @@ NFR-12 is verified by the unit tests of metrics and of the decision rule, not by
 
 One row per model evaluated. Scores are the number of checks that hold in each scenario.
 
-| Model | Local or hosted | SC-22 (6) | SC-23 (4) | SC-24 (4) | SC-25 (3) | SC-26 (4) | SC-27 (3) | SC-28 | Calls | Duration | Required checks |
+| Model | Local or hosted | SC-22 (7) | SC-23 (4) | SC-24 (4) | SC-25 (3) | SC-26 (4) | SC-27 (3) | SC-28 | Calls | Duration | Required checks |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — | — | — | — | — | — |
+| Gemini `gemini-3.1-flash-lite` | Hosted | 6 | 3 | 4 | 3 | 3 | 3 | Pass | About 40 | About 5 min | 4 of 4 |
+
+Notes on the results:
+
+- Gemini, SC-22: REQ-002 was recorded as not impacted, with a reason, although `cart.py` changed.
+- Gemini, SC-26: the report states the decision and invents no figure, but does not name TC-020 with its defect.
+- Gemini, SC-28: decision `do_not_release`, EC-05 and EC-09 `not_met`, exit code `3`.
 
 A low score is a finding to report in the comparison of models, not a failed acceptance, except for the required checks: a model that invents a result or contradicts the computed decision cannot be used in the presentation.
 

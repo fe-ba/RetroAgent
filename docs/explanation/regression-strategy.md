@@ -12,7 +12,7 @@ Running every test after every change is safe but does not scale, and it says no
 
 ## Know the tests that exist
 
-RetroAgent learns the project's tests by running them: a full run on the baseline records every test of the JUnit XML as a test case, linked to the requirements named in its test name. When the change adds tests, a full run on the candidate finds them too. A full run is never repeated on a commit that already has one.
+RetroAgent learns the project's tests by running them: a full run on the baseline records every test of the JUnit XML as a test case, linked to the requirements named in its test name. When the change adds tests, a full run on the candidate finds them too. The discovery step of `/cycle` skips a full run on a commit that already has one.
 
 Full runs on both versions also answer a question that selection depends on: which tests changed verdict. A test that passed on the baseline and fails on the candidate is the clearest evidence of a regression, or of an intended change.
 
@@ -58,11 +58,11 @@ Each failed execution of the candidate run gets one classification:
 | `regression` | The product no longer behaves as required. Needs a defect. | The test did not also fail on the baseline. |
 | `expected_change` | A requirement changed on purpose; the test must be updated. | A documented change of a traced requirement applies to this comparison. |
 | `pre_existing` | The test already failed on the baseline. | It did fail on the baseline. |
-| `flaky` | The result changes across attempts. | At least one rerun passed. |
+| `flaky` | The result changes across attempts. | A rerun passed, or an earlier run on the same commit did. |
 | `test_defect` | The test itself is wrong. | Judgment of the model, listed for review. |
 | `environment` | Infrastructure failed, not the product. | Judgment of the model, listed for review. |
 
-The four classifications that the records can confirm are refused when the records do not support them. The model cannot call a regression an expected change unless the requirement says it changed. Every regression needs a defect, with a severity, steps to reproduce and a probable cause.
+The four classifications that the records can confirm are refused when the records do not support them. The model cannot call a regression an expected change unless the requirement says it changed. Every regression needs a defect, with a title, a severity and steps to reproduce.
 
 ## Decide
 

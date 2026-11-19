@@ -4,7 +4,7 @@ How a report combines numbers computed by code with text written by the model, a
 
 ## What the reports are for
 
-The reports follow the test documentation of ISO/IEC/IEEE 29119-3: a test plan before testing, a test case specification, a status report during it, a defect report, and a completion report at the end. The completion report answers the question a release depends on: how well was the product tested, and can it be released?
+The reports follow the test documentation of ISO/IEC/IEEE 29119-3: a test plan before testing, a test case specification, a status report during it, a defect report, and a completion report at the end. This version generates the test case specification and the completion report; the other three are specified for a later version. The completion report answers the question a release depends on: how well was the product tested, and can it be released?
 
 A report is read by people who were not in the session and who may need to rely on it later. It must therefore say exactly what was recorded, and make clear which parts are judgments.
 
@@ -29,7 +29,7 @@ A report is generated in two tool calls, with the model's writing in between:
 
 The computed part is fixed at the first step. Whatever is recorded while the model writes does not change the report. The servers never ask the model for text themselves: the text arrives as an argument of the render call. The report server is therefore deterministic, and is tested without a model.
 
-If the model never writes its sections, the report stays a draft, with all its computed content. If the model is not available at all, its sections read "Not provided." and the report is still complete.
+If the model never renders the report, it stays a draft, with all its computed content. A section that the model leaves out of the render call reads "Not provided."
 
 ## Templates without logic
 

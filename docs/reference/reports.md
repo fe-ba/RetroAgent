@@ -6,10 +6,10 @@ Single catalog of everything that connects report templates to data: report type
 
 | `/report` type | Template | Data it describes |
 |---|---|---|
-| `test-plan` | `test-plan.md` | The latest impact analysis and the current suite. No run is needed. |
+| `test-plan` | `test-plan.md` | The latest impact analysis and the current suite. No run is needed. Not generated in this version (FR-37). |
 | `test-cases` | `test-case-specification.md` | The test cases of the current suite. No run is needed. |
-| `status` | `test-status-report.md` | One run, against either version. Default: the latest run. |
-| `defects` | `defect-report.md` | Defects found in the evaluated run, plus every open defect. |
+| `status` | `test-status-report.md` | One run, against either version. Default: the latest run. Not generated in this version (FR-37). |
+| `defects` | `defect-report.md` | Defects found in the evaluated run, plus every open defect. Not generated in this version (FR-37). |
 | `completion` | `test-completion-report.md` | The evaluated run and its comparisons, as defined in `metrics.md`. |
 
 The **current suite** is the suite selected for the latest impact analysis of the session versions. The **evaluated run** and the other evaluation inputs are defined in `metrics.md`.

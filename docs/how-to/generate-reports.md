@@ -1,20 +1,17 @@
 # Generate reports
 
-How to produce each report, choose Markdown or PDF and the language, and read what a report contains. The full catalog of values, blocks and sections is in the [reports reference](../reference/reports.md).
+How to produce a report, choose Markdown or PDF and the language, and read what a report contains. The full catalog of values, blocks and sections is in the [reports reference](../reference/reports.md).
 
 ## Choose a report
 
 | Report | Command | Describes | Needs |
 |---|---|---|---|
-| Test plan | `/report test-plan` | The change, the impacted requirements and modules, the risks, the suite and the exit criteria. | An impact analysis and a suite. No run. |
 | Test case specification | `/report test-cases` | Every test case of the current suite, with its objective, data, steps and expected result. | A suite. No run. |
-| Test status | `/report status` | One run: executions by status and result, and the comparison with the baseline. Default: the latest run. | A run. |
-| Defects | `/report defects` | The defects found in the evaluated run and every open defect, with evidence and history. | Defects. |
-| Test completion | `/report completion` | The whole cycle: metrics, exit criteria, the release decision and its reasons, deviations and what needs review. | A completed run on the candidate, and one on the baseline for the comparison. |
+| Test completion | `/report completion` | The whole cycle: metrics, exit criteria, the release decision and its reasons, deviations and what needs review. | A completed run of the suite (`/run` or `/run suite`) on the candidate, and one on the baseline for the comparison. A run of `/run all` or of chosen test cases does not count. |
 
-The test types follow ISO/IEC/IEEE 29119-3. `/cycle` ends with a completion report.
+The report types follow ISO/IEC/IEEE 29119-3. `/cycle` ends with a completion report. The test plan, the test status report and the defect report are specified, and their templates are in the reference, but they are not generated in this version.
 
-Choose a run with `--run`, for example `/report status --run RUN-0003`. A status report about a run on the baseline has no decision: exit criteria are evaluated only on the candidate.
+Choose a run with `--run`, for example `/report completion --run RUN-0004`. By default, the latest completed run of the suite on the candidate is evaluated.
 
 ## Choose the format
 
@@ -71,7 +68,7 @@ A report is never overwritten. Generating the same type again creates a new one,
 | Items to review | Code | Excused failures, flaky executions, pre-existing failures and executions triaged more than once. They are judgments that changed the numbers; read them before trusting the decision. |
 | Agent analysis | The model | Conclusions, summary, residual risks, limitations. Each section is marked as written by the model and not computed. |
 
-Every figure, status and decision in the report is inserted by code. The model writes only the sections marked "Agent analysis", from the data of the same report. If the model is not available, those sections read "Not provided." and the report is still complete.
+Every figure, status and decision in the report is inserted by code. The model writes only the sections marked "Agent analysis", from the data of the same report. A section the model leaves out reads "Not provided."; if the model does not render the report at all, it stays a draft.
 
 ## When a report stays a draft
 

@@ -21,7 +21,7 @@ Choose the test cases that can reveal whether the change broke something, order 
    - it verifies a high-priority requirement close to a `high` risk module;
    - it failed or was flaky in a recent run, in an impacted area.
 
-   Leave out test cases unrelated to the change set. Retired test cases cannot be selected. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
+   Leave out test cases unrelated to the change set. Retired test cases cannot be selected. A test case whose test the change deletes cannot run on the candidate: leave it out with that reason. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
 
    Test cases traced to a requirement with a documented change are included: they may fail as `expected_change` and must be reviewed. Test cases still `designed` from earlier cycles are included only if they are relevant; they count as designed only until implemented.
 5. **Order.** Assign positions from 1. Positions order the presentation of the suite; the test framework decides the execution order:

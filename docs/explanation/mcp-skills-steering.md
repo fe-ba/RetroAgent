@@ -25,7 +25,7 @@ Steering is a set of six Markdown files in `src/retroagent/resources/steering/`,
 
 Steering holds what must be true in every turn, whatever the step. Because it is always present, it is kept short: every word is paid for in every call, and a small local model has little room.
 
-The user can add steering in `~/.retro/steering/`, and a project in `.retro/steering/`. Added steering comes after the bundled files and never replaces them. Project steering is loaded only after the user approves it, because it comes from the repository being tested, and a repository can be written by anyone ([ADR-0021](../adr/0021-context-layers-and-trust.md)).
+The design lets a user add steering in `~/.retro/steering/`, and a project in `.retro/steering/`, after the bundled files and never replacing them; project steering would load only after the user approves it, because it comes from the repository being tested, and a repository can be written by anyone ([ADR-0021](../adr/0021-context-layers-and-trust.md)). This version loads only the bundled steering.
 
 ## Skills: one procedure per step
 
@@ -43,7 +43,7 @@ Only the names and descriptions of the skills are always in the context, as an i
 
 This is the main difference with steering. Steering is what the agent is; a skill is what it is doing now. A rule that applies only to triage, such as "register a defect right after the regression it explains", belongs in the triage skill, not in the steering.
 
-A user can add skills in `~/.retro/skills/`, and may replace a bundled skill with one of the same name. A project can add skills in `.retro/skills/` after approval, but cannot replace a bundled or user skill. A team can thus adapt a procedure to its own way of working without forking RetroAgent.
+The design also lets a user add skills in `~/.retro/skills/`, replacing a bundled skill with one of the same name, and a project add skills in `.retro/skills/` after approval, without replacing a bundled or user skill. A team could thus adapt a procedure without forking RetroAgent. This version loads only the bundled skills; until user skills are built, a procedure is changed by editing the bundled skill.
 
 ## MCP servers: the only way to act
 
@@ -66,7 +66,7 @@ A tool is not only a way to write. It is also where a claim of the model meets t
 |---|---|
 | `memory.save_impact` | An impact that does not decide every requirement in effect. |
 | `memory.save_suite` | A suite that leaves out a test that passed on the baseline and failed on the candidate. |
-| `memory.save_triage` | `expected_change` for a requirement without a documented change in this version; `flaky` for a test that never passed in a rerun; `pre_existing` for a test that did not fail on the baseline; `regression` for a test that also failed on the baseline. |
+| `memory.save_triage` | `expected_change` for a requirement without a documented change in this version; `flaky` for a test that passed neither in a rerun nor in an earlier run on the same commit; `pre_existing` for a test that did not fail on the baseline; `regression` for a test that also failed on the baseline. |
 | `memory.register_defect` | A defect for an execution that was not triaged as a product fault. |
 
 Some checks are hard: no argument can override them. Others are soft: they refuse a likely mistake and show the evidence, and the model may confirm the record with `confirm: true` when it has a reason. The confirmation is stored with the record, so a reviewer can see it.
@@ -79,7 +79,7 @@ MCP allows a server to ask the client for a model completion, which is called sa
 
 ### More servers
 
-A user or a project can declare more MCP servers, for example one that reads an issue tracker. Their tools are offered to the model next to the bundled ones, after the user approves them. They cannot use the name of a bundled server. See [Add MCP servers](../how-to/add-mcp-servers.md).
+The design lets a user or a project declare more MCP servers in `mcp.json`, for example one that reads an issue tracker, approved by the user and offered next to the bundled ones. This version starts only the four bundled servers.
 
 ## How the three meet in one step
 

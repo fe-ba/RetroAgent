@@ -15,7 +15,7 @@ models:
     ...
 ```
 
-`retro config list` shows the effective configuration and the level each value comes from.
+To check the profile in use, start a session: it states the model at start, and `/model` shows it.
 
 ## Add a hosted model
 
@@ -84,7 +84,7 @@ models:
 |---|---|
 | `base_url` | Required for Ollama. |
 | `context_window` | Required for Ollama, and sent with every request as the context size to use. Without it, Ollama may apply a smaller default and silently drop the beginning of the context, which holds the steering. Use 32,768 or more. |
-| `timeout` | Seconds per call. A small model on a CPU writes about five tokens per second, so an answer of a few hundred tokens takes minutes. The default of 120 seconds is too short; use 900. |
+| `timeout` | Seconds per call. A small model on a CPU writes about five tokens per second, so an answer of a few hundred tokens takes minutes. The default of 120 seconds is too short; use 900. A call that times out is retried three times, so a model that never answers holds the turn for up to an hour before it stops. |
 | `thinking` | For reasoning models. `"off"` asks for answers without a thinking phase, which is much faster on a CPU. Quote it: YAML reads a bare `off` as a boolean. Both forms are accepted. |
 
 No `api_key_env`: a local model needs no key, and the profile is refused if it has one.
@@ -107,13 +107,13 @@ If Ollama is down, the model calls fail with a network error, are retried three 
 | Use a profile for one command in a script | `retro -m local -p "/analyze"`, or `RETRO_MODEL=local` |
 | Switch inside a session | `/model local` |
 | See the profile in use | `/model` |
-| Change the default | `retro config set model local` |
+| Change the default | Edit `model:` in `~/.retro/config.yaml` |
 
 The session states the model it uses, and whether it is hosted or local, when it starts. Records written by the agent, such as a test case design or a triage, store the model that wrote them.
 
-## Models without native tool calls
+## Models without tool calls
 
-`tool_calling: auto`, the default, uses native tool calls when the provider reports support for them. When support is unknown, the runtime sends one probe call at the start of the session. A model that cannot make tool calls is driven in JSON fallback mode: the tool definitions are written into the context and the model answers with JSON, which the runtime validates. Force either mode with `tool_calling: native` or `tool_calling: json`.
+The model must support native tool calls. A model that does not is refused when the session starts, with exit code `2`; the JSON fallback mode of the specification is not in this version. Keep `tool_calling` at its default, `auto`.
 
 ## Other settings
 

@@ -6,7 +6,7 @@ What RetroAgent keeps between sessions, why it is a database rather than the con
 
 A conversation with a model is short-lived and unreliable as a record. It is cleared between the steps of a cycle, old parts are dropped when the context fills up, and the model can misremember what it read. A regression cycle needs the opposite: facts that stay exact across steps, sessions and releases, and that a report can cite.
 
-So every fact lives in project memory: one SQLite file per project, `.retro/retro.db`. The model reads it and writes to it only through the tools of the `memory`, `test_runner` and `reports` servers. When the conversation is cleared, nothing is lost: the next step reads what it needs again.
+So every fact lives in project memory: one SQLite file per project, `.retro/retro.db`. The model reads it and writes to it only through tools: those of the `memory`, `test_runner` and `reports` servers, `git.analyze_changes`, which stores the change set, and `runtime.set_versions`, which stores the session versions. When the conversation is cleared, nothing is lost: the next step reads what it needs again.
 
 ## What it holds
 
@@ -25,7 +25,7 @@ So every fact lives in project memory: one SQLite file per project, `.retro/retr
 The rules that keep the memory trustworthy:
 
 - **One writer per fact.** Each table has one component allowed to write it. The model reaches the data only through tools, and no tool lets it write what code owns. A test result, for example, is written only by the test runner, from JUnit XML.
-- **Code assigns identifiers.** `REQ-`, `TC-`, `RUN-`, `DEF-`, `RSK-` and `RPT-` identifiers are assigned in sequence and never reused. The model never invents an identifier for a new record.
+- **Code assigns identifiers.** `TC-`, `RUN-`, `DEF-`, `RSK-` and `RPT-` identifiers are assigned in sequence and never reused; `REQ-` identifiers come from the requirement documents. The model never invents an identifier for a new record.
 - **Code reads requirements.** Requirements are parsed by code from the requirement documents, not summarized by the model.
 - **Model input is marked.** Columns whose content was written by the model, such as a reason, a justification or a design, are marked as such in the specification, and records store which model wrote them.
 - **History is kept.** Nothing is deleted. Runs, executions, evaluations and reports are immutable once complete. A second triage of an execution does not erase the first: both are kept, and reports list executions triaged more than once.

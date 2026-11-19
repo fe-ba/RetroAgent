@@ -25,13 +25,13 @@ retro init
 
 | It finds | It proposes as `tests.command` |
 |---|---|
-| pytest (`pyproject.toml`, `pytest.ini` or `setup.cfg`) | `pytest --junitxml={junit}` |
-| Vitest (`package.json`) | `npx vitest run --reporter=junit --outputFile={junit}` |
-| Maven (`pom.xml`) | `mvn -q test` |
-| Gradle (`build.gradle`, `build.gradle.kts`) | `./gradlew test` |
+| pytest (`pytest.ini`; `pyproject.toml` that mentions pytest; `setup.cfg` with `[tool:pytest]`) | `pytest --junitxml={junit}` |
+| Vitest (`package.json` that mentions vitest) | `npx vitest run --reporter=junit --outputFile={junit}` |
+| Maven (`pom.xml`) | `mvn -q test`, with `tests.junit` set to the Surefire reports |
+| Gradle (`build.gradle`, `build.gradle.kts`) | `./gradlew test`, with `tests.junit` set to the test results |
 | Go (`go.mod`) | `gotestsum --junitfile {junit}` |
 
-It also proposes the requirement files it finds (`requirements*.md` at the root or under `docs/`) and the two most recent tags as the base and candidate versions. It creates `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`, and never overwrites a file that exists. Only the pytest configuration is verified by the bundled example; treat the others as starting points.
+It never proposes `tests.setup`: write it yourself (step 4). It also proposes the requirement files it finds (`requirements*.md` at the root or under `docs/`) that contain at least one `REQ-` heading, and the two most recent tags as the base and candidate versions. With fewer than two tags, it leaves `versions` commented out: set them before running anything, or `/run all --on base` fails because there is no baseline. It creates `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`, and never overwrites a file that exists. Only the pytest configuration is verified by the bundled example; treat the others as starting points.
 
 ## 2. Describe the project in RETRO.md
 
@@ -48,6 +48,8 @@ It also proposes the requirement files it finds (`requirements*.md` at the root 
 `RETRO.md` is information, not rules: an instruction written in it does not change how the agent behaves. The `RETRO.md` of the example project (`retro example shop-api <dir>`) is a good model.
 
 ## 3. Write requirements
+
+Requirements, the `Changed:` lines and the test names are read from the commits being compared, not from your working copy. A requirements file, a `Changed:` line or a test renamed after a tag is invisible when that tag is compared. Commit them in the versions themselves; for versions already tagged, compare new commits that have them.
 
 Each requirement is a Markdown heading that starts with its ID, in the form `REQ-NNN`, followed by its description and optional fields:
 

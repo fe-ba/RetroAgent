@@ -16,10 +16,8 @@ The documentation follows Diataxis (ADR-0013): tutorials to learn, how-to guides
 | [Set up a project](how-to/set-up-a-project.md) | Prepare your own project: `retro init`, `RETRO.md`, requirements and test commands. |
 | [Configure models](how-to/configure-models.md) | Add a hosted or a local model profile and switch between them. |
 | [Compare versions](how-to/compare-versions.md) | Choose the baseline and the candidate, and run single steps instead of the whole cycle. |
-| [Generate reports](how-to/generate-reports.md) | Produce the test plan, test cases, status, defects and completion reports, in Markdown or PDF. |
+| [Generate reports](how-to/generate-reports.md) | Produce the test case specification and the completion report, in Markdown or PDF. |
 | [Run in CI](how-to/run-in-ci.md) | Run the cycle without a session and use the exit code. |
-| [Add MCP servers](how-to/add-mcp-servers.md) | Give the agent the tools of another MCP server. |
-| [Add skills and steering](how-to/add-skills-and-steering.md) | Add your own procedures and rules, at user or project level. |
 
 ## Reference
 

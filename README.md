@@ -21,7 +21,7 @@ retro ──> runtime ──> model (hosted or local)
 
 - **Steering** (6 files) states who the agent is, the workflow, the test states, the quality rules, the safety rules and the output format.
 - **Skills** (5) hold the procedure of each step: `impact-analysis`, `test-selection`, `test-design`, `failure-triage` and `test-reporting`.
-- **MCP servers** (4) are the only way the model acts on the project. Their tools check what the model records: a triage needs evidence, a suite must include every test that revealed a difference, a defect needs a test that failed for a product fault.
+- **MCP servers** (4) are the only way the model acts on the project. Their tools check what the model records: a triage needs evidence, a suite must include every test that passed on the baseline and failed on the candidate, a defect needs a test that failed for a product fault.
 - **Project memory** keeps requirements, test cases, runs, executions, triage, defects and reports between sessions, in the project's `.retro/` folder.
 
 `/cycle` runs the eight steps in order: `analyze`, `discover`, `select`, `design`, `implement`, `run`, `triage` and `report`. Each step gets an empty conversation and only the tools it needs, and code checks its outcome before the next step starts.
@@ -30,13 +30,13 @@ retro ──> runtime ──> model (hosted or local)
 
 - Python 3.11 or 3.12.
 - git.
-- For PDF reports: the Pango library (`apt install libpango-1.0-0 libpangoft2-1.0-0` on Debian or Ubuntu, `pacman -S pango` on Arch, `brew install pango` on macOS). Markdown reports work without it.
+- For PDF reports, which are produced on request: the Pango library (`apt install libpango-1.0-0 libpangoft2-1.0-0` on Debian or Ubuntu, `pacman -S pango` on Arch, `brew install pango` on macOS). Markdown reports work without it.
 - A model: an API key for a hosted provider, or Ollama with a model that supports tool calls.
 
 ## Install
 
 ```
-git clone git@github.com:fe-ba/RetroAgent.git
+git clone git@github.com:fe-ba/RetroAgent.git        # or https://github.com/fe-ba/RetroAgent.git
 cd RetroAgent
 python -m venv .venv
 source .venv/bin/activate
@@ -88,7 +88,7 @@ In the session:
 /cycle
 ```
 
-The first test run asks you to approve the project's test commands. At the end, the completion report is in `.retro/reports/`, and the session shows the release decision. For `v1.0` to `v1.1` it is `do_not_release`: a shipping test reveals a regression, and a defect is registered for it.
+The first test run asks you to approve the project's commands. Then, in mode `default`, the agent asks before it runs tests, starts the service or writes test code: press `1` to allow once, `2` to allow for the session, `3` or `Esc` to deny. At the end, the completion report is in `.retro/reports/`, and the session shows the release decision. For `v1.0` to `v1.1` it is `do_not_release`: a shipping test reveals a regression, and a defect is registered for it.
 
 The same cycle without a session, for scripts and CI:
 

@@ -37,7 +37,7 @@ When several apply, `1` wins over `4`, `4` over `3`, and `3` over `0`. A cycle t
 
 `/cycle` designs and implements new tests, and in mode `auto` nobody reviews that code before it runs. Two ways to handle it:
 
-**Review generated tests before CI runs them (recommended).** Run the cycle in an interactive session on your machine, review the tests the agent writes in `.retro/tests/`, and commit them. In CI, forbid new test code and run the steps that do not write it:
+**Review generated tests before CI runs them (recommended).** Run the cycle in an interactive session on your machine and review the tests the agent writes in `.retro/tests/`. Move the ones you keep into the project's own test folder, keeping the requirement in their names, and commit them: from then on they are tests of the project. Generated tests left in `.retro/tests/` are run only by the project memory that created them, and a fresh CI checkout has no project memory. In CI, forbid new test code and run the steps that do not write it:
 
 ```yaml
 # .retro/config.yaml of the project, or the user configuration of the CI machine
@@ -84,7 +84,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install RetroAgent
-        run: pip install git+https://github.com/<owner>/RetroAgent.git
+        run: pip install git+https://github.com/fe-ba/RetroAgent.git
       - name: Model profile
         run: |
           mkdir -p ~/.retro

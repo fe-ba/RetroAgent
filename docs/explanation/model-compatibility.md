@@ -6,7 +6,7 @@ RetroAgent does not depend on a model vendor ([ADR-0002](../adr/0002-model-agnos
 
 | Need | Why | What happens without it |
 |---|---|---|
-| Tool calls | The model acts only through tools. | The runtime falls back to JSON mode: tool definitions go into the context as text and the model answers with JSON, which is validated. It works, with more mistakes. |
+| Native tool calls | The model acts only through tools. | The session does not start. The JSON fallback mode of the specification, for models without tool calls, is not in this version. |
 | A context window of 32,768 tokens or more | Every call carries the steering, `RETRO.md`, the state message and the tools of the step: about 7,600 to 8,700 tokens in a step of the cycle, and 12,300 in a free message. The skill and the tool results come on top. | When the fixed part exceeds 25% of the usable window, the session warns; above 50%, it does not start. |
 | Following a procedure of several steps | Each skill is a procedure: read, decide, record, report. | Steps end without their outcome. The cycle retries a step once, then stops and names it. |
 | Reading code and diffs | Impact analysis and test design depend on understanding what changed. | Weak analysis and weak tests. They are recorded faithfully, but they are poor. |
@@ -17,7 +17,7 @@ The protection does not depend on the model being good:
 
 - **Results** come only from the JUnit XML written by the test run. No tool accepts a result.
 - **Metrics, exit criteria and the release decision** are computed by code from stored records.
-- **Judgments that the records can check are checked.** An impact must decide every requirement. A suite must include every test that passed on the baseline and failed on the candidate. A triage must agree with the evidence: no `expected_change` without a documented change, no `regression` for a test that also failed on the baseline, no `flaky` for a test that never passed in a rerun. A defect needs an execution triaged as a product fault.
+- **Judgments that the records can check are checked.** An impact must decide every requirement. A suite must include every test that passed on the baseline and failed on the candidate. A triage must agree with the evidence: no `expected_change` without a documented change, no `regression` for a test that also failed on the baseline, no `flaky` for a test that passed neither in a rerun nor in an earlier run on the same commit. A defect needs an execution triaged as a product fault.
 - **What was recorded is shown** after every turn, computed from the tool calls, whatever the answer of the model claims.
 
 A weak model therefore produces a weaker analysis, a worse suite or poorer tests, and its cycle may stop. It does not produce a false decision. The judgments that remain open, such as which requirements a change affects, the priority of a test case or the severity of a defect, are listed in the reports for review ([ADR-0022](../adr/0022-release-decision-guards.md)).

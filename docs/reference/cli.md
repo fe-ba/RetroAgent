@@ -33,9 +33,9 @@ Without a command, `retro` starts an interactive session on the target project. 
 | `retro init` | Initialize the target project: detect its type and create `RETRO.md`, `.retro/config.yaml` and `.retro/.gitignore`. Does not overwrite existing files. |
 | `retro example list` | List bundled example projects. |
 | `retro example <name> <dir>` | Create example `<name>` in `<dir>` with its git history and version tags. `<dir>` must not exist or must be empty. |
-| `retro config list` | Show the effective configuration and the level each value comes from. |
-| `retro config get <key>` | Show the effective value of `<key>`. |
-| `retro config set <key> <value>` | Set `<key>` at user level. With `--project`, set it in the target project. |
+| `retro config list` | Show the effective configuration and the level each value comes from. Not in this version (FR-39). |
+| `retro config get <key>` | Show the effective value of `<key>`. Not in this version (FR-39). |
+| `retro config set <key> <value>` | Set `<key>` at user level. With `--project`, set it in the target project. Not in this version (FR-39). |
 | `retro defects close <id> --reason <text>` | Close a defect without starting a session, for scripts and CI. Takes the session lock while it writes. |
 
 ## Permission modes
@@ -122,5 +122,4 @@ retro --mode plan "design tests for REQ-004"        # design only, nothing is ex
 retro -p --mode auto --trust-commands --base v1.0 --candidate v1.1 \
   "/cycle"
 retro example shop-api ./demo                       # create the example project
-retro config set model local                        # default model at user level
 ```

@@ -20,6 +20,18 @@ What RetroAgent does not do, what it cannot guarantee, and the risks accepted in
 - Concurrent sessions on the same project.
 - Use of the bundled MCP servers from another MCP client (ADR-0026).
 
+## Not in this version
+
+Some requirements of priority Should or Could are specified, and described in the reference documents, but not built in this version:
+
+| Requirement | Not available |
+|---|---|
+| FR-31 (Could) | User and project steering and skills. Only the bundled ones are loaded. |
+| FR-32 (Could) | Additional MCP servers declared in `mcp.json`. Only the four bundled servers start. |
+| FR-37 (Should) | The test plan, test status and defect reports. The test case specification and the completion report are generated. |
+| FR-39 (Should) | `retro config list`, `get` and `set`. Edit the configuration files instead. |
+| NFR-17 (Should) | The JSON fallback mode for models without native tool calls. Such a model cannot start a session. |
+
 ## Technical limits
 
 - **Compiled languages.** The same generated tests run against both versions. Where one file that does not compile stops the whole build, a generated test written for the candidate can block the whole run against the baseline. Only the pytest configuration is verified by the example.

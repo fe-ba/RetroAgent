@@ -165,8 +165,8 @@ For versions, `retro init` proposes the two most recent tags as `versions.base` 
 | Path | Versioned | Content |
 |---|---|---|
 | `config.yaml` | Yes | Project configuration. |
-| `mcp.json` | Yes | Additional MCP servers. |
-| `skills/`, `steering/` | Yes | Project extensions. |
+| `mcp.json` | Yes | Additional MCP servers. Not read in this version (FR-32). |
+| `skills/`, `steering/` | Yes | Project extensions. Not loaded in this version (FR-31). |
 | `tests/` | Yes | Generated tests. |
 | `reports/` | Yes | Generated reports. |
 | `retro.db` | No | Project memory. |

@@ -13,7 +13,7 @@ cd ~/retro-demo
 retro --base v1.0 --candidate v1.1
 ```
 
-The session runs in mode `default`: the agent asks before it runs tests, starts the service of the project or writes test code. Answer each question as it comes.
+The session runs in mode `default`: the agent asks before it runs tests, starts the service of the project or writes test code. Answer each question as it comes, with one key and no Enter: `1` allows once, `2` allows for the rest of the session, `3` or `Esc` denies. The approval of the project's commands, the first time, takes `1` to approve, or `2` or `Esc` to refuse.
 
 ## 1. Analyze the impact
 
@@ -21,7 +21,7 @@ The session runs in mode `default`: the agent asks before it runs tests, starts 
 /analyze
 ```
 
-The agent loads the skill `impact-analysis`. It reads the requirements of both versions, computes the change set with git, reads the diff of each changed file, and records which modules and requirements the change affects, with a risk level for each.
+The agent loads the skill `impact-analysis`. It reads the requirements (from the candidate version, where documented changes are written), computes the change set with git, reads the diff of each changed file, and records which modules and requirements the change affects, with a risk level for each.
 
 What to check in its answer:
 
@@ -63,7 +63,7 @@ Expect RUN-0002: 26 tests, 22 passed and 4 failed. The four new tests become TC-
 
 The agent loads `test-selection` and chooses the test cases that can reveal whether the change broke something, each with a reason and a priority. The suite of this example is small, so a good selection takes almost everything.
 
-Two rules are enforced by code. Every test that passed on the baseline and failed on the candidate in the full runs must be in the suite: here, the shipping test. Every test traced to an impacted requirement must be selected or left out with a reason. The answer also lists the impacted requirements that have no test at all: REQ-002 has none.
+Two rules are enforced by code. Every test that passed on the baseline and failed on the candidate in the full runs must be in the suite: here, the shipping test and the second-coupon test. Every test traced to an impacted requirement must be selected or left out with a reason. The answer also lists the impacted requirements that have no test at all: REQ-002 has none.
 
 ## 4. Design and implement a test for the gap
 
@@ -85,7 +85,9 @@ The agent writes the test code in `.retro/tests/`, after asking you for permissi
 /run --on both
 ```
 
-The suite runs on `v1.0`, then on `v1.1`. Every test that does not pass at the first attempt is run twice more, so that a flaky test can be told apart from a real failure. Results come only from the JUnit XML that pytest writes: the model has no tool that sets a result.
+The agent asks for permission once for each version. The suite runs on `v1.0`, then on `v1.1`. Every test that does not pass at the first attempt is run twice more, so that a flaky test can be told apart from a real failure. Results come only from the JUnit XML that pytest writes: the model has no tool that sets a result.
+
+On the baseline, the four tests added in `v1.1` do not exist yet: their executions are `blocked`, with the reason that the test command did not report them. That is expected, and they count only on the candidate.
 
 Expect, on the candidate, four failures among the tests of the project. Your new REQ-002 test passes on both versions.
 
@@ -112,7 +114,7 @@ The agent loads `failure-triage`, reads the evidence of each failure (the JUnit 
 
 Each classification is checked against the evidence. Had the agent classified the shipping failure as an expected change, the `memory` server would have refused it, because REQ-005 has no documented change for this version. You can try it: ask the agent to reclassify that failure as `expected_change`. The agent cannot excuse a regression by saying so.
 
-For the regression, the agent registers a defect, DEF-001, with a severity, the steps to reproduce and the probable cause. `/defects` lists it.
+For the regression, the agent registers a defect, DEF-001, with a title, a severity and the steps to reproduce. `/defects` lists it.
 
 ## 7. Read the decision and the report
 
@@ -120,7 +122,7 @@ For the regression, the agent registers a defect, DEF-001, with a severity, the 
 /report completion
 ```
 
-Code computes every metric, the state of each exit criterion and the release decision. The agent writes only the narrative sections, from that data, and the report is rendered in `.retro/reports/` as Markdown, and as PDF when Pango is installed.
+Code computes every metric, the state of each exit criterion and the release decision. The agent writes only the narrative sections, from that data, and the report is rendered in `.retro/reports/` as Markdown. For a PDF too, ask for `/report completion --format pdf`; it needs Pango.
 
 The decision is **`do_not_release`**:
 
@@ -145,6 +147,8 @@ retro --base v1.1 --candidate v1.2
 ```
 
 `/cycle` runs the same steps you ran by hand, in the same order, and checks the outcome of each one before the next. The shipping test now passes: it is `fixed`, and the run closes DEF-001, because every test linked to it passed. The decision is **`release_with_conditions`**: the tax rounding test still fails, but it already failed on the baseline.
+
+`v1.2` also deletes the obsolete second-coupon test, TC-014. The agent should leave it out of the suite, because it cannot run on `v1.2`. If it is selected anyway, its execution on the candidate is `blocked`, and since TC-014 is a high-priority test case, EC-02 makes the decision `do_not_release`. Read the selection before the run: the reasons of what was left out are part of it.
 
 ## What you learned
 

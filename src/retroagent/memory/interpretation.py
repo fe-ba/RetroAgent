@@ -7,8 +7,10 @@ to the change needs git: the caller gives it as ``change_applies(version)``, so 
 Two soft checks refuse a likely mistake, a ``regression`` in a requirement with a documented change and a
 ``pre_existing`` failure of a generated test, unless the call confirms it; the triage records ``confirmed``.
 
-A defect is closed only by the user (``close_defect``) or by a completed run against the candidate in which every
-linked test case passed (``close_defects_verified_by``, INV-14).
+A defect describes a fault of the product: an execution is linked to it only while its current triage is
+``regression`` or ``pre_existing`` (mcp-tools.md, ``memory.register_defect``). A defect is closed only by the user
+(``close_defect``) or by a completed run against the candidate in which every linked test case passed
+(``close_defects_verified_by``, INV-14).
 """
 
 import json
@@ -292,6 +294,23 @@ def triage_count(conn: sqlite3.Connection, execution_id: int) -> int:
 
 # Defects -------------------------------------------------------------------------------------------------------------
 
+PRODUCT_FAULTS = ("regression", "pre_existing")
+
+
+def _require_product_faults(conn: sqlite3.Connection, executions: list[sqlite3.Row]) -> None:
+    """Refuse, naming every one, the executions whose current triage is not ``regression`` or ``pre_existing``."""
+    missing = []
+    for execution in executions:
+        current = current_triage(conn, execution["id"])
+        if current is None or current["classification"] not in PRODUCT_FAULTS:
+            found = "not triaged" if current is None else current["classification"]
+            missing.append(f"execution {execution['id']} of {execution['test_case_id']} ({found})")
+    if missing:
+        raise InvariantViolation(
+            "invalid_state: a defect describes a fault of the product, so every execution needs a current triage"
+            f" regression or pre_existing: {', '.join(missing)}; triage each one first"
+        )
+
 
 def add_defect(
     conn: sqlite3.Connection,
@@ -301,12 +320,14 @@ def add_defect(
     execution_ids: list[int],
     steps: list | None = None,
 ) -> str:
-    """Register an open defect linked to failed executions. The first one gives run, expected and actual."""
+    """Register an open defect linked to failed executions, each with a current triage ``regression`` or
+    ``pre_existing``. The first one gives run, expected and actual."""
     if not execution_ids:
         raise InvariantViolation("invalid_argument: a defect is linked to at least one execution")
     _unique(execution_ids)
     with transaction(conn):
         executions = [_failed_execution(conn, execution_id) for execution_id in execution_ids]
+        _require_product_faults(conn, executions)
         first = executions[0]
         expected = conn.execute(
             "SELECT expected_result FROM test_case WHERE id = ?", (first["test_case_id"],)
@@ -347,19 +368,23 @@ def _open_defect(conn: sqlite3.Connection, defect_id: str) -> sqlite3.Row:
 
 
 def link_executions(conn: sqlite3.Connection, defect_id: str, execution_ids: list[int]) -> None:
-    """Link more failed executions to an open defect, when the same failure appears in a later run."""
+    """Link more failed executions to an open defect, when the same failure appears in a later run. Each one needs a
+    current triage ``regression`` or ``pre_existing``."""
     if not execution_ids:
         raise InvariantViolation("invalid_argument: give at least one execution")
     _unique(execution_ids)
     with transaction(conn):
         _open_defect(conn, defect_id)
+        executions = []
         for execution_id in execution_ids:
-            _failed_execution(conn, execution_id)
+            executions.append(_failed_execution(conn, execution_id))
             linked = conn.execute(
                 "SELECT 1 FROM defect_execution WHERE defect_id = ? AND execution_id = ?", (defect_id, execution_id)
             ).fetchone()
             if linked is not None:
                 raise InvariantViolation(f"invalid_state: execution {execution_id} is already linked to {defect_id}")
+        _require_product_faults(conn, executions)
+        for execution_id in execution_ids:
             conn.execute(
                 "INSERT INTO defect_execution (defect_id, execution_id) VALUES (?, ?)", (defect_id, execution_id)
             )

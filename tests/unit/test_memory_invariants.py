@@ -289,6 +289,8 @@ def test_defect_actual_is_the_first_line_or_the_result_without_a_message(conn, b
         result="error",
         attempts=[{"result": "error"}],
     )
+    for execution_id in (with_message, no_message):  # a defect needs a product fault
+        triage(conn, execution_id, "regression")
     first = interpretation.add_defect(conn, title="a", severity="low", execution_ids=[with_message])
     second = interpretation.add_defect(conn, title="b", severity="low", execution_ids=[no_message])
     assert interpretation.get_defect(conn, first)["actual"] == "failed line 1"
@@ -297,6 +299,7 @@ def test_defect_actual_is_the_first_line_or_the_result_without_a_message(conn, b
 
 def test_inv_12_defect_closing_fields(conn, build):
     _, _, execution_id = build.failed_execution()
+    triage(conn, execution_id, "regression")  # a defect needs a product fault
     open_defect = interpretation.add_defect(conn, title="d", severity="high", execution_ids=[execution_id])
     row = interpretation.get_defect(conn, open_defect)
     assert row["status"] == "open" and row["closed_at"] is None and row["closed_by"] is None

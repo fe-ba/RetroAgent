@@ -270,9 +270,70 @@ def test_a_second_triage_is_kept_as_history_and_becomes_the_current_one(shop):
 # Defects
 
 
-def test_register_defect_takes_expected_and_actual_from_the_first_execution(shop):
+def product_faults(shop) -> tuple[int, int]:
+    """S1 triaged ``regression`` and S4 ``pre_existing``, as the oracle classifies them: a defect needs a product
+    fault (mcp-tools.md, ``memory.register_defect``)."""
     project, client = shop
     s1, s4 = project.scenario.executions[S1], project.scenario.executions[S4]
+    triage(client, s1, "regression")
+    triage(client, s4, "pre_existing")
+    return s1, s4
+
+
+def not_a_product_fault(*named: str) -> str:
+    return (
+        "a defect describes a fault of the product, so every execution needs a current triage regression or"
+        f" pre_existing: {', '.join(named)}; triage each one first"
+    )
+
+
+def test_register_defect_needs_a_triage_regression_or_pre_existing_of_every_execution(shop):
+    project, client = shop
+    s1, s2, s3, s4 = (project.scenario.executions[s] for s in (S1, S2, S3, S4))
+
+    def register(*execution_ids):
+        arguments = {"title": "t", "severity": "high", "execution_ids": list(execution_ids), "steps": []}
+        return lambda: client.call("memory", "register_defect", arguments)
+
+    assert refused(shop, register(s1)) == not_a_product_fault(f"execution {s1} of TC-020 (not triaged)")
+    triage(client, s3, "test_defect")
+    assert refused(shop, register(s3)) == not_a_product_fault(f"execution {s3} of TC-011 (test_defect)")
+    triage(client, s2, "expected_change", "REQ-004 has Changed: v1.1.")
+    assert refused(shop, register(s2)) == not_a_product_fault(f"execution {s2} of TC-014 (expected_change)")
+    triage(client, s1, "regression")
+    assert refused(shop, register(s1, s2, s3)) == not_a_product_fault(
+        f"execution {s2} of TC-014 (expected_change)", f"execution {s3} of TC-011 (test_defect)"
+    )
+    assert register(s1)() == {"defect_id": "DEF-001"}
+    triage(client, s4, "pre_existing")
+    assert register(s4)() == {"defect_id": "DEF-002"}
+
+
+def test_link_defect_needs_a_triage_regression_or_pre_existing_of_every_execution(shop):
+    project, client = shop
+    s1, _ = product_faults(shop)
+    client.call("memory", "register_defect", {"title": "t", "severity": "high", "execution_ids": [s1], "steps": []})
+    run = project.scenario.full_candidate_run  # RUN-0002, against v1.1
+    shipping, coupon, tax = (execution_of(project, run, s) for s in (S1, S2, S4))
+
+    def link(*execution_ids):
+        arguments = {"defect_id": "DEF-001", "execution_ids": list(execution_ids)}
+        return lambda: client.call("memory", "link_defect", arguments)
+
+    assert refused(shop, link(shipping)) == not_a_product_fault(f"execution {shipping} of TC-020 (not triaged)")
+    triage(client, shipping, "test_defect")
+    assert refused(shop, link(shipping)) == not_a_product_fault(f"execution {shipping} of TC-020 (test_defect)")
+    triage(client, coupon, "expected_change", "REQ-004 has Changed: v1.1.")
+    assert refused(shop, link(coupon)) == not_a_product_fault(f"execution {coupon} of TC-014 (expected_change)")
+    triage(client, shipping, "regression", "Previously test_defect; it passed against the baseline.", replace=True)
+    assert link(shipping)() == {"defect_id": "DEF-001", "execution_ids": [shipping, s1]}
+    triage(client, tax, "pre_existing")
+    assert link(tax)() == {"defect_id": "DEF-001", "execution_ids": [shipping, tax, s1]}
+
+
+def test_register_defect_takes_expected_and_actual_from_the_first_execution(shop):
+    _, client = shop
+    s1, s4 = product_faults(shop)
     arguments = {"title": "Shipping is not charged", "severity": "high", "execution_ids": [s1, s4],
                  "steps": ["Add products for 100.00", "Apply a 10% coupon", "Read the total"]}  # fmt: skip
     assert client.call("memory", "register_defect", arguments) == {"defect_id": "DEF-001"}
@@ -314,8 +375,9 @@ def test_register_defect_errors(shop):
 
 def test_link_defect_adds_executions_of_a_later_failure(shop):
     project, client = shop
-    s1 = project.scenario.executions[S1]
+    s1, s4 = product_faults(shop)
     earlier = execution_of(project, project.scenario.full_candidate_run, S1)  # RUN-0002, the same failure
+    triage(client, earlier, "regression")
     client.call("memory", "register_defect", {"title": "t", "severity": "high", "execution_ids": [s1], "steps": []})
     linked = client.call("memory", "link_defect", {"defect_id": "DEF-001", "execution_ids": [earlier]})
     assert linked == {"defect_id": "DEF-001", "execution_ids": [earlier, s1]}
@@ -332,7 +394,6 @@ def test_link_defect_adds_executions_of_a_later_failure(shop):
     ):
         assert error_of(lambda: client.call("memory", "link_defect", arguments)).code == code, arguments  # noqa: B023
     client.call("memory", "close_defect", {"defect_id": "DEF-001", "reason": "obsolete"})
-    s4 = project.scenario.executions[S4]
     message = refused(
         shop, lambda: client.call("memory", "link_defect", {"defect_id": "DEF-001", "execution_ids": [s4]})
     )
@@ -340,8 +401,8 @@ def test_link_defect_adds_executions_of_a_later_failure(shop):
 
 
 def test_close_defect_records_the_user_and_the_reason(shop):
-    project, client = shop
-    s1 = project.scenario.executions[S1]
+    _, client = shop
+    s1, _ = product_faults(shop)
     client.call("memory", "register_defect", {"title": "t", "severity": "high", "execution_ids": [s1], "steps": []})
     closed = client.call("memory", "close_defect", {"defect_id": "DEF-001", "reason": "fixed outside the scope"})
     assert closed == {"defect_id": "DEF-001", "status": "closed", "closed_by": "user"}
@@ -358,8 +419,8 @@ def test_close_defect_records_the_user_and_the_reason(shop):
 
 
 def test_get_defects_filters_by_status(shop):
-    project, client = shop
-    s1, s4 = project.scenario.executions[S1], project.scenario.executions[S4]
+    _, client = shop
+    s1, s4 = product_faults(shop)
     for execution_id in (s1, s4):
         arguments = {"title": "t", "severity": "low", "execution_ids": [execution_id], "steps": []}
         client.call("memory", "register_defect", arguments)

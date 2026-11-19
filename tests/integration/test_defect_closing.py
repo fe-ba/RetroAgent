@@ -26,9 +26,16 @@ def test_a_candidate_run_closes_a_defect_whose_test_cases_passed_and_keeps_the_o
 ):
     with project_copy(tmp_path_factory, shop_after_both_runs.path, pip_cache) as path:
         conn = connect(path)
-        try:  # as memory.register_defect stores them, from the failures of RUN-0002 against v1.1
+        try:  # as memory.save_triage and memory.register_defect store them, from the failures of RUN-0002 (v1.1)
             shipping = failed_in(conn, "RUN-0002", SHIPPING)
             tax = failed_in(conn, "RUN-0002", TAX)
+            commits = {row["id"]: row["commit"] for row in conn.execute('SELECT id, "commit" FROM run')}
+            versions = {"base_commit": commits["RUN-0001"], "candidate_commit": commits["RUN-0002"]}
+            for execution_id, classification in ((shipping, "regression"), (tax, "pre_existing")):
+                interpretation.add_triage(
+                    conn, execution_id=execution_id, classification=classification, justification="x",
+                    triaged_by="none", **versions,
+                )  # fmt: skip
             fixed = interpretation.add_defect(conn, title="Shipping", severity="high", execution_ids=[shipping])
             not_fixed = interpretation.add_defect(conn, title="Totals", severity="high", execution_ids=[shipping, tax])
         finally:

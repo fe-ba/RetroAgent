@@ -8,7 +8,17 @@ from retroagent.memory import execution, interpretation
 from retroagent.memory.errors import InvariantViolation
 
 
+def regression(conn, *execution_ids):
+    """Triage each untriaged execution as ``regression``: a defect needs a product fault (mcp-tools.md)."""
+    for execution_id in dict.fromkeys(execution_ids):
+        if interpretation.current_triage(conn, execution_id) is None:
+            interpretation.add_triage(
+                conn, execution_id=execution_id, classification="regression", justification="x", triaged_by="m"
+            )
+
+
 def defect(conn, *execution_ids, severity="high"):
+    regression(conn, *execution_ids)
     return interpretation.add_defect(conn, title="wrong total", severity=severity, execution_ids=list(execution_ids))
 
 
@@ -23,6 +33,7 @@ def completed(build, role="candidate", **results):
 
 def test_a_defect_needs_distinct_executions(conn, build):
     _, _, failed = build.failed_execution()
+    regression(conn, failed)
     before = count_rows(conn)
     with pytest.raises(InvariantViolation, match="invalid_argument: execution .* is listed twice"):
         defect(conn, failed, failed)
@@ -35,6 +46,7 @@ def test_link_more_executions_to_an_open_defect(conn, build):
     run_id, case, failed = build.failed_execution()
     defect_id = defect(conn, failed)
     later = build.execute(build.run(), case, "error")
+    regression(conn, later)
     passed = build.execute(run_id, build.test_case(), "passed")
     before = count_rows(conn)
     with pytest.raises(InvariantViolation, match=f"invalid_state: execution {failed} is already linked to {defect_id}"):
@@ -54,6 +66,38 @@ def test_link_more_executions_to_an_open_defect(conn, build):
     interpretation.close_defect(conn, defect_id, closed_by="user", close_reason="obsolete")
     with pytest.raises(InvariantViolation, match=f"invalid_state: {defect_id} is already closed"):
         interpretation.link_executions(conn, defect_id, [build.execute(build.run(), case, "failed")])
+
+
+def test_a_defect_needs_every_execution_triaged_as_a_product_fault_and_names_each_one(conn, build):
+    run_id, case, faulty = build.failed_execution()
+    wrong_test = build.execute(run_id, build.test_case(), "failed")
+    untriaged = build.execute(run_id, build.test_case(), "error")
+    regression(conn, faulty)
+    interpretation.add_triage(
+        conn, execution_id=wrong_test, classification="test_defect", justification="x", triaged_by="m"
+    )
+    names = {
+        execution_id: conn.execute("SELECT test_case_id FROM test_execution WHERE id = ?", (execution_id,)).fetchone()[
+            0
+        ]
+        for execution_id in (wrong_test, untriaged)
+    }
+    message = (
+        "invalid_state: a defect describes a fault of the product, so every execution needs a current triage"
+        f" regression or pre_existing: execution {wrong_test} of {names[wrong_test]} (test_defect), execution"
+        f" {untriaged} of {names[untriaged]} (not triaged); triage each one first"
+    )
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        interpretation.add_defect(conn, title="t", severity="high", execution_ids=[faulty, wrong_test, untriaged])
+    assert str(error.value) == message
+    assert count_rows(conn) == before
+    defect_id = interpretation.add_defect(conn, title="t", severity="high", execution_ids=[faulty])
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        interpretation.link_executions(conn, defect_id, [wrong_test, untriaged])
+    assert str(error.value) == message
+    assert count_rows(conn) == before
 
 
 def test_the_user_closes_an_open_defect_once(conn, build):

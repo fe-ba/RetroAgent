@@ -419,17 +419,51 @@ def full_run(conn, build, role, results: dict, status="completed", scope="all"):
     return run_id
 
 
-def test_a_test_case_whose_verdict_changed_between_the_full_runs_must_be_decided(conn, build, impacted):
+@pytest.mark.parametrize("candidate_result", ["failed", "error"])
+def test_a_test_case_that_passed_on_the_baseline_and_fails_on_the_candidate_must_be_selected(
+    conn, build, impacted, candidate_result
+):
+    # TC-020 of the reference scenario: passed in RUN-0001 (full, base), failed in RUN-0002 (full, candidate).
     case = build.test_case(requirement_ids=["REQ-001"])  # REQ-001 is not impacted
     base = full_run(conn, build, "base", {case: "passed"})
-    candidate = full_run(conn, build, "candidate", {case: "failed"})
+    candidate = full_run(conn, build, "candidate", {case: candidate_result})
+    runs = f"{case} (passed in {base} on the baseline, {candidate_result} in {candidate} on the candidate)"
     assert refused(conn, build, [], []) == (
         "invalid_argument: test cases whose verdict differs between the latest full runs of the baseline and the"
-        f" candidate are in neither items nor left_out: {case} (passed in {base} on the baseline, failed in"
-        f" {candidate} on the candidate); select each one or add it to left_out with a reason"
+        f" candidate are in neither items nor left_out: {runs}; select each one or add it to left_out with a reason"
     )
-    suite_id = save(conn, build, [], left(case, reason="Not selected."))
-    assert [tuple(row) for row in design.suite_left_out(conn, suite_id)] == [(case, "Not selected.")]
+    assert refused(conn, build, [], left(case, reason="Not impacted.")) == (
+        "invalid_argument: test cases that passed in the latest full run of the baseline and failed or had an error"
+        f" in the latest full run of the candidate cannot be left out: {runs}; select each one"
+    )
+    suite_id = save(conn, build, selected(case), [])
+    assert [row["test_case_id"] for row in design.suite_items(conn, suite_id)] == [case]
+
+
+def test_a_test_case_that_failed_on_the_baseline_and_passes_on_the_candidate_may_be_left_out(conn, build, impacted):
+    fixed, errored = build.test_case(requirement_ids=["REQ-001"]), build.test_case(requirement_ids=["REQ-001"])
+    full_run(conn, build, "base", {fixed: "failed", errored: "error"})
+    full_run(conn, build, "candidate", {fixed: "passed", errored: "passed"})
+    suite_id = save(conn, build, [], left(fixed, errored, reason="Fixed by the change."))
+    assert [tuple(row) for row in design.suite_left_out(conn, suite_id)] == [
+        (fixed, "Fixed by the change."),
+        (errored, "Fixed by the change."),
+    ]
+
+
+def test_every_test_case_left_out_after_failing_on_the_candidate_is_named_with_the_other_problems(
+    conn, build, impacted
+):
+    traced = build.test_case(requirement_ids=["REQ-005"])
+    first, second = build.test_case(requirement_ids=["REQ-001"]), build.test_case(requirement_ids=["REQ-001"])
+    base = full_run(conn, build, "base", {first: "passed", second: "passed"})
+    candidate = full_run(conn, build, "candidate", {first: "failed", second: "error"})
+    message = refused(conn, build, [], left(first, second))
+    assert f"neither items nor left_out: {traced} (REQ-005);" in message
+    assert (
+        f"cannot be left out: {first} (passed in {base} on the baseline, failed in {candidate} on the candidate),"
+        f" {second} (passed in {base} on the baseline, error in {candidate} on the candidate); select each one"
+    ) in message
 
 
 def test_a_test_case_that_is_traced_and_changed_is_named_with_both_evidences(conn, build, impacted):

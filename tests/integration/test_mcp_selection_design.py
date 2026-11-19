@@ -103,9 +103,18 @@ def to_decide(shop, requirement_ids=IMPACTED) -> list[str]:
     ]
 
 
+# Passed in RUN-0001 against v1.0 and failed in RUN-0002 against v1.1 (ORACLE.md, S2 and S1): never left out.
+BROKEN = (SECOND_COUPON, SHIPPING)
+
+
 def save_arguments(shop, items, reason="Not selected.") -> dict:
-    """The arguments of a valid save_suite: the items, and every other test case to decide left out."""
+    """The arguments of a valid save_suite: the items, the test cases of ``BROKEN`` that they lack after them, and
+    every other test case to decide left out."""
     chosen = {i["test_case_id"] for i in items}
+    after = max((i["position"] for i in items), default=0)
+    missing = [tc(shop, name) for name in BROKEN if tc(shop, name) not in chosen]
+    items = [*items, *(item(t, after + n, "Passed on v1.0, fails on v1.1.") for n, t in enumerate(missing, 1))]
+    chosen.update(missing)
     left_out = [{"test_case_id": t, "reason": reason} for t in to_decide(shop) if t not in chosen]
     return {"analysis_id": shop.analysis_id, "items": items, "left_out": left_out}
 
@@ -152,10 +161,22 @@ def test_save_suite_becomes_the_current_suite_and_get_suite_returns_it_in_order(
     assert call(shop, "get_suite", {"suite_id": saved["suite_id"]}) == current
 
 
-def test_an_empty_suite_is_valid_and_leaves_every_impacted_requirement_uncovered(shop):
-    saved = call(shop, "save_suite", save_arguments(shop, []))
-    assert saved["test_cases"] == 0 and call(shop, "get_suite")["items"] == []
-    assert saved["uncovered_requirements"] == [f"REQ-00{n}" for n in range(2, 9)]
+def test_after_both_full_runs_the_smallest_suite_holds_the_two_test_cases_that_broke(shop):
+    # An empty suite is valid without full runs on both versions (tests/unit/test_memory_design.py); here TC-014 and
+    # TC-020 passed in RUN-0001 and failed in RUN-0002, so they are never left out.
+    empty = save_arguments(shop, [])
+    broken = [i["test_case_id"] for i in empty["items"]]
+    assert broken == [tc(shop, SECOND_COUPON), tc(shop, SHIPPING)]
+    left_out = [*empty["left_out"], *({"test_case_id": t, "reason": "Not impacted."} for t in broken)]
+    before = dump(shop.path)
+    error = failure(shop, "save_suite", {**empty, "items": [], "left_out": left_out})
+    runs = "(passed in RUN-0001 on the baseline, failed in RUN-0002 on the candidate)"
+    assert error.code == "invalid_argument"
+    assert f"cannot be left out: {broken[0]} {runs}, {broken[1]} {runs}; select each one" in error.message
+    assert dump(shop.path) == before
+    saved = call(shop, "save_suite", empty)
+    assert saved["test_cases"] == 2 and [i["test_case_id"] for i in call(shop, "get_suite")["items"]] == broken
+    assert saved["uncovered_requirements"] == ["REQ-002", "REQ-003", "REQ-006", "REQ-007", "REQ-008"]
 
 
 def test_uncovered_requirements_follow_the_traces_and_a_designed_test_case_removes_one(shop):
@@ -197,6 +218,7 @@ def test_save_suite_refuses_the_test_cases_of_req_004_left_in_neither_list_and_n
     req_004 = to_decide(shop, ["REQ-004"])
     assert req_004 == sorted(t for name, t in shop.by_name.items() if name.startswith("test_req_004_"))  # by name
     arguments = save_arguments(shop, [])
+    arguments["items"] = [i for i in arguments["items"] if i["test_case_id"] not in req_004]  # TC-014 too
     arguments["left_out"] = [entry for entry in arguments["left_out"] if entry["test_case_id"] not in req_004]
     before = dump(shop.path)
     error = failure(shop, "save_suite", arguments)
@@ -270,8 +292,9 @@ def test_get_suite_returns_the_test_cases_left_out_with_their_reasons(shop):
     current = call(shop, "get_suite")
     assert current["suite_id"] == saved["suite_id"]
     assert current["left_out"] == sorted(arguments["left_out"], key=lambda entry: entry["test_case_id"])
-    assert [i["test_case_id"] for i in current["items"]] == req_004
-    assert current["uncovered_requirements"] == [r for r in IMPACTED if r != "REQ-004"]  # left out covers nothing
+    assert [i["test_case_id"] for i in current["items"]] == [*req_004, tc(shop, SHIPPING)]
+    assert current["uncovered_requirements"] == [r for r in IMPACTED if r not in ("REQ-004", "REQ-005")]  # left out
+    # covers nothing
 
 
 def test_a_retired_test_case_cannot_be_selected(shop):
@@ -294,7 +317,8 @@ def test_get_suite_errors(shop):
 
 
 def test_design_test_case_stores_every_field_and_adds_it_to_the_end_of_the_current_suite(shop):
-    suite = call(shop, "save_suite", save_arguments(shop, [item(tc(shop, SHIPPING), 3)]))
+    items = [item(tc(shop, SECOND_COUPON), 1), item(tc(shop, SHIPPING), 3)]  # the last position is 3
+    suite = call(shop, "save_suite", save_arguments(shop, items))
     created = call(shop, "design_test_case", {**FIELDS, "selection_reason": "Gap of REQ-002: no test."})
     assert created == {"test_case_id": created["test_case_id"], "suite_id": suite["suite_id"], "position": 4}
     (stored,) = call(shop, "get_test_cases", {"ids": [created["test_case_id"]]})["test_cases"]

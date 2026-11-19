@@ -146,10 +146,11 @@ def test_what_is_recorded_between_prepare_and_render_does_not_change_the_report(
         "SELECT id FROM test_execution WHERE run_id = ? AND test_case_id = ?",
         (scenario.evaluated_run, scenario.tc(S4)),
     ).fetchone()["id"]
+    # A defect for S4 while it is pre_existing (a defect needs a product fault), then S4 triaged again.
+    interpretation.add_defect(conn, title="A defect found meanwhile", severity="critical", execution_ids=[s4])
     interpretation.add_triage(
         conn, execution_id=s4, classification="environment", justification="x", triaged_by="m", replace=True
     )
-    interpretation.add_defect(conn, title="A defect found meanwhile", severity="critical", execution_ids=[s4])
     server.render_report(session, prepared["report_id"], SECTIONS)
     text = (session.project_dir / prepared["path"] / "report.md").read_text(encoding="utf-8")
     assert "A defect found meanwhile" not in text and "DEF-002" not in text

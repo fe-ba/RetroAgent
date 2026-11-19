@@ -104,6 +104,9 @@ def _failure_with_a_defect(path, session_id) -> None:
         )  # fmt: skip
         execution.finish_run(conn, run_id, status="completed", exit_code=1)
         assert (test_case, failed) == ("TC-002", 1)
+        interpretation.add_triage(  # a defect needs a product fault
+            conn, execution_id=failed, classification="regression", justification="x", triaged_by="m"
+        )
         assert interpretation.add_defect(conn, title="d", severity="low", execution_ids=[failed]) == "DEF-001"
     finally:
         conn.close()

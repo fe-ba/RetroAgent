@@ -448,7 +448,9 @@ def save_suite(
     Unknown references fail first (INV-13). Then every problem is refused at once as ``invalid_argument``, naming each
     test case: repeated test cases or positions, retired items (INV-16), a test case in both lists, and in neither a
     test case of an impacted requirement or one whose verdict differs between the latest full runs on the commits of
-    the analysis (mcp-tools.md, ``memory.save_suite``). Any other test case may be left out.
+    the analysis (mcp-tools.md, ``memory.save_suite``). A test case that passed in the baseline full run and failed or
+    had an error in the candidate full run has already shown a difference: in left_out it is refused. Any other test
+    case may be left out.
     """
     with transaction(conn):
         require_exists(conn, "analysis", "id", analysis_id, "analysis")
@@ -488,19 +490,30 @@ def save_suite(
                 "test cases traced to an impacted requirement are in neither items nor left_out:"
                 f" {', '.join(undecided)}; select each one or add it to left_out with a reason"
             )
-        changed = [
-            f"{test_case_id} ({base_result} in {base_run} on the baseline, {candidate_result} in {candidate_run} on"
-            " the candidate)"
-            for test_case_id, (base_run, base_result, candidate_run, candidate_result) in verdict_changes(
-                conn, analysis["base_commit"], analysis["candidate_commit"]
-            ).items()
-            if test_case_id not in decided
-        ]
-        if changed:
+        changes = verdict_changes(conn, analysis["base_commit"], analysis["candidate_commit"])
+
+        def named(test_case_id: str) -> str:
+            base_run, base_result, candidate_run, candidate_result = changes[test_case_id]
+            return (
+                f"{test_case_id} ({base_result} in {base_run} on the baseline, {candidate_result} in {candidate_run}"
+                " on the candidate)"
+            )
+
+        if changed := [named(test_case_id) for test_case_id in changes if test_case_id not in decided]:
             problems.append(
                 "test cases whose verdict differs between the latest full runs of the baseline and the candidate are"
                 f" in neither items nor left_out: {', '.join(changed)}; select each one or add it to left_out with a"
                 " reason"
+            )
+        broken = [
+            named(test_case_id)
+            for test_case_id, (_, base_result, _, _) in changes.items()
+            if base_result == "passed" and test_case_id in left_out_ids
+        ]
+        if broken:
+            problems.append(
+                "test cases that passed in the latest full run of the baseline and failed or had an error in the"
+                f" latest full run of the candidate cannot be left out: {', '.join(broken)}; select each one"
             )
         if problems:
             raise InvariantViolation("invalid_argument: " + "; ".join(problems))

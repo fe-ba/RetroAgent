@@ -49,8 +49,11 @@ def console() -> Console:
 
 def test_the_user_lists_and_closes_defects_with_slash_defects(reference_project):
     conn = connect(reference_project.path)
-    try:  # as memory.register_defect stores it
+    try:  # as memory.save_triage and memory.register_defect store them
         execution_id = reference_project.scenario.executions[S1]
+        interpretation.add_triage(
+            conn, execution_id=execution_id, classification="regression", justification="x", triaged_by="none"
+        )
         interpretation.add_defect(conn, title="Shipping is not charged", severity="high", execution_ids=[execution_id])
     finally:
         conn.close()

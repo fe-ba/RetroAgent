@@ -653,8 +653,8 @@ TOOLS = [
                 },
                 "left_out": {
                     "type": "array",
-                    "description": "Test cases not selected, with the reason. Required for each one of an impacted "
-                    "requirement or whose full-run verdict changed. May be empty.",
+                    "description": "Not selected, with the reason; each of an impacted requirement or changed full-run "
+                    "verdict. Never one that passed on base and failed on candidate.",
                     "items": schema(
                         {
                             "test_case_id": {**TEXT, "description": "Test case ID, e.g. TC-013."},
@@ -869,8 +869,8 @@ TOOLS = [
     ),
     Tool(
         "register_defect",
-        "Register an open defect for failed executions with the same cause, typically a regression. Expected and "
-        "actual results are taken from the first execution. Returns the DEF ID.",
+        "Register an open defect for failed executions with the same cause, each already triaged as regression or "
+        "pre_existing. Expected and actual results are taken from the first execution. Returns the DEF ID.",
         schema(
             {
                 "title": {**TEXT, "description": "Short description of the failure."},
@@ -901,7 +901,7 @@ TOOLS = [
                     "type": "array",
                     "minItems": 1,
                     "items": {"type": "integer"},
-                    "description": "Failed or error executions.",
+                    "description": "Failed or error executions, each triaged as regression or pre_existing.",
                 },
             },
             ("defect_id", "execution_ids"),

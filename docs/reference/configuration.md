@@ -65,7 +65,7 @@ Defined only at user level, under `models.<profile>`.
 | `api_key_env` | string | none | Name of the environment variable that holds the API key. The key itself is never stored in configuration. Required for hosted providers, not accepted for `ollama`, optional for `openai_compatible`. |
 | `tool_calling` | enum | `auto` | `auto` detects support, `native` forces tool calling, `json` forces the JSON fallback mode. |
 | `temperature` | number | `0` | Sampling temperature. Low values favor reproducible behavior. |
-| `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). |
+| `timeout` | integer | `120` | Seconds before a model call is abandoned and retried (`llm-providers.md`). A local model on a CPU writes about 5 tokens per second, so a long answer takes several minutes: use `900` or more for it. A retry after a timeout starts the answer again from the beginning. |
 | `requests_per_minute` | integer | none | Largest number of model calls per minute. The runtime waits between calls to stay under it (`llm-providers.md`). For services with a rate limit. |
 | `max_output_tokens` | integer | `4096` | Limit of one model response, thinking included. Kept free in the context window as the output reserve (`context-loading.md`). |
 | `thinking` | enum | `default` | For reasoning models: `default` leaves it to the provider, `off` asks for answers without thinking, `on` asks for it. Ignored by providers that do not accept it. YAML reads an unquoted `off` or `on` as a boolean; both forms are accepted. |

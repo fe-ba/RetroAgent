@@ -142,7 +142,7 @@ description: One paragraph that says what the skill does and when to use it.
 - The skills index lists every available skill as `- <name>: <description>`, sorted by name.
 - `runtime.load_skill` returns the body of `SKILL.md`, without its frontmatter. The result stays in the conversation until another skill is loaded or the conversation is emptied.
 - One skill is loaded at a time. Loading another one replaces the body of the previous one with a note; it can be loaded again.
-- Loading a skill that is already in the conversation returns a short note instead of the full body again.
+- Loading a skill that is already in the conversation returns a short note instead of the full body again. A second call with the same name in the same turn, with nothing recorded since, is answered by the rule Repeated calls of runtime.md instead, like any other read tool.
 - `/skills` lists every skill with its level and which one is loaded.
 
 ## Tool definitions

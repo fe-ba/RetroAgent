@@ -210,7 +210,7 @@ Creates a new suite for an analysis. It becomes the current suite.
 | `items` | list | yes | Each: `test_case_id`, `position`, `selection_reason`. May be empty when no existing test case relates to the change; test cases designed later are added to it. |
 | `left_out` | list | yes | Test cases not selected, with the reason. Required for every test case traced to an impacted requirement; others may be listed. Each: `test_case_id`, `reason`. May be empty. |
 
-Every active, implemented test case traced to an impacted requirement of the analysis, by a design or a name link, must be decided, and so must every active test case whose verdict differs between the latest completed full runs on the baseline commit and on the candidate commit, when both exist: passed in one of them and failed or error in the other. Each one appears in `items` or in `left_out`, never in both. The decision is checked by code, so that a test case of an impacted requirement is never left out in silence. The reasons of `left_out` are stored with the suite.
+Every active, implemented test case traced to an impacted requirement of the analysis, by a design or a name link, must be decided, and so must every active test case whose verdict differs between the latest completed full runs on the baseline commit and on the candidate commit, when both exist: passed in one of them and failed or error in the other. Each one appears in `items` or in `left_out`, never in both. A test case that passed in the baseline full run and failed or had an error in the candidate full run has already shown a difference between the versions: it must be in `items`, and in `left_out` it is refused. The decision is checked by code, so that a test case of an impacted requirement is never left out in silence. The reasons of `left_out` are stored with the suite.
 
 Returns the suite ID and `uncovered_requirements`: the impacted requirements of the analysis that no active test case of the suite is traced to, by a design or a name link. They are computed by code, so that a gap never depends on the model reading a trace correctly. `position` orders the presentation of the suite; the test framework decides the execution order. Errors: `not_found` for an unknown test case; `invalid_argument` for duplicated test cases or positions, for a retired test case, or when a test case traced to an impacted requirement is in neither list, naming every one.
 
@@ -352,6 +352,8 @@ Errors: `invalid_state` when the execution did not fail, is already triaged and 
 
 Returns the new `DEF` ID. The expected and actual results are taken by code from the first execution.
 
+A defect describes a fault of the product, so every execution must already have a current triage `regression` or `pre_existing`: triage first, then the defect. Errors: `invalid_state` naming each execution without such a triage.
+
 ### `memory.link_defect`
 
 Links more executions to an open defect, when the same failure appears in a later run.
@@ -361,7 +363,7 @@ Links more executions to an open defect, when the same failure appears in a late
 | `defect_id` | string | yes | An open defect. |
 | `execution_ids` | list of integers | yes | Failed or error executions; at least one. |
 
-Errors: `invalid_state` when the defect is closed or an execution is already linked to it.
+Errors: `invalid_state` when the defect is closed, an execution is already linked to it, or an execution has no current triage `regression` or `pre_existing`.
 
 ### `memory.close_defect`
 

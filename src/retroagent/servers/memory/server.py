@@ -87,6 +87,7 @@ def _unresolved_versions(context: Context, requirements) -> list[dict]:
 
 
 def get_requirements(context: Context, ids: list[str] | None = None) -> dict:
+    ids = ids or None  # an empty list filters nothing (mcp-tools.md, Empty filters)
     with context.connection() as conn:
         rows = stored.list_requirements(conn, ids)
         if ids is not None:
@@ -311,6 +312,7 @@ def get_test_cases(
     include_code: bool = False,
     include_retired: bool = False,
 ) -> dict:
+    ids = ids or None  # an empty list filters nothing (mcp-tools.md, Empty filters)
     with context.connection() as conn:
         if ids is not None:
             ids = list(dict.fromkeys(ids))

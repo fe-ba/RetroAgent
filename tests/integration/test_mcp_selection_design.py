@@ -480,6 +480,14 @@ def test_get_test_cases_filters(shop):
     assert "truncated" not in call(shop, "get_test_cases", {"ids": [tc(shop, SEARCH)]})
 
 
+def test_get_test_cases_with_empty_ids_filters_nothing(shop):
+    # mcp-tools.md, Empty filters: an empty list has the same effect as an absent one.
+    every = call(shop, "get_test_cases")["test_cases"]
+    assert every and call(shop, "get_test_cases", {"ids": []})["test_cases"] == every
+    implemented = call(shop, "get_test_cases", {"status": "implemented"})["test_cases"]
+    assert call(shop, "get_test_cases", {"ids": [], "status": "implemented"})["test_cases"] == implemented
+
+
 def test_get_test_cases_returns_the_code_of_generated_tests_within_the_result_limit(shop):
     with_code, without_file = designed(shop), designed(shop)
     conn = connect(shop.path)

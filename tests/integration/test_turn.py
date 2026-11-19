@@ -14,6 +14,7 @@ from retroagent.llm.provider import request_characters
 from retroagent.memory import sessions
 from retroagent.runtime import turn as turn_module
 from retroagent.runtime.turn import BRIEFLY, ModelCalled, Retried, ToolCalled, TurnError, run_turn
+from retroagent.servers.errors import ToolError
 
 
 def run(session, script, message="Go.", *, ask=None, listener=None, provider=None, **options):
@@ -127,7 +128,8 @@ def test_a_tool_outside_the_tool_set_of_the_step_is_denied_and_the_message_names
 
 def test_the_turn_stops_at_the_iteration_limit_after_running_the_calls_of_the_last_call(agent):
     with_config(agent, agent__max_iterations=3)
-    script = [calls(call("git__resolve_ref", {"ref": "v1.0"})) for _ in range(5)]
+    # Different arguments each time: an identical read would not be dispatched again (Repeated calls).
+    script = [calls(call("git__resolve_ref", {"ref": ref})) for ref in ("v1.0", "v1.1", "v1.2", "HEAD", "main")]
     result, provider = run(agent, script)
     assert result.limit_reached and "3 model calls" in result.text and "agent.max_iterations" in result.text
     assert len(provider.requests) == 3 and provider.remaining == 2
@@ -310,3 +312,166 @@ def test_a_turn_that_ends_with_a_runtime_error_still_says_what_it_recorded(agent
     with pytest.raises(TurnError) as raised:
         run(agent, [calls(set_versions), cut, cut])
     assert raised.value.recorded == (("runtime__set_versions", 1),)
+
+
+# Repeated calls (runtime.md, Turn) -----------------------------------------------------------------------------------
+
+
+def counted(agent, monkeypatch, fail_once: dict | None = None) -> list[tuple[str, str, dict]]:
+    """The calls dispatched to the MCP servers, in order. ``fail_once`` maps a tool name to the ``ToolError`` its
+    first dispatch raises instead of reaching the server."""
+    dispatched, real, failures = [], agent.client.call, dict(fail_once or {})
+
+    def call_and_count(server, tool, arguments=None, timeout=None):
+        dispatched.append((server, tool, dict(arguments or {})))
+        if (error := failures.pop(f"{server}__{tool}", None)) is not None:
+            raise error
+        return real(server, tool, arguments, timeout)
+
+    monkeypatch.setattr(agent.client, "call", call_and_count)
+    return dispatched
+
+
+def assert_blocked(agent, repeated, earlier) -> None:
+    error = error_of(tool_results(agent.conversation)[repeated.id])
+    assert error["code"] == "invalid_argument"
+    assert f"call {earlier.id}" in error["message"] and "change the arguments" in error["message"]
+
+
+def test_a_second_identical_read_is_not_dispatched_and_names_the_earlier_call(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    first, second = call("git__resolve_ref", {"ref": "v1.0"}), call("git__resolve_ref", {"ref": "v1.0"})
+    result, _ = run(agent, [calls(first), calls(second), answer("Resolved.")])
+    assert result.text == "Resolved." and len(dispatched) == 1
+    assert_blocked(agent, second, first)
+    rows = tool_rows(agent.conn, agent.id)
+    assert [r["outcome"] for r in rows] == ["ok", "error"] and rows[1]["error"].startswith("invalid_argument: ")
+
+
+def test_a_read_with_a_different_argument_is_dispatched(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    run(agent, [calls(call("git__resolve_ref", {"ref": "v1.0"})), calls(call("git__resolve_ref", {"ref": "v1.1"})),
+                answer()])  # fmt: skip
+    assert len(dispatched) == 2
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok"]
+
+
+def test_the_same_read_after_a_successful_write_is_dispatched(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    read = {"ref": "v1.0"}
+    write = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    run(agent, [calls(call("git__resolve_ref", read)), calls(write), calls(call("git__resolve_ref", read)), answer()])
+    assert [d[1] for d in dispatched] == ["resolve_ref", "resolve_ref"]
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok", "ok"]
+
+
+def test_the_same_read_after_a_failed_write_is_still_blocked(agent):
+    first, second = call("git__resolve_ref", {"ref": "v1.0"}), call("git__resolve_ref", {"ref": "v1.0"})
+    failed = call("runtime__set_versions", {"base": "v1.0", "candidate": "no-such-ref"})
+    run(agent, [calls(first), calls(failed), calls(second), answer()])
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "error", "error"]
+    assert_blocked(agent, second, first)
+
+
+def test_a_repeated_write_tool_is_dispatched(agent):
+    arguments = {"base": "v1.0", "candidate": "v1.1"}
+    run(agent, [calls(call("runtime__set_versions", arguments)), calls(call("runtime__set_versions", arguments)),
+                answer()])  # fmt: skip
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok"]
+
+
+def test_arguments_in_another_order_are_the_same_call(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    first = call("git__read_file", {"path": "src/shop/pricing.py", "version": "base"})
+    second = call("git__read_file", {"version": "base", "path": "src/shop/pricing.py"})
+    run(agent, [calls(first), calls(second), answer()])
+    assert len(dispatched) == 1
+    assert_blocked(agent, second, first)
+
+
+def test_an_empty_list_is_the_same_as_an_absent_one(agent, monkeypatch):
+    # The loop of the local model: get_test_cases with {"ids": []} again and again.
+    dispatched = counted(agent, monkeypatch)
+    first, second = call("memory__get_test_cases", {"ids": []}), call("memory__get_test_cases", {})
+    run(agent, [calls(first), calls(second), answer()])
+    assert len(dispatched) == 1
+    assert_blocked(agent, second, first)
+
+
+def test_a_runtime_read_tool_follows_the_same_rule(agent):
+    first = call("runtime__load_skill", {"name": "test-selection"})
+    second = call("runtime__load_skill", {"name": "test-selection"})
+    run(agent, [calls(first), calls(second), answer()])
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "error"]
+    assert_blocked(agent, second, first)
+
+
+def test_two_identical_reads_in_one_model_message_are_one_dispatch(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    first, second = call("git__resolve_ref", {"ref": "v1.0"}), call("git__resolve_ref", {"ref": "v1.0"})
+    run(agent, [calls(first, second), answer()])
+    assert len(dispatched) == 1
+    assert_blocked(agent, second, first)
+
+
+def test_a_repeat_after_not_found_is_blocked(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    first, second = call("git__resolve_ref", {"ref": "no-such-ref"}), call("git__resolve_ref", {"ref": "no-such-ref"})
+    run(agent, [calls(first), calls(second), answer()])
+    assert error_of(tool_results(agent.conversation)[first.id])["code"] == "not_found"
+    assert len(dispatched) == 1
+    assert_blocked(agent, second, first)
+
+
+def test_a_repeat_after_unavailable_is_dispatched(agent, monkeypatch):
+    stopped = ToolError("unavailable", "the server git did not answer in time")
+    dispatched = counted(agent, monkeypatch, fail_once={"git__resolve_ref": stopped})
+    first, second = call("git__resolve_ref", {"ref": "v1.0"}), call("git__resolve_ref", {"ref": "v1.0"})
+    run(agent, [calls(first), calls(second), answer()])
+    assert len(dispatched) == 2
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["error", "ok"]
+    assert error_of(tool_results(agent.conversation)[first.id])["code"] == "unavailable"
+
+
+def test_a_denied_read_is_denied_again_not_blocked(agent):
+    # get_report is a read tool, but not a tool of the step triage.
+    first, second = call("reports__get_report", {"report_id": "RPT-0001"}), call("reports__get_report",
+                                                                                 {"report_id": "RPT-0001"})  # fmt: skip
+    run(agent, [calls(first), calls(second), answer()], tool_set="triage")
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["denied", "denied"]
+
+
+def test_a_repeat_after_the_earlier_result_was_freed_is_dispatched(agent, monkeypatch):
+    path_args = {"path": "src/shop/pricing.py", "version": "base"}
+    result_characters = len(json.dumps(agent.client.call("git", "read_file", path_args), ensure_ascii=False))
+    # Ratio 1.0, as the honest FakeProvider reports. The conversation with that result fits in a variable space of
+    # 3/8 of its characters, and is above half of it: the forced freeing after a context window exceeded replaces it.
+    agent.calibration = budget.Calibration((1.0,))
+    variable = result_characters * 3 // 8
+    fixed = budget.fixed_characters(agent.system_context(), agent.definitions(), agent.state_message())
+    reserve = agent.budget.output_reserve
+    agent.budget = budget.Budget(window=reserve + budget.estimate(fixed, 1.0) + variable, output_reserve=reserve)
+    dispatched = counted(agent, monkeypatch)
+
+    first, small, again = (call("git__read_file", path_args), call("git__resolve_ref", {"ref": "v1.0"}),
+                           call("git__read_file", path_args))  # fmt: skip
+    script = [calls(first), calls(small), ContextWindowExceeded("too long"), calls(again), answer()]
+    _, provider = run(agent, script)
+
+    retried = {m.tool_call_id: m.content for m in provider.requests[3].messages if m.role == "tool"}
+    assert retried[first.id] == budget.result_note("git__read_file", first.id)
+    assert [d[1] for d in dispatched] == ["read_file", "resolve_ref", "read_file"]
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok", "ok"]
+
+
+def test_a_model_that_repeats_a_call_ends_with_its_own_answer_not_the_iteration_limit(agent, monkeypatch):
+    with_config(agent, agent__max_iterations=11)
+    dispatched = counted(agent, monkeypatch)
+    repeated = [call("memory__get_test_cases", {"ids": []}) for _ in range(10)]
+    result, provider = run(agent, [*(calls(c) for c in repeated), answer("No test cases yet.")])
+    assert result.text == "No test cases yet." and not result.limit_reached and provider.remaining == 0
+    assert len(dispatched) == 1
+    rows = tool_rows(agent.conn, agent.id)
+    assert [r["outcome"] for r in rows] == ["ok"] + ["error"] * 9
+    for later in repeated[1:]:
+        assert_blocked(agent, later, repeated[0])

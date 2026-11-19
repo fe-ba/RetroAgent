@@ -176,6 +176,12 @@ def test_get_requirements(shop):
     assert req_004["source_file"] == "docs/requirements.md"
 
 
+def test_get_requirements_with_empty_ids_filters_nothing(shop):
+    # mcp-tools.md, Empty filters: an empty list has the same effect as an absent one.
+    every = call(shop, "memory", "get_requirements")["requirements"]
+    assert len(every) == 8 and call(shop, "memory", "get_requirements", {"ids": []})["requirements"] == every
+
+
 def test_get_requirements_errors(shop):
     assert code(shop, "get_requirements", {"ids": ["REQ-004", "REQ-099"]}) == "not_found"
     assert code(shop, "get_requirements", {"ids": "REQ-004"}) == "invalid_argument"

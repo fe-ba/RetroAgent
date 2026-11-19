@@ -59,11 +59,21 @@ def test_a_skill_that_was_unloaded_can_be_loaded_again(agent):
 def test_loading_the_skill_that_is_already_loaded_returns_a_short_note(agent):
     first = call("runtime__load_skill", {"name": "failure-triage"})
     again = call("runtime__load_skill", {"name": "failure-triage"})
-    run(agent, [calls(first), calls(again), answer()])
+    run(agent, [calls(first), answer()])
+    run(agent, [calls(again), answer()])  # a later turn: Repeated calls does not apply
     results = tool_results(agent.conversation)
     assert results[again.id] == skills.already_loaded_note("failure-triage")
     assert results[first.id] == body("failure-triage")  # the body stays where it is
     assert agent.conversation.loaded_skill_call == first.id
+
+
+def test_loading_the_loaded_skill_again_after_a_write_in_the_same_turn_returns_the_short_note(agent):
+    first = call("runtime__load_skill", {"name": "failure-triage"})
+    write = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    again = call("runtime__load_skill", {"name": "failure-triage"})
+    run(agent, [calls(first), calls(write), calls(again), answer()])
+    assert [row["outcome"] for row in tool_rows(agent.conn, agent.id)] == ["ok", "ok", "ok"]
+    assert tool_results(agent.conversation)[again.id] == skills.already_loaded_note("failure-triage")
 
 
 def test_an_unknown_skill_is_not_found_and_names_the_available_ones(agent):

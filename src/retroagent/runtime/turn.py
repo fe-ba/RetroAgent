@@ -3,7 +3,9 @@
 Every iteration builds the context (system context, tool definitions of the mode and tool set, the conversation,
 freed when the budget requires it, and the state message), calls the model, applies the truncation guard, and
 processes the tool calls one by one in the order given: each one is recorded in ``tool_call`` before dispatch,
-checked, asked about when needed, dispatched, and answered in the conversation.
+checked, asked about when needed, dispatched, and answered in the conversation. A read call that repeats an earlier
+one of the turn whose result is still in the conversation, with nothing recorded since, is answered with
+``invalid_argument`` instead of being dispatched (runtime.md, Repeated calls).
 
 The turn prints nothing. It returns a ``TurnResult`` and reports events to a listener: ``ModelCalled``,
 ``ToolCalled``, ``Retried``, ``Warned``, and the ``Wait`` of the provider adapter.
@@ -208,6 +210,11 @@ class _Turn:
         self.interrupt = interrupt
         self.by_user = False  # a direct command of the user, which may call the user-only tools
         self.calls = 0
+        # Repeated calls: the read calls of this turn that block a repeat, by normalized call, with the ID of the
+        # call and the message of its result; emptied when a write tool succeeds. ``dispatched`` tells whether the
+        # current call reached its tool.
+        self.answered: dict[str, tuple[str, Message]] = {}
+        self.dispatched = False
         self.secrets = secret_values(session.config.credential_env_names)
 
     # The loop -------------------------------------------------------------------------------------------------------
@@ -331,12 +338,18 @@ class _Turn:
         """Run the call and answer it in the conversation. Returns the content added to the conversation. Raises
         ``Interrupted`` after answering the call as not completed."""
         try:
-            _, _, result = self.run_call(call, deferred)
+            outcome, code, result = self.run_call(call, deferred)
         except Interrupted:
             self._add_result(call, NOT_COMPLETED)
             raise
         content = result if isinstance(result, str) else _json(result)
-        self._add_result(call, content)
+        message = self._add_result(call, content)
+        name = _names(call.name)[0]
+        if name in tools.WRITE_TOOLS:
+            if outcome == "ok":  # something was recorded: every read may now answer differently
+                self.answered.clear()
+        elif self.dispatched and code != "unavailable":  # a restarted server may answer an unavailable call
+            self.answered[_call_key(name, call.arguments)] = (call.id, message)
         return content
 
     def run_call(self, call: ToolCall, deferred: bool) -> tuple[str, str | None, object]:
@@ -348,6 +361,7 @@ class _Turn:
         row = sessions.start_tool_call(
             self.session.conn, session_id=self.session.id, server=server, tool=tool, arguments=recorded
         )
+        self.dispatched = False
         started = time.monotonic()
         outcome, code, result = "ok", None, None
         try:
@@ -378,8 +392,10 @@ class _Turn:
         )
         self.report(ToolCalled(name, recorded, outcome, code, seconds))
 
-    def _add_result(self, call: ToolCall, content: str) -> None:
-        self.session.conversation.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
+    def _add_result(self, call: ToolCall, content: str) -> Message:
+        message = Message(role="tool", content=content, tool_call_id=call.id)
+        self.session.conversation.messages.append(message)
+        return message
 
     def _not_completed(self, calls: Sequence[ToolCall]) -> None:
         """The calls after an interrupted one: recorded and answered as not completed, so every call has a result."""
@@ -421,16 +437,34 @@ class _Turn:
             raise ToolError(decision.code, decision.message)
         if commands is not None and commands.config_error is not None:
             raise ToolError("invalid_state", f"the configuration cannot be read: {commands.config_error}")
+        if name not in tools.WRITE_TOOLS:
+            self._check_repeated(name, call.arguments)
         if decision.approve_commands:
             self._approve(commands)
         if decision.action == "ask":
             self._ask(name, call.arguments, decision.permissions, config)
+        self.dispatched = True
         if server == tools.RUNTIME:
             return runtime_tools.call(session, tool, call.arguments, call.id)
         timeout = run_tests_timeout(session.config) if name == permissions.RUN_TESTS else None
         return self._wait(
             lambda: self.client.call(server, tool, call.arguments, timeout),
             on_interrupt=lambda: self._interrupt_server(server),
+        )
+
+    def _check_repeated(self, name: str, arguments: Mapping[str, object]) -> None:
+        """Repeated calls (runtime.md, Turn): raise ``invalid_argument`` when an earlier read call of this turn with
+        the same arguments was answered, its result is still in the conversation, and nothing was recorded since."""
+        earlier = self.answered.get(_call_key(name, arguments))
+        if earlier is None:
+            return
+        call_id, message = earlier
+        if not any(kept is message for kept in self.session.conversation.messages):  # freed since
+            return
+        raise ToolError(
+            "invalid_argument",
+            f"{name} was already called with the same arguments in call {call_id}, and nothing was recorded since:"
+            f" its result cannot have changed. Use the result of call {call_id}, or change the arguments.",
         )
 
     def _approve(self, commands: CommandsState) -> None:
@@ -585,6 +619,13 @@ def _names(raw: str) -> tuple[str, str, str]:
     except ValueError:
         return raw, "", raw
     return name, server, tool
+
+
+def _call_key(name: str, arguments: Mapping[str, object]) -> str:
+    """A tool call after normalization (runtime.md, Repeated calls): the same keys and values in any order, with an
+    empty list equal to an absent one."""
+    kept = {key: value for key, value in arguments.items() if value != []}
+    return f"{name} {json.dumps(kept, sort_keys=True, ensure_ascii=False)}"
 
 
 def _json(value: object) -> str:

@@ -45,6 +45,8 @@ A turn starts with a user message and ends when the model answers without tool c
 
 **Order of the checks.** The tool exists (`not_found`), is not user only, is in the tool set of the step, is allowed by the mode and is not `deny`; then the approval of the project commands; then the question to the user. A call that will be refused never asks for anything. When `test_runner.run_tests` needs two permissions, one question names both.
 
+**Repeated calls.** A read tool called again in the same turn with the same arguments, while nothing was recorded since that earlier call, is not dispatched: its result cannot have changed. The runtime answers it with `invalid_argument` and a message that says to use the earlier result or to change the arguments. The call is recorded in `tool_call` and counts for the iteration limit like any other. A small model that repeats a call in a loop is turned back at once instead of spending the rest of the turn.
+
 **Iteration limit.** A turn makes at most `agent.max_iterations` model calls, counting the retries of the turn and not the waiting retries of the provider. The tool calls of the last allowed call are still executed, so that every call has a result. When the limit is reached, the turn stops with a message; in non-interactive mode this is a runtime error.
 
 **Interruption.** `Esc` cancels the current model call or tool call. A cancelled run ends with status `interrupted`. Results of completed tool calls stay in the conversation; the cancelled call and the ones after it are answered as not completed. A server stopped to cancel its call is started again. The same holds when a model error ends the turn.

@@ -8,7 +8,7 @@ import json
 import pytest
 from fixtures.agent_session import answer, call, calls, tool_results, tool_rows
 
-from retroagent.context import budget
+from retroagent.context import budget, state
 from retroagent.llm import ContextWindowExceeded, FakeProvider, RateLimitExceeded, Usage
 from retroagent.llm.provider import request_characters
 from retroagent.memory import sessions
@@ -464,14 +464,66 @@ def test_a_repeat_after_the_earlier_result_was_freed_is_dispatched(agent, monkey
     assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok", "ok"]
 
 
-def test_a_model_that_repeats_a_call_ends_with_its_own_answer_not_the_iteration_limit(agent, monkeypatch):
-    with_config(agent, agent__max_iterations=11)
+def test_a_model_that_repeats_a_call_twice_ends_with_its_own_answer(agent, monkeypatch):
+    # Two blocked model calls in a row: the most the rule allows before it stops the turn.
     dispatched = counted(agent, monkeypatch)
-    repeated = [call("memory__get_test_cases", {"ids": []}) for _ in range(10)]
+    repeated = [call("memory__get_test_cases", {"ids": []}) for _ in range(3)]
     result, provider = run(agent, [*(calls(c) for c in repeated), answer("No test cases yet.")])
     assert result.text == "No test cases yet." and not result.limit_reached and provider.remaining == 0
     assert len(dispatched) == 1
     rows = tool_rows(agent.conn, agent.id)
-    assert [r["outcome"] for r in rows] == ["ok"] + ["error"] * 9
+    assert [r["outcome"] for r in rows] == ["ok"] + ["error"] * 2
     for later in repeated[1:]:
         assert_blocked(agent, later, repeated[0])
+
+
+def test_in_a_free_message_the_blocked_message_names_no_write_tools(agent):
+    first, second = call("memory__get_test_cases", {}), call("memory__get_test_cases", {})
+    run(agent, [calls(first), calls(second), answer()])
+    error = error_of(tool_results(agent.conversation)[second.id])
+    assert error["message"].endswith(f"Use the result of call {first.id}, or change the arguments.")
+    assert "write tools" not in error["message"]
+
+
+def test_in_a_cycle_step_the_blocked_message_names_the_write_tools_of_the_step(agent):
+    first, second = call("memory__get_test_cases", {}), call("memory__get_test_cases", {})
+    step = state.CycleStep("design", 4, 8)
+    run(agent, [calls(first), calls(second), answer()], tool_set="design", cycle_step=step)
+    assert_blocked(agent, second, first)
+    assert error_of(tool_results(agent.conversation)[second.id])["message"].endswith(
+        " The next call of this step is one of its write tools: memory__design_test_case, memory__retire_test_case,"
+        " memory__update_test_case."
+    )
+
+
+def test_three_model_calls_in_a_row_with_only_blocked_calls_stop_the_turn(agent, monkeypatch):
+    dispatched = counted(agent, monkeypatch)
+    repeated = [call("git__resolve_ref", {"ref": "v1.0"}) for _ in range(4)]
+    result, provider = run(agent, [*(calls(c) for c in repeated), answer("never reached")])
+    assert result.limit_reached and result.text == turn_module.repeat_message('git__resolve_ref {"ref": "v1.0"}')
+    assert "max_iterations" not in result.text
+    assert len(provider.requests) == 4 and provider.remaining == 1 and len(dispatched) == 1
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok"] + ["error"] * 3
+    assert agent.conversation.messages[-1].role == "tool"  # every call has its result
+
+
+def test_a_dispatched_call_between_blocked_model_calls_resets_the_count(agent):
+    a, b = {"ref": "v1.0"}, {"ref": "v1.1"}
+    script = [calls(call("git__resolve_ref", a)), calls(call("git__resolve_ref", a)),
+              calls(call("git__resolve_ref", a)), calls(call("git__resolve_ref", b)),
+              calls(call("git__resolve_ref", a)), calls(call("git__resolve_ref", a)), answer("Resolved.")]  # fmt: skip
+    result, provider = run(agent, script)
+    assert result.text == "Resolved." and not result.limit_reached and provider.remaining == 0
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "error", "error", "ok", "error", "error"]
+
+
+def test_a_model_call_with_one_blocked_and_one_dispatched_call_resets_the_count(agent):
+    a, c = {"ref": "v1.0"}, {"ref": "v1.2"}
+    script = [calls(call("git__resolve_ref", a)), calls(call("git__resolve_ref", a)),
+              calls(call("git__resolve_ref", a)),
+              calls(call("git__resolve_ref", a), call("git__resolve_ref", c)),
+              calls(call("git__resolve_ref", a)), calls(call("git__resolve_ref", a)), answer("Resolved.")]  # fmt: skip
+    result, provider = run(agent, script)
+    assert result.text == "Resolved." and not result.limit_reached and provider.remaining == 0
+    outcomes = [r["outcome"] for r in tool_rows(agent.conn, agent.id)]
+    assert outcomes == ["ok", "error", "error", "error", "ok", "error", "error"]

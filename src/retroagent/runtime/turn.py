@@ -5,7 +5,9 @@ freed when the budget requires it, and the state message), calls the model, appl
 processes the tool calls one by one in the order given: each one is recorded in ``tool_call`` before dispatch,
 checked, asked about when needed, dispatched, and answered in the conversation. A read call that repeats an earlier
 one of the turn whose result is still in the conversation, with nothing recorded since, is answered with
-``invalid_argument`` instead of being dispatched (runtime.md, Repeated calls).
+``invalid_argument`` instead of being dispatched (runtime.md, Repeated calls); in a turn with the tool set of a step,
+the answer names the write tools of that step. When three model calls in a row get only blocked calls, the turn stops
+as at the iteration limit, with a message that names the repeated call.
 
 The turn prints nothing. It returns a ``TurnResult`` and reports events to a listener: ``ModelCalled``,
 ``ToolCalled``, ``Retried``, ``Warned``, and the ``Wait`` of the provider adapter.
@@ -62,6 +64,7 @@ BRIEFLY = (
 NOT_COMPLETED = "not completed: interrupted by the user"
 SECRET = "***"
 POLL_SECONDS = 0.05
+BLOCKED_IN_A_ROW = 3  # model calls in a row with only blocked calls that stop the turn (Repeated calls)
 
 # Asks the user: a permission, answered with one of ``permissions.ANSWERS``, or the approval of the project commands,
 # answered with one of ``permissions.APPROVAL_ANSWERS``.
@@ -111,7 +114,7 @@ Recorded = tuple[tuple[str, int], ...]
 class TurnResult:
     text: str
     incomplete: bool = False  # the answer was cut by the output limit
-    limit_reached: bool = False  # agent.max_iterations was reached
+    limit_reached: bool = False  # agent.max_iterations was reached, or the model kept repeating blocked calls
     interrupted: bool = False
     recorded: Recorded = ()
 
@@ -139,6 +142,23 @@ def limit_message(calls: int) -> str:
         f"The turn stopped after {calls} model calls, the limit set by agent.max_iterations. The work done is in"
         " project memory; send a message to continue."
     )
+
+
+def repeat_message(repeated: str) -> str:
+    """The stop of a turn whose last model calls got only blocked calls (runtime.md, Repeated calls). ``repeated`` is
+    the last blocked call: its name and its arguments as recorded."""
+    return (
+        f"The turn stopped: the model repeated {repeated} in {BLOCKED_IN_A_ROW} model calls in a row, and each time"
+        " the call was blocked because its result was already in the conversation. The work done is in project"
+        " memory; send a message to continue."
+    )
+
+
+def step_write_tools(tool_set: str) -> tuple[str, ...]:
+    """The write tools of a step, sorted by exposed name: those of its own entries in the table of runtime.md (Cycle
+    command), not the shared read tools, whose ``runtime`` entry also holds ``runtime__set_versions``."""
+    entries = [entry for entry in tools.TOOL_SETS[tool_set] if entry not in tools.READ_TOOLS]
+    return tuple(sorted(name for name in tools.WRITE_TOOLS - tools.USER_ONLY if tools.in_tool_set(name, entries)))
 
 
 def call_tool(
@@ -212,9 +232,13 @@ class _Turn:
         self.calls = 0
         # Repeated calls: the read calls of this turn that block a repeat, by normalized call, with the ID of the
         # call and the message of its result; emptied when a write tool succeeds. ``dispatched`` tells whether the
-        # current call reached its tool.
+        # current call reached its tool, ``blocked`` that it was answered as a repeat. ``blocked_in_a_row`` counts the
+        # model calls in a row whose tool calls were all blocked; ``repeated`` is the last blocked call, as recorded.
         self.answered: dict[str, tuple[str, Message]] = {}
         self.dispatched = False
+        self.blocked = False
+        self.blocked_in_a_row = 0
+        self.repeated = ""
         self.secrets = secret_values(session.config.credential_env_names)
 
     # The loop -------------------------------------------------------------------------------------------------------
@@ -238,6 +262,8 @@ class _Turn:
                 return TurnResult(response.text, incomplete=response.finish_reason == "length")
             if not self._tool_calls(response.tool_calls, variable_space):
                 return TurnResult("", interrupted=True)
+            if self.blocked_in_a_row >= BLOCKED_IN_A_ROW:
+                return TurnResult(repeat_message(self.repeated), limit_reached=True)
             if self.calls >= self.session.config["agent.max_iterations"]:
                 return TurnResult(limit_message(self.calls), limit_reached=True)
 
@@ -321,6 +347,7 @@ class _Turn:
     def _tool_calls(self, calls: Sequence[ToolCall], variable_space: int) -> bool:
         """Process the tool calls of one model message, in order. False when the user interrupted them."""
         results = 0  # characters of the results of this model message
+        all_blocked = True
         for index, call in enumerate(calls):
             if self.interrupt is not None and self.interrupt.is_set():
                 self._not_completed(calls[index:])
@@ -332,6 +359,8 @@ class _Turn:
                 self._not_completed(calls[index + 1 :])
                 return False
             results += len(content)
+            all_blocked = all_blocked and self.blocked
+        self.blocked_in_a_row = self.blocked_in_a_row + 1 if all_blocked else 0
         return True
 
     def _tool_call(self, call: ToolCall, deferred: bool) -> str:
@@ -361,7 +390,7 @@ class _Turn:
         row = sessions.start_tool_call(
             self.session.conn, session_id=self.session.id, server=server, tool=tool, arguments=recorded
         )
-        self.dispatched = False
+        self.dispatched, self.blocked = False, False
         started = time.monotonic()
         outcome, code, result = "ok", None, None
         try:
@@ -461,11 +490,17 @@ class _Turn:
         call_id, message = earlier
         if not any(kept is message for kept in self.session.conversation.messages):  # freed since
             return
-        raise ToolError(
-            "invalid_argument",
+        self.blocked = True
+        self.repeated = f"{name} {self._redact(_json(dict(arguments)))}"
+        text = (
             f"{name} was already called with the same arguments in call {call_id}, and nothing was recorded since:"
-            f" its result cannot have changed. Use the result of call {call_id}, or change the arguments.",
+            f" its result cannot have changed. Use the result of call {call_id}, or change the arguments."
         )
+        if self.tool_set is not None:  # a cycle step, or the model command of the same skill
+            text += (
+                f" The next call of this step is one of its write tools: {', '.join(step_write_tools(self.tool_set))}."
+            )
+        raise ToolError("invalid_argument", text)
 
     def _approve(self, commands: CommandsState) -> None:
         """Ask the user to approve the project commands in their current content, and store the approval (runtime.md,

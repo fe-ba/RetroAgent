@@ -33,7 +33,7 @@ from retroagent.cli.main import main
 from retroagent.llm import FakeProvider, Usage
 from retroagent.llm.provider import request_characters
 from retroagent.memory import connect, design, execution, interpretation, sessions
-from retroagent.runtime import commands, cycle
+from retroagent.runtime import commands, cycle, turn
 from retroagent.runtime import session as session_module
 from retroagent.servers.test_runner import junit
 from retroagent.servers.test_runner.worktree import worktrees_dir
@@ -499,7 +499,8 @@ def with_user_config(monkeypatch, tmp_path, extra: str) -> None:
 
 def test_max_iterations_applies_to_each_step(both_runs, monkeypatch, tmp_path):
     with_user_config(monkeypatch, tmp_path, "agent:\n  max_iterations: 8\n")
-    loop = [calls(call("memory__get_suite"))] * 8
+    # Different arguments each time: an identical read would be blocked, and three blocked model calls stop the turn.
+    loop = [calls(call("memory__get_test_cases", {"ids": [f"TC-{n:03d}"]})) for n in range(1, 9)]
     script = Scripted([*analyze_script(), *select_script(), *loop])  # 8 and 4 calls: each step stays in its limit
     with start(both_runs, script, trust_commands=True, mode="auto") as session:
         result = cycle.run_cycle(session)
@@ -507,6 +508,19 @@ def test_max_iterations_applies_to_each_step(both_runs, monkeypatch, tmp_path):
     assert (result.stop.step, result.stop.reason, result.stop.runtime_error) == ("design", "limit", True)
     assert "agent.max_iterations" in result.stop.message
     assert script.remaining == 0
+
+
+def test_a_step_that_keeps_repeating_a_blocked_call_stops_with_the_repeat_message(both_runs):
+    # The loop of the local model in the step design: the same read again and again after it was turned back.
+    repeated = {"run_id": "RUN-0002", "untriaged": True}
+    loop = [calls(call("memory__get_executions", repeated)) for _ in range(4)]
+    script = Scripted([*analyze_script(), *select_script(), *loop, answer("never reached")])
+    with start(both_runs, script, trust_commands=True, mode="auto") as session:
+        result = cycle.run_cycle(session)
+    assert (result.stop.step, result.stop.reason, result.stop.runtime_error) == ("design", "limit", True)
+    assert result.stop.message == turn.repeat_message(f"memory__get_executions {json.dumps(repeated)}")
+    assert "max_iterations" not in result.stop.message and "iteration limit" not in result.stop.message
+    assert script.remaining == 1
 
 
 def test_the_truncation_guard_stops_the_cycle_and_ends_the_session(both_runs):

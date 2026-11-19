@@ -7,8 +7,10 @@ TC-022 (its attempts agree). The four classifications of the oracle are accepted
 shipping test, and EC-08 and the decision are those of the reference scenario.
 """
 
+import json
+
 import pytest
-from fixtures.agent_session import Scripted, answer, tool_rows, triage_script
+from fixtures.agent_session import Scripted, answer, call, calls, tool_results, tool_rows, triage_script
 from fixtures.example_project import project_copy, start
 from fixtures.reference_scenario import S1, S2, S3, S4, decision_of
 from fixtures.tool_definitions import step_tool_names
@@ -96,3 +98,18 @@ def test_triage_without_any_run_is_refused_before_the_model(tmp_path_factory, pr
         with pytest.raises(CommandError, match="there is no run to triage"):
             commands.triage(session)
     assert script.requests == []
+
+
+def test_in_triage_a_blocked_call_names_the_write_tools_of_the_step(reference_project):
+    # A model command has the tool set of its step, as a cycle step does (runtime.md, Repeated calls).
+    arguments = {"run_id": "RUN-0004", "untriaged": True}
+    first, second = call("memory__get_executions", arguments), call("memory__get_executions", arguments)
+    script = Scripted([calls(first), calls(second), answer("Nothing triaged.")])
+    with start(reference_project.path, script) as session:
+        commands.triage(session, "RUN-0004")
+        blocked = json.loads(tool_results(session.conversation)[second.id])["error"]
+    assert blocked["code"] == "invalid_argument" and f"call {first.id}" in blocked["message"]
+    assert blocked["message"].endswith(
+        " The next call of this step is one of its write tools: memory__link_defect, memory__register_defect,"
+        " memory__save_triage."
+    )

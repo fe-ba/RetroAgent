@@ -12,6 +12,7 @@ from fixtures.agent_session import USER_CONFIG, answer, call, calls, write_user_
 from retroagent.cli.main import main
 from retroagent.llm import FakeProvider, ProviderUnavailable
 from retroagent.memory import connect
+from retroagent.runtime.turn import repeat_message
 
 FIELDS = {"result", "session_id", "runs", "reports", "decision", "denied", "recorded", "exit_code"}
 RUN_MISSING = {"version": "candidate", "scope": "selected", "test_case_ids": ["TC-999"]}
@@ -144,3 +145,11 @@ def test_lang_and_retro_lang_set_the_language_of_the_state_message(agent_project
     states = [request.messages[-1].content for request in provider.requests]
     assert "Language: Write responses and agent sections in `fr`." in states[0]
     assert "Language: Write responses and agent sections in `es`." in states[1]
+
+
+def test_a_turn_stopped_by_repeated_calls_is_a_runtime_error(agent_project, fake_model):
+    fake_model(FakeProvider([calls(call("memory__get_requirements"))] * 4 + [answer("never reached")]))
+    code, output = run_json(agent_project, "-p", "Loop.")
+    assert code == 1 and output["result"] == repeat_message("memory__get_requirements {}")
+    assert "max_iterations" not in output["result"]
+    assert output["recorded"] == {}

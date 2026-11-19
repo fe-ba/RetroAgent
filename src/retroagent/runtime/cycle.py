@@ -7,9 +7,9 @@ project memory; a model step whose outcome is missing runs once more, with a mes
 
 The cycle stops when an outcome is still missing after the retry, when a tool call is refused by the mode, a
 permission or the approval of the project commands, when a run of the step ends ``error`` or ``interrupted``, when
-the model ends a step with a question, when the user interrupts, and when a turn ends in a runtime error or reaches
-``agent.max_iterations``. ``/cycle`` again continues: a step whose outcome is already in project memory for the
-session versions is skipped.
+the model ends a step with a question, when the user interrupts, and when a turn ends in a runtime error, reaches
+``agent.max_iterations`` or stops on repeated calls. ``/cycle`` again continues: a step whose outcome is already in
+project memory for the session versions is skipped.
 
 What "done" means for each step, computed from stored records only (``progress``):
 

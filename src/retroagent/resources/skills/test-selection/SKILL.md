@@ -12,7 +12,7 @@ Choose the test cases that can reveal whether the change broke something, order 
 1. **Analysis.** Call `memory__get_analysis`. If there is none for the session versions, the impact analysis comes first: load the skill `impact-analysis`.
 2. **Candidates.** Call `memory__get_test_cases`.
    - If no test case has origin `project_suite` and the project has tests of its own (see `RETRO.md` or `git__list_files`), the project suite has not been discovered yet. Call `test_runner__run_tests` with `version` `base` and `scope` `all`.
-   - When the change set adds test files or adds lines to them (`memory__get_analysis`) and no full run against the candidate exists (`memory__get_runs` with `version_role` `candidate`), run `version` `candidate` with `scope` `all`, so that the tests added by the change are known. This applies also when the project suite was already discovered.
+   - When the change set has a test file, added, modified, deleted or renamed (`memory__get_analysis`) and no full run against the candidate exists (`memory__get_runs` with `version_role` `candidate`), run `version` `candidate` with `scope` `all`, so that the tests the change adds or deletes are known. This applies also when the project suite was already discovered.
    - After a run, read the test cases again. If a call is refused, continue with the known test cases and state what is missing from the selection.
 3. **Context.** Call `memory__get_risks`, and `memory__get_requirements` for the impacted requirements. For candidates with doubtful relevance, check their implementation file and their history (`memory__get_test_case_history`).
 4. **Select.** Include a test case when at least one applies:
@@ -21,7 +21,7 @@ Choose the test cases that can reveal whether the change broke something, order 
    - it verifies a high-priority requirement close to a `high` risk module;
    - it failed or was flaky in a recent run, in an impacted area.
 
-   Leave out test cases unrelated to the change set. Retired test cases cannot be selected. A test case whose test the change deletes cannot run on the candidate: leave it out with that reason. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
+   Leave out test cases unrelated to the change set. Retired test cases cannot be selected. A test case whose test the change deletes cannot run on the candidate: leave it out with that reason. `memory__save_suite` refuses to select a project test case that the full run on the candidate did not report. When the relation is uncertain, include the test case: missing a revealing test case costs more than running an unneeded one. Select every test case only when the change touches code that every feature uses, and say so.
 
    Test cases traced to a requirement with a documented change are included: they may fail as `expected_change` and must be reviewed. Test cases still `designed` from earlier cycles are included only if they are relevant; they count as designed only until implemented.
 5. **Order.** Assign positions from 1. Positions order the presentation of the suite; the test framework decides the execution order:

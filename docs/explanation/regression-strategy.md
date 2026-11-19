@@ -12,7 +12,7 @@ Running every test after every change is safe but does not scale, and it says no
 
 ## Know the tests that exist
 
-RetroAgent learns the project's tests by running them: a full run on the baseline records every test of the JUnit XML as a test case, linked to the requirements named in its test name. When the change adds tests, a full run on the candidate finds them too. The discovery step of `/cycle` skips a full run on a commit that already has one.
+RetroAgent learns the project's tests by running them: a full run on the baseline records every test of the JUnit XML as a test case, linked to the requirements named in its test name. When the change touches test files, a full run on the candidate shows which tests exist there: the ones the change added, and, by their absence, the ones it deleted. The discovery step of `/cycle` skips a full run on a commit that already has one.
 
 Full runs on both versions also answer a question that selection depends on: which tests changed verdict. A test that passed on the baseline and fails on the candidate is the clearest evidence of a regression, or of an intended change.
 

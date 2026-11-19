@@ -34,7 +34,7 @@ A skill is a folder with a `SKILL.md` file: a YAML header with a name and a one-
 | Skill | Step | What the procedure covers |
 |---|---|---|
 | `impact-analysis` | Analyze | Set the versions, read the requirements, compute the change set, read the diffs, decide every requirement, record risks. |
-| `test-selection` | Select | Choose and prioritize the suite, justify every test case, leave out with reasons, report the gaps, ask for a full run when the change adds tests. |
+| `test-selection` | Select | Choose and prioritize the suite, justify every test case, leave out with reasons, report the gaps, ask for a full run on the candidate when the change touches test files. |
 | `test-design` | Design and implement | Write test case specifications with concrete data, then their code, following the conventions of the project. |
 | `failure-triage` | Triage | Read the evidence of each failure, classify it, and register or link a defect for each product fault. |
 | `test-reporting` | Report | Prepare a report, write its narrative sections from the computed data, render it. |

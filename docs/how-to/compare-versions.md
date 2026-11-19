@@ -26,7 +26,7 @@ Only committed versions are compared. To test a change that is not committed yet
 | Step | Command | Check before going on |
 |---|---|---|
 | Impact analysis | `/analyze` | The impacted requirements and modules, and the reasons for those left out. |
-| Discovery, the first time | `/run all --on base`, then `/run all --on candidate` when the change adds tests | `/history`: the runs completed. |
+| Discovery, the first time | `/run all --on base`, then `/run all --on candidate` when the change touches test files | `/history`: the runs completed. |
 | Selection | `/select` | The suite, the reasons, and the gaps it reports. |
 | Design | `/design`, or `/design REQ-002` for one requirement | The test cases: concrete data and an expected result. |
 | Implementation | `/implement`, or `/implement TC-027` | The generated code in `.retro/tests/`. |
@@ -58,7 +58,7 @@ retro --base v1.1 --candidate v1.2
 
 What earlier cycles left is used:
 
-- Test cases are kept, including generated ones. A full run for discovery is skipped when one already exists on the same commit, and on the candidate it runs only when the change adds tests.
+- Test cases are kept, including generated ones. A full run for discovery is skipped when one already exists on the same commit, and on the candidate it runs only when the change touches test files.
 - A test that failed before and now passes is counted as `fixed`.
 - An open defect is closed by a completed run on the candidate in which every test case linked to it passes. Otherwise it stays open and counts against the release, even if its tests are no longer selected; close it yourself with `/defects close DEF-001 <reason>` when it no longer applies.
 

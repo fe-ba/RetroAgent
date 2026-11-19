@@ -148,7 +148,7 @@ retro --base v1.1 --candidate v1.2
 
 `/cycle` runs the same steps you ran by hand, in the same order, and checks the outcome of each one before the next. The shipping test now passes: it is `fixed`, and the run closes DEF-001, because every test linked to it passed. The decision is **`release_with_conditions`**: the tax rounding test still fails, but it already failed on the baseline.
 
-`v1.2` also deletes the obsolete second-coupon test, TC-014. The agent should leave it out of the suite, because it cannot run on `v1.2`. If it is selected anyway, its execution on the candidate is `blocked`, and since TC-014 is a high-priority test case, EC-02 makes the decision `do_not_release`. Read the selection before the run: the reasons of what was left out are part of it.
+`v1.2` also deletes the obsolete second-coupon test, TC-014. Because the change touches a test file, discovery runs the whole suite on `v1.2`, and TC-014 has no result there. When the agent selects it anyway, `memory__save_suite` refuses: its test does not exist in the candidate. The agent leaves it out with that reason. Selected, it would have been `blocked`, and since TC-014 is a high-priority test case, EC-02 would have made the decision `do_not_release`.
 
 ## What you learned
 

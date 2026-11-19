@@ -139,7 +139,7 @@ The full cycle, as the steering describes it to the model:
 | 2. Set the versions | `/analyze <base> <candidate>` or flags | `runtime.set_versions` |
 | 3. Read the requirements | part of `/analyze` | `memory.sync_requirements` |
 | 4. Analyze the impact | part of `/analyze` | `git.analyze_changes`, `git.get_diff`, `memory.save_impact`, `memory.add_risk` |
-| 5. Discover the project suite, the first time | `/run all --on base`, and `--on candidate` when the change adds tests | `test_runner.run_tests` |
+| 5. Discover the project suite, the first time | `/run all --on base`, and `--on candidate` when the change changes test files | `test_runner.run_tests` |
 | 6. Select the regression suite | `/select` | `memory.get_test_cases`, `memory.save_suite` |
 | 7. Design missing test cases | `/design` | `memory.design_test_case` |
 | 8. Implement them | `/implement` | `test_runner.write_test` |
@@ -156,9 +156,9 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | Step | Kind | Tools exposed | Outcome checked by code |
 |---|---|---|---|
 | `analyze` | Model, skill `impact-analysis` | Read tools, `memory__sync_requirements`, `git__analyze_changes`, `memory__save_impact`, `memory__add_risk` | An analysis of the session versions has an impact. |
-| `discover` | Direct: full run against the baseline, then a full run against the candidate when the change set of the analysis adds test files or adds lines to them | — | The runs are `completed`. Each one is skipped when a completed full run on its commit already exists. |
+| `discover` | Direct: full run against the baseline, then a full run against the candidate when the change set of the analysis has a test file | — | The runs are `completed`. Each one is skipped when a completed full run on its commit already exists. |
 
-A file of the change set is a test file when a folder of its path is named `test`, `tests`, `__tests__` or `spec`, or when its name matches `test_*`, `*_test.*`, `*.test.*`, `*.spec.*` or `*Test.java`. A change that only removes lines cannot add a test, so it needs no run.
+A file of the change set is a test file when a folder of its path is named `test`, `tests`, `__tests__` or `spec`, or when its name matches `test_*`, `*_test.*`, `*.test.*`, `*.spec.*` or `*Test.java`. Any change to a test file counts, a deletion too: the full run on the candidate shows which tests exist there, both the tests a change adds and those it deletes (see `memory.save_suite`).
 | `select` | Model, skill `test-selection` | Read tools, `memory__save_suite`, `test_runner__run_tests` | The analysis has a suite. |
 | `design` | Model, skill `test-design` | Read tools, `memory__design_test_case`, `memory__update_test_case`, `memory__retire_test_case` | None: gaps may remain, and the step says so. |
 | `implement` | Model, skill `test-design` | Read tools, `test_runner__write_test`, `test_runner__get_evidence`, `memory__update_test_case`, `memory__retire_test_case` | None: test cases left `designed` become a condition of the decision. |

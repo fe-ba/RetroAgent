@@ -5,7 +5,7 @@ import pytest
 from fixtures import reference_scenario as ref
 
 from retroagent.memory import connect, impact, reporting, sessions
-from retroagent.runtime.cycle import STEPS, adds_tests, done, ends_with_question, is_test_file, missing, progress
+from retroagent.runtime.cycle import STEPS, done, ends_with_question, has_test_file, is_test_file, missing, progress
 from retroagent.runtime.session import Version
 
 V1_0 = Version(ref.BASE_REF, ref.BASE_COMMIT)
@@ -45,8 +45,8 @@ def test_a_test_file_is_named_by_its_folder_or_its_name(path, expected):
     assert is_test_file(path) is expected
 
 
-def changed(path, change="modified", added=1, removed=0):
-    return {"path": path, "change": change, "lines_added": added, "lines_removed": removed}
+def changed(path, change="modified", added=1, removed=0, old_path=None):
+    return {"path": path, "old_path": old_path, "change": change, "lines_added": added, "lines_removed": removed}
 
 
 # The change set of v1.1..v1.2: shipping fixed, the obsolete coupon test removed.
@@ -60,22 +60,24 @@ CYCLE_2_FILES = [
     "files, expected",
     [
         ([changed("tests/test_cart.py", "added", 10)], True),
-        ([changed("tests/test_cart.py", "renamed", 0)], True),
+        ([changed("tests/test_cart.py", "renamed", 0, old_path="tests/test_basket.py")], True),
         ([changed("tests/test_cart.py", "modified", 3, 1)], True),
-        ([changed("tests/test_cart.py", "modified", 0, 8)], False),  # only removes lines: adds no test
-        ([changed("tests/test_cart.py", "deleted", 0, 20)], False),
-        ([changed("src/shop/cart.py", "added", 30)], False),
+        ([changed("tests/test_cart.py", "modified", 0, 8)], True),  # only removes lines: a test may be deleted
+        ([changed("tests/test_cart.py", "deleted", 0, 20)], True),
+        ([changed("src/shop/helpers.py", "renamed", 0, old_path="tests/helpers.py")], True),  # renamed out of tests
+        ([changed("src/shop/pricing.py", "renamed", 0, old_path="src/shop/prices.py")], False),
+        ([changed("src/shop/cart.py", "added", 30), changed("README.md", "modified", 2, 2)], False),
         ([], False),
     ],
 )
-def test_a_change_adds_tests_when_it_adds_test_files_or_lines_to_them(files, expected):
-    assert adds_tests(files) is expected
+def test_a_change_set_has_a_test_file_whatever_the_change(files, expected):
+    assert has_test_file(files) is expected
 
 
 def test_the_change_sets_of_the_oracle():
-    # cycle 1 modifies three test files with lines added; cycle 2 only removes a test (ORACLE.md, S6 and v1.2)
-    assert adds_tests(ref.CHANGE_SET)
-    assert not adds_tests(CYCLE_2_FILES)
+    # cycle 1 modifies three test files with lines added; cycle 2 removes a test (ORACLE.md, S6 and v1.2)
+    assert has_test_file(ref.CHANGE_SET)
+    assert has_test_file(CYCLE_2_FILES)
 
 
 def test_without_records_only_the_analysis_is_missing(conn):
@@ -96,7 +98,7 @@ def test_an_analysis_without_impact_is_missing_its_impact(conn):
     assert missing("analyze", p) == (
         f"analysis {analysis_id} has no impact recorded: call memory__save_impact with its analysis_id"
     )
-    # the change adds tests: both full runs are needed
+    # the change set has test files: both full runs are needed
     assert p.full_runs_missing == ("base", "candidate")
     assert missing("discover", p) == "no completed full run against the base v1.0 and the candidate v1.1"
 
@@ -143,32 +145,49 @@ def test_only_a_rendered_completion_report_of_the_evaluated_run_finishes_the_cyc
     assert all(done(step, p) is not None for step in STEPS)
 
 
-def test_cycle_2_needs_no_full_run(conn):
-    # v1.1 has a completed full run (RUN-0002, against the candidate of cycle 1), and v1.2 only removes a test
-    scenario = ref.load_reference_scenario(conn)
+def analysis_of_v1_2(conn, files) -> None:
     session_id = sessions.start_session(conn, model="none", interactive=False, result_char_limit=8000)
     impact.add_analysis(
         conn, session_id=session_id, base_ref="v1.1", base_commit=V1_1.commit, candidate_ref="v1.2",
-        candidate_commit=V1_2.commit, files=CYCLE_2_FILES,
+        candidate_commit=V1_2.commit, files=files,
     )  # fmt: skip
+
+
+def test_cycle_2_needs_a_full_run_on_the_candidate_only(conn):
+    # v1.1 has a completed full run (RUN-0002, against the candidate of cycle 1); v1.2 deletes a test, so the full
+    # run against v1.2 shows which tests exist there
+    scenario = ref.load_reference_scenario(conn)
+    analysis_of_v1_2(conn, CYCLE_2_FILES)
+    p = progress(conn, V1_1, V1_2)
+    assert p.full_runs_missing == ("candidate",)
+    assert missing("discover", p) == "no completed full run against the candidate v1.2"
+    assert scenario.full_candidate_run == "RUN-0002"
+
+
+def test_a_change_without_a_test_file_needs_no_full_run_on_the_candidate(conn):
+    ref.load_reference_scenario(conn)
+    analysis_of_v1_2(conn, [changed("src/shop/pricing.py", added=3, removed=2)])
     p = progress(conn, V1_1, V1_2)
     assert p.full_runs_missing == () and done("discover", p) == "completed full runs exist for v1.1..v1.2"
     assert missing("select", p) == (
         f"analysis {p.analysis_id} has no suite: call memory__save_suite with its analysis_id"
     )
-    assert scenario.full_candidate_run == "RUN-0002"
 
 
-def test_a_full_run_on_the_candidate_commit_is_needed_when_the_change_adds_tests(conn):
-    ref.load_reference_scenario(conn)
-    session_id = sessions.start_session(conn, model="none", interactive=False, result_char_limit=8000)
-    impact.add_analysis(
-        conn, session_id=session_id, base_ref="v1.1", base_commit=V1_1.commit, candidate_ref="v1.2",
-        candidate_commit=V1_2.commit, files=[changed("tests/test_new.py", "added", 12)],
-    )  # fmt: skip
-    p = progress(conn, V1_1, V1_2)
-    assert p.full_runs_missing == ("candidate",)
-    assert missing("discover", p) == "no completed full run against the candidate v1.2"
+def test_the_full_run_on_the_candidate_is_skipped_when_a_completed_one_exists_on_its_commit(conn):
+    from retroagent.memory import execution
+
+    scenario = ref.load_reference_scenario(conn)
+    analysis_of_v1_2(conn, CYCLE_2_FILES)
+    for status in ("error", "completed"):  # only a completed one counts
+        run_id = execution.start_run(
+            conn, version_role="candidate", ref="v1.2", commit=V1_2.commit, scope="all", command="pytest",
+            session_id=scenario.session_id,
+        )  # fmt: skip
+        execution.finish_run(conn, run_id, status=status, exit_code=None if status == "error" else 1)
+        p = progress(conn, V1_1, V1_2)
+        assert p.full_runs_missing == (() if status == "completed" else ("candidate",))
+    assert done("discover", p) == "completed full runs exist for v1.1..v1.2"
 
 
 def test_cycle_2_records_are_done_up_to_the_report(conn):

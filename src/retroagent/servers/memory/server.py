@@ -198,7 +198,9 @@ def _current_suite(context: Context, conn) -> int | None:
     return design.current_suite(conn, base.commit, candidate.commit)
 
 
-def save_suite(context: Context, analysis_id: int, items: list[dict], left_out: list[dict]) -> dict:
+def save_suite(
+    context: Context, analysis_id: int, items: list[dict], left_out: list[dict], confirm: bool = False
+) -> dict:
     with context.connection() as conn:
         if impact.get_analysis(conn, analysis_id) is None:
             raise ToolError("not_found", f"analysis {analysis_id} does not exist")
@@ -211,7 +213,12 @@ def save_suite(context: Context, analysis_id: int, items: list[dict], left_out: 
                 f" ({latest if latest is not None else 'there is none'}); a suite is saved for the latest one",
             )
         suite_id = design.save_suite(
-            conn, analysis_id=analysis_id, session_id=context.session_id, items=items, left_out=left_out
+            conn,
+            analysis_id=analysis_id,
+            session_id=context.session_id,
+            items=items,
+            left_out=left_out,
+            confirm=confirm,
         )
         uncovered = design.uncovered_requirements(conn, suite_id)
     return {
@@ -664,6 +671,11 @@ TOOLS = [
                         },
                         ("test_case_id", "reason"),
                     ),
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Keep in items a project test case that the candidate full run did not report, "
+                    "because the evidence shows otherwise.",
                 },
             },
             ("analysis_id", "items", "left_out"),

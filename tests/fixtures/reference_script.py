@@ -168,8 +168,8 @@ CYCLE_1_SELECTION_NOTE = (
     "The change set adds lines to test files; a full run against the candidate makes their tests known."
 )
 CYCLE_2_SELECTION_NOTE = (
-    "The change set only removes lines from tests/test_discounts.py: it adds no test, so no full run against the"
-    " candidate is needed. The removed test is left out of the suite."
+    "The change set removes a test from tests/test_discounts.py; the full run against the candidate shows which tests"
+    " exist there. The removed test is left out of the suite."
 )
 
 
@@ -248,10 +248,10 @@ def analyze(diffs: dict, modules: list, impacted: dict, risks: list, documented:
 
 def select(runs_note: str, removed: tuple[str, ...] = ()) -> list:
     """The skill ``test-selection``: read the analysis and the test cases, check that a full run against the candidate
-    exists when the change adds tests, read the risks and the impacted requirements, and save a suite of every
-    project test (the suite of the reference scenario: it is small, so everything is selected). Tests removed by the
-    change are not selected; ``left_out`` names every implemented test case traced to an impacted requirement that is
-    not selected, which is none in both cycles."""
+    exists when the change set has a test file, read the risks and the impacted requirements, and save a suite of
+    every project test (the suite of the reference scenario: it is small, so everything is selected). Tests removed by
+    the change are not selected; ``left_out`` names every implemented test case traced to an impacted requirement that
+    is not selected, which is none in both cycles."""
     analysis, test_cases = call("memory__get_analysis"), call("memory__get_test_cases")
     saved: dict = {}
 

@@ -282,6 +282,61 @@ def test_save_suite_refuses_tc_020_left_in_neither_list_naming_both_full_runs(tm
             assert client.call("memory", "save_suite", arguments)["test_cases"] == len(changed)
 
 
+def test_save_suite_refuses_a_project_test_the_candidate_full_run_did_not_report_unless_confirmed(
+    tmp_path_factory, shop_after_both_runs
+):
+    # The selection of the real model in cycle 2: a test case whose test the candidate does not have. Here the versions
+    # are reversed, v1.1..v1.0, so that the candidate full run is RUN-0001 against v1.0, which does not have the tests
+    # that v1.1 adds for REQ-008: those test cases have no execution in it.
+    with project_copy(tmp_path_factory, shop_after_both_runs.path) as path:
+        with Client(path, open_session(path, "v1.1", "v1.0")) as client:
+            client.call("memory", "sync_requirements")
+            synced = [r["id"] for r in client.call("memory", "get_requirements")["requirements"]]
+            analysis = client.call("git", "analyze_changes")
+            client.call("memory", "save_impact", {
+                "analysis_id": analysis["analysis_id"],
+                "modules": [{"module": "shop", "files": [f["path"] for f in analysis["files"]], "risk_level": "high",
+                             "reason": "Changed."}],
+                "requirements": [{"requirement_id": "REQ-006", "reason": "Checkout no longer records the order."}],
+                "not_impacted": [{"requirement_id": r, "reason": "Not impacted."} for r in synced if r != "REQ-006"],
+            })  # fmt: skip
+            test_cases = client.call("memory", "get_test_cases")["test_cases"]
+            history = sorted(t["id"] for t in test_cases if t["test_id"].rpartition("::")[2].startswith(ORDER_HISTORY))
+            candidate = verdicts(client, "RUN-0001")
+            assert history and not set(history) & candidate.keys()  # not reported by the full run against v1.0
+            base = verdicts(client, "RUN-0002")
+            changed = {  # each one failed against v1.1 and passed against v1.0: it may be left out
+                t for t in base.keys() & candidate.keys() if (base[t] == "passed") != (candidate[t] == "passed")
+            }
+            traced = {  # the test cases of the impacted REQ-006
+                t["id"] for t in test_cases
+                if t["status"] == "implemented" and any(r["requirement_id"] == "REQ-006" for r in t["requirements"])
+            }  # fmt: skip
+            arguments = {
+                "analysis_id": analysis["analysis_id"],
+                "items": [item(t, n, "Traced to REQ-008.") for n, t in enumerate(history, 1)],
+                "left_out": [{"test_case_id": t, "reason": "Not selected."} for t in sorted(changed | traced)],
+            }
+            before = dump(path)
+            error = error_of(lambda: client.call("memory", "save_suite", arguments))
+            assert error.code == "invalid_state"
+            assert error.message == (
+                "test cases of the project suite have no execution in RUN-0001, the latest completed full run on the"
+                f" candidate v1.0: {', '.join(history)}. Their tests do not exist in the candidate version, or their"
+                " files could not be loaded there (see the error of RUN-0001): selected, they would only be blocked."
+                " Leave each one out with that reason, or call again with confirm true if the evidence shows otherwise"
+            )
+            assert dump(path) == before
+            # Left out with that reason, they are accepted; kept with confirm, too.
+            left_out = {**arguments, "items": [], "left_out": [
+                *arguments["left_out"], *({"test_case_id": t, "reason": "Not in v1.0."} for t in history)]}  # fmt: skip
+            assert client.call("memory", "save_suite", left_out)["test_cases"] == 0
+            confirmed = client.call("memory", "save_suite", {**arguments, "confirm": True})
+            assert confirmed["test_cases"] == len(history)
+            suite = client.call("memory", "get_suite", {"suite_id": confirmed["suite_id"]})
+            assert sorted(i["test_case_id"] for i in suite["items"]) == history
+
+
 def test_get_suite_returns_the_test_cases_left_out_with_their_reasons(shop):
     req_004 = to_decide(shop, ["REQ-004"])
     items = [item(test_case_id, n, "REQ-004 changed.") for n, test_case_id in enumerate(req_004, start=1)]

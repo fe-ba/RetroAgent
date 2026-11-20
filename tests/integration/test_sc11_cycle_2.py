@@ -18,7 +18,7 @@ def test_cycle_2_renders_without_an_unresolved_marker_and_states_release_with_co
     assert f"- Test cases that already failed against the baseline {cycle.baseline_run}: TC-022." in text
     assert "| Product pass rate | 92.0% |" in text and "| Fixed | 1 |" in text
     assert "| Open, high | 0 |" in text and "No open defects." in text
-    assert "| Revealing test cases | not evaluable |" in text  # there is no full run in this cycle
+    assert "| Revealing test cases | not evaluable |" in text  # no full run of role base on v1.1
     assert "Metric `revealing` is not evaluable" in text
     folder = session.project_dir / prepared["path"]
     assert sorted(p.name for p in (folder / "charts").iterdir()) == ["comparison.svg", "criteria.svg", "outcomes.svg"]

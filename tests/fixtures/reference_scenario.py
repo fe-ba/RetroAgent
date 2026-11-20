@@ -413,7 +413,10 @@ class Cycle2:
 
 def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
     """Cycle 2 of ``ORACLE.md`` (v1.1 to v1.2) after ``load_reference_scenario``: the 25 tests of the project at
-    v1.2, no generated test, and DEF-001 closed by the evaluated run. There is no full run in this cycle."""
+    v1.2 and no generated test. The change set has a test file, so the cycle discovers v1.2 with a full run against
+    the candidate (runtime.md, Cycle command); v1.1 already has one, RUN-0002. That full run holds the 25 tests of
+    the project (ORACLE.md gives no figure for the generated TC-027 at v1.2), and it closes DEF-001, because it is
+    the first completed run against the candidate in which TC-020 passed."""
     session_id = sessions.start_session(
         conn,
         model="none",
@@ -448,6 +451,20 @@ def load_cycle_2(conn, scenario: ReferenceScenario) -> Cycle2:
         ],
         removal_applies=no_removal,
     )
+    full_run = execution.start_run(
+        conn,
+        version_role="candidate",
+        ref="v1.2",
+        commit=V1_2_COMMIT,
+        scope="all",
+        command="python -m pytest",
+        session_id=session_id,
+    )
+    execution.set_junit_path(conn, full_run, f".retro/runs/{full_run}/junit.xml")
+    for test_id in V1_2_TESTS:
+        _execute(conn, full_run, scenario.tc(test_id), _attempts("v1.2", test_id))
+    execution.finish_run(conn, full_run, status="completed", exit_code=1)
+    interpretation.close_defects_verified_by(conn, full_run)  # as the test runner does when a run completes
     suite_id = design.add_suite(conn, analysis_id=analysis_id, session_id=session_id)
     for position, test_id in enumerate(V1_2_TESTS, start=1):
         design.add_to_suite(

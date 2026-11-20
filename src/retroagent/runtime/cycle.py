@@ -14,11 +14,12 @@ project memory for the session versions is skipped.
 What "done" means for each step, computed from stored records only (``progress``):
 
 - ``analyze``: the latest analysis of the session commits has an impact.
-- ``discover``: a completed full run exists on the baseline commit and, when the change set of the analysis adds
-  test files or adds lines to them, on the candidate commit. A full run on a commit counts whatever its role. The
-  evaluation takes the full baseline run only among runs of role ``base``, so in a cycle whose baseline was the
-  candidate of an earlier cycle (v1.1 in cycle 2 of shop-api) the full run of v1.1 skips the baseline discovery but
-  is not used as the full baseline run: the selection-quality metrics (FR-34, ``Should``) are then not evaluable.
+- ``discover``: a completed full run exists on the baseline commit and, when the change set of the analysis has a
+  test file (added, modified, deleted or renamed), on the candidate commit. A full run on a commit counts whatever
+  its role. The evaluation takes the full baseline run only among runs of role ``base``, so in a cycle whose baseline
+  was the candidate of an earlier cycle (v1.1 in cycle 2 of shop-api) the full run of v1.1 skips the baseline
+  discovery but is not used as the full baseline run: the selection-quality metrics (FR-34, ``Should``) are then not
+  evaluable.
 - ``select``: that analysis has a suite.
 - ``design`` and ``implement`` have no outcome of their own: they count as done when the ``run`` outcome exists,
   and run again otherwise. Their skills make that safe: design avoids duplicates, implement targets ``designed``
@@ -48,8 +49,8 @@ PLAN_STEPS = ("analyze", "select", "design")
 DIRECT_STEPS = frozenset({"discover", "run"})
 ROLES = ("base", "candidate")
 
-# A file of the change set is a test file when a folder of its path has one of these names, or when its name
-# matches one of these patterns (runtime.md, Cycle command).
+# A file of the change set is a test file when its path, or its former path for a renamed file, has a folder with one
+# of these names, or a file name that matches one of these patterns (runtime.md, Cycle command).
 TEST_FOLDERS = frozenset({"test", "tests", "__tests__", "spec"})
 TEST_NAMES = ("test_*", "*_test.*", "*.test.*", "*.spec.*", "*Test.java")
 
@@ -80,14 +81,13 @@ def is_test_file(path: str) -> bool:
     )
 
 
-def adds_tests(files: Sequence[sqlite3.Row | dict]) -> bool:
-    """Whether a change set adds test files or adds lines to them. A test file that is added or renamed adds a test
-    file; a modified one only when it has lines added: a change that only removes lines cannot add a test. A deleted
-    file adds nothing."""
+def has_test_file(files: Sequence[sqlite3.Row | dict]) -> bool:
+    """Whether a change set has a test file: its path, or its former path for a renamed file, is a test file. Any
+    change counts, a deletion too: the full run on the candidate shows the tests a change adds and those it
+    deletes."""
     for changed in files:
-        if changed["change"] == "deleted" or not is_test_file(changed["path"]):
-            continue
-        if changed["change"] in ("added", "renamed") or changed["lines_added"] > 0:
+        old_path = changed["old_path"] if "old_path" in changed.keys() else None
+        if is_test_file(changed["path"]) or (old_path is not None and is_test_file(old_path)):
             return True
     return False
 
@@ -126,7 +126,7 @@ def progress(conn: sqlite3.Connection, base: Version, candidate: Version) -> Pro
     analysis_id = impact.latest_analysis(conn, base.commit, candidate.commit)
     if analysis_id is None:
         return Progress(base, candidate)
-    roles = ["base", *(["candidate"] if adds_tests(impact.list_files(conn, analysis_id)) else [])]
+    roles = ["base", *(["candidate"] if has_test_file(impact.list_files(conn, analysis_id)) else [])]
     commits = {"base": base.commit, "candidate": candidate.commit}
     full_runs_missing = tuple(role for role in roles if not _full_run_exists(conn, commits[role]))
     suite_id = design.current_suite(conn, base.commit, candidate.commit)

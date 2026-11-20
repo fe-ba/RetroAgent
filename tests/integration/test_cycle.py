@@ -241,30 +241,46 @@ def test_sc16_cycle_2_closes_the_defect_and_releases_with_conditions(cycle_1, tm
     assert code == 0, out
     assert script.remaining == 0
     assert "Defects: open: 0 critical, 1 high" in script.requests[0].messages[-1].content  # DEF-001 is found open
-    # no full run: the change of v1.2 only removes lines from a test file
-    assert "Cycle step 2 of 8: discover, skipped: completed full runs exist for v1.1..v1.2." in out
+    # v1.2 deletes a test from tests/test_discounts.py: v1.1 already has a full run (RUN-0002), v1.2 gets one
+    assert "Cycle step 2 of 8: discover\n" in out and "discover, skipped" not in out
     assert "The cycle is complete." in out
     conn = connect(path)
     try:
         session_id = conn.execute("SELECT MAX(id) FROM session").fetchone()[0]
         runs = [r["id"] for r in conn.execute("SELECT id FROM run WHERE session_id = ? ORDER BY id", (session_id,))]
-        assert runs == ["RUN-0005", "RUN-0006"]
+        assert runs == ["RUN-0005", "RUN-0006", "RUN-0007"]
         assert [(r["version_role"], r["ref"], r["scope"]) for r in map(lambda i: execution.get_run(conn, i), runs)] == [
-            ("base", "v1.1", "suite"), ("candidate", "v1.2", "suite"),
+            ("candidate", "v1.2", "all"), ("base", "v1.1", "suite"), ("candidate", "v1.2", "suite"),
         ]  # fmt: skip
+        # the full run against v1.2: the 25 tests of the project at v1.2 (ORACLE.md), without the deleted TC-014
+        full = {
+            row["test_case_id"]: row["result"]
+            for row in conn.execute(
+                "SELECT e.test_case_id, e.result FROM test_execution AS e JOIN test_case AS tc"
+                " ON tc.id = e.test_case_id WHERE e.run_id = 'RUN-0005' AND tc.origin = 'project_suite'"
+                " AND e.status = 'executed'"
+            )
+        }
+        assert (len(full), list(full.values()).count("passed")) == (25, 23) and "TC-014" not in full
+        assert sorted(t for t, result in full.items() if result != "passed") == ["TC-011", "TC-022"]
+        # the first completed run against the candidate in which TC-020 passed closes DEF-001 (mcp-tools.md)
         defect = interpretation.get_defect(conn, "DEF-001")
-        assert (defect["status"], defect["closed_by"], defect["closed_run_id"]) == ("closed", "run", "RUN-0006")
+        assert (defect["status"], defect["closed_by"], defect["closed_run_id"]) == ("closed", "run", "RUN-0005")
+        suite_id = execution.get_run(conn, "RUN-0007")["suite_id"]
+        assert "TC-014" not in {row["id"] for row in design.suite_test_cases(conn, suite_id)}
         classifications = {
             row["test_case_id"]: row["classification"]
             for row in conn.execute(
                 "SELECT e.test_case_id, t.classification FROM triage AS t JOIN test_execution AS e"
-                " ON e.id = t.execution_id WHERE e.run_id = 'RUN-0006'"
+                " ON e.id = t.execution_id WHERE e.run_id = 'RUN-0007'"
             )
         }
         assert classifications == {"TC-011": "flaky", "TC-022": "pre_existing"}
         evaluation = conn.execute("SELECT * FROM evaluation ORDER BY id DESC LIMIT 1").fetchone()
     finally:
         conn.close()
+    assert (evaluation["run_id"], evaluation["baseline_run_id"]) == ("RUN-0007", "RUN-0006")
+    assert (evaluation["full_base_run_id"], evaluation["full_candidate_run_id"]) == (None, "RUN-0005")
     assert evaluation["decision"] == "release_with_conditions"
     metrics = json.loads(evaluation["metrics"])
     assert (metrics["fixed"], metrics["new_failures"]) == (1, 0)  # TC-020 is fixed

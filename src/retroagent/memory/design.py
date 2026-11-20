@@ -439,8 +439,35 @@ def _repeated(values: list) -> list:
     return sorted({value for value in values if values.count(value) > 1})
 
 
+def _not_in_candidate_full_run(
+    conn: sqlite3.Connection, candidate_commit: str, test_case_ids: list[str]
+) -> tuple[str | None, list[str]]:
+    """The latest completed full run on the candidate commit, and the test cases of the project suite among
+    ``test_case_ids`` that it has no execution for: in a full run, a project test that the JUnit XML does not report
+    has no execution. Generated test cases are not checked. Without that run, ``(None, [])``."""
+    run_id = _latest_full_run(conn, candidate_commit)
+    if run_id is None or not test_case_ids:
+        return run_id, []
+    marks = ",".join("?" * len(test_case_ids))
+    missing = [
+        row["id"]
+        for row in conn.execute(
+            f"SELECT id FROM test_case tc WHERE id IN ({marks}) AND origin = 'project_suite' AND NOT EXISTS"
+            " (SELECT 1 FROM test_execution e WHERE e.run_id = ? AND e.test_case_id = tc.id) ORDER BY id",
+            (*test_case_ids, run_id),
+        )
+    ]
+    return run_id, missing
+
+
 def save_suite(
-    conn: sqlite3.Connection, *, analysis_id: int, session_id: int, items: list[dict], left_out: list[dict]
+    conn: sqlite3.Connection,
+    *,
+    analysis_id: int,
+    session_id: int,
+    items: list[dict],
+    left_out: list[dict],
+    confirm: bool = False,
 ) -> int:
     """A new suite for an analysis with its items ``{test_case_id, position, selection_reason}`` and the test cases it
     leaves out ``{test_case_id, reason}``, in one transaction.
@@ -451,11 +478,15 @@ def save_suite(
     the analysis (mcp-tools.md, ``memory.save_suite``). A test case that passed in the baseline full run and failed or
     had an error in the candidate full run has already shown a difference: in left_out it is refused. Any other test
     case may be left out.
+
+    Then one soft check, passed only with ``confirm``: a test case of the project suite in items that the latest
+    completed full run on the candidate commit has no execution for is refused as ``invalid_state``. Its test does
+    not exist in the candidate version, or its file could not be loaded there: selected, it would only be blocked.
     """
     with transaction(conn):
         require_exists(conn, "analysis", "id", analysis_id, "analysis")
         analysis = conn.execute(
-            "SELECT base_commit, candidate_commit FROM analysis WHERE id = ?", (analysis_id,)
+            "SELECT base_commit, candidate_commit, candidate_ref FROM analysis WHERE id = ?", (analysis_id,)
         ).fetchone()
         test_case_ids = [item["test_case_id"] for item in items]
         left_out_ids = [entry["test_case_id"] for entry in left_out]
@@ -517,6 +548,15 @@ def save_suite(
             )
         if problems:
             raise InvariantViolation("invalid_argument: " + "; ".join(problems))
+        full_run, missing = _not_in_candidate_full_run(conn, analysis["candidate_commit"], test_case_ids)
+        if missing and not confirm:
+            raise InvariantViolation(
+                f"invalid_state: test cases of the project suite have no execution in {full_run}, the latest completed"
+                f" full run on the candidate {analysis['candidate_ref']}: {', '.join(missing)}. Their tests do not"
+                " exist in the candidate version, or their files could not be loaded there (see the error of"
+                f" {full_run}): selected, they would only be blocked. Leave each one out with that reason, or call"
+                " again with confirm true if the evidence shows otherwise"
+            )
         suite_id = add_suite(conn, analysis_id=analysis_id, session_id=session_id)
         for item in items:
             add_to_suite(

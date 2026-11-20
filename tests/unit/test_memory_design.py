@@ -311,17 +311,18 @@ def left(*test_case_ids, reason="Not selected."):
     return [{"test_case_id": t, "reason": reason} for t in test_case_ids]
 
 
-def save(conn, build, items, left_out):
+def save(conn, build, items, left_out, confirm=False):
     return design.save_suite(
-        conn, analysis_id=build.analysis_id, session_id=build.session_id, items=items, left_out=left_out
-    )
+        conn, analysis_id=build.analysis_id, session_id=build.session_id, items=items, left_out=left_out,
+        confirm=confirm,
+    )  # fmt: skip
 
 
-def refused(conn, build, items, left_out) -> str:
+def refused(conn, build, items, left_out, confirm=False) -> str:
     """The message of a refused save_suite, checking that nothing was written."""
     before = count_rows(conn)
     with pytest.raises(InvariantViolation) as error:
-        save(conn, build, items, left_out)
+        save(conn, build, items, left_out, confirm)
     assert count_rows(conn) == before
     return str(error.value)
 
@@ -503,3 +504,80 @@ def test_retired_unexecuted_and_both_failing_test_cases_need_no_decision(conn, b
     design.retire_test_case(conn, retired, reason="obsolete", retired_by="fake/model")
     assert design.verdict_changes(conn, BASE_COMMIT, CANDIDATE_COMMIT) == {}
     save(conn, build, [], [])
+
+
+# The soft check: a project test case that the latest full run on the candidate did not report (mcp-tools.md,
+# save_suite). In a full run, a project test that the JUnit XML does not report has no execution.
+
+
+def not_in_candidate(run_id: str, *test_case_ids: str) -> str:
+    return (
+        "invalid_state: test cases of the project suite have no execution in"
+        f" {run_id}, the latest completed full run on the candidate v1.1: {', '.join(test_case_ids)}. Their tests do"
+        " not exist in the candidate version, or their files could not be loaded there (see the error of"
+        f" {run_id}): selected, they would only be blocked. Leave each one out with that reason, or call again with"
+        " confirm true if the evidence shows otherwise"
+    )
+
+
+def test_a_project_test_case_that_the_candidate_full_run_did_not_report_is_refused_and_named(conn, build, impacted):
+    # TC-014 of cycle 2: its test is deleted by v1.2, so the full run against v1.2 has no execution for it.
+    kept, deleted, unloaded = build.project_test(), build.project_test(), build.project_test()
+    full_run(conn, build, "base", {kept: "passed", deleted: "passed", unloaded: "passed"})
+    candidate = full_run(conn, build, "candidate", {kept: "passed"})
+    message = refused(conn, build, selected(kept, deleted, unloaded), [])
+    assert message == not_in_candidate(candidate, deleted, unloaded)
+
+
+def test_confirm_keeps_a_project_test_case_that_the_candidate_full_run_did_not_report(conn, build, impacted):
+    deleted = build.project_test()
+    full_run(conn, build, "candidate", {})
+    suite_id = save(conn, build, selected(deleted), [], confirm=True)
+    assert [row["test_case_id"] for row in design.suite_items(conn, suite_id)] == [deleted]
+
+
+def test_the_same_test_case_left_out_with_that_reason_is_accepted(conn, build, impacted):
+    deleted = build.project_test()
+    full_run(conn, build, "candidate", {})
+    suite_id = save(conn, build, [], left(deleted, reason="Deleted by the change: not reported by the full run."))
+    assert [tuple(row) for row in design.suite_left_out(conn, suite_id)] == [
+        (deleted, "Deleted by the change: not reported by the full run.")
+    ]
+
+
+def test_a_generated_test_case_without_an_execution_in_the_candidate_full_run_is_not_refused(conn, build, impacted):
+    generated = build.test_case(requirement_ids=["REQ-001"])  # origin designed: a generated test
+    full_run(conn, build, "candidate", {})
+    save(conn, build, selected(generated), [])
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        [],  # no run at all
+        [("base", "completed", "all")],  # a full run on the baseline only
+        [("candidate", "completed", "selected")],  # not a full run
+        [("candidate", "error", "all")],  # not completed
+    ],
+)
+def test_no_refusal_without_a_completed_full_run_on_the_candidate_commit(conn, build, impacted, runs):
+    case = build.project_test()
+    for role, status, scope in runs:
+        full_run(conn, build, role, {}, status=status, scope=scope)
+    save(conn, build, selected(case), [])
+
+
+def test_only_the_latest_full_run_on_the_candidate_decides(conn, build, impacted):
+    case = build.project_test()
+    full_run(conn, build, "candidate", {case: "passed"})
+    latest = full_run(conn, build, "candidate", {})
+    assert refused(conn, build, selected(case), []) == not_in_candidate(latest, case)
+
+
+def test_the_hard_checks_come_first_and_confirm_does_not_pass_them(conn, build, impacted):
+    deleted, forgotten = build.project_test(), build.test_case(requirement_ids=["REQ-004"])
+    full_run(conn, build, "candidate", {})
+    for confirm in (False, True):
+        message = refused(conn, build, selected(deleted), [], confirm=confirm)
+        assert message.startswith("invalid_argument: ") and "invalid_state" not in message
+        assert f"neither items nor left_out: {forgotten} (REQ-004)" in message

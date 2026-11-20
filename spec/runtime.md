@@ -158,13 +158,14 @@ For selection quality metrics (FR-34), step 9 can be complemented with `/run all
 | `analyze` | Model, skill `impact-analysis` | Read tools, `memory__sync_requirements`, `git__analyze_changes`, `memory__save_impact`, `memory__add_risk` | An analysis of the session versions has an impact. |
 | `discover` | Direct: full run against the baseline, then a full run against the candidate when the change set of the analysis has a test file | — | The runs are `completed`. Each one is skipped when a completed full run on its commit already exists. |
 
-A file of the change set is a test file when a folder of its path is named `test`, `tests`, `__tests__` or `spec`, or when its name matches `test_*`, `*_test.*`, `*.test.*`, `*.spec.*` or `*Test.java`. Any change to a test file counts, a deletion too: the full run on the candidate shows which tests exist there, both the tests a change adds and those it deletes (see `memory.save_suite`).
 | `select` | Model, skill `test-selection` | Read tools, `memory__save_suite`, `test_runner__run_tests` | The analysis has a suite. |
 | `design` | Model, skill `test-design` | Read tools, `memory__design_test_case`, `memory__update_test_case`, `memory__retire_test_case` | None: gaps may remain, and the step says so. |
 | `implement` | Model, skill `test-design` | Read tools, `test_runner__write_test`, `test_runner__get_evidence`, `memory__update_test_case`, `memory__retire_test_case` | None: test cases left `designed` become a condition of the decision. |
 | `run` | Direct: the suite against the baseline, then against the candidate | — | Both runs are `completed`. |
 | `triage` | Model, skill `failure-triage` | Read tools, `test_runner__get_evidence`, `memory__save_triage`, `memory__register_defect`, `memory__link_defect` | No failed execution of the candidate run is left without triage. |
 | `report` | Model, skill `test-reporting` | Read tools, the tools of `reports` | A `completion` report is `rendered`. |
+
+A file of the change set is a test file when its path, or its former path for a renamed file, has a folder named `test`, `tests`, `__tests__` or `spec`, or a file name that matches `test_*`, `*_test.*`, `*.test.*`, `*.spec.*` or `*Test.java`. Any change to a test file counts, a deletion too: the full run on the candidate shows which tests exist there, both the tests a change adds and those it deletes (see `memory.save_suite`).
 
 - "Read tools" are the tools of `runtime` and every tool of `git` and `memory` whose access is `read` (`mcp-tools.md`, Summary). Each step can write only what its own step records, so that a step never redoes or undoes another one, for example by creating a new analysis during triage. A free message exposes every tool the mode allows.
 - When the outcome of a step is missing, the step runs once more with a message that states what is missing. If it is still missing, the cycle stops with a runtime error that names the step.

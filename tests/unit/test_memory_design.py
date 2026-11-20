@@ -9,6 +9,9 @@ from fixtures.memory_records import BASE_COMMIT, CANDIDATE_COMMIT, count_rows, n
 
 from retroagent.memory import design, execution, impact, requirements
 from retroagent.memory.errors import InvariantViolation
+from retroagent.servers import serving
+from retroagent.servers.errors import ToolError
+from retroagent.servers.memory import server as memory_server
 
 
 def links(conn, test_case_id):
@@ -311,18 +314,17 @@ def left(*test_case_ids, reason="Not selected."):
     return [{"test_case_id": t, "reason": reason} for t in test_case_ids]
 
 
-def save(conn, build, items, left_out, confirm=False):
+def save(conn, build, items, left_out):
     return design.save_suite(
-        conn, analysis_id=build.analysis_id, session_id=build.session_id, items=items, left_out=left_out,
-        confirm=confirm,
-    )  # fmt: skip
+        conn, analysis_id=build.analysis_id, session_id=build.session_id, items=items, left_out=left_out
+    )
 
 
-def refused(conn, build, items, left_out, confirm=False) -> str:
+def refused(conn, build, items, left_out) -> str:
     """The message of a refused save_suite, checking that nothing was written."""
     before = count_rows(conn)
     with pytest.raises(InvariantViolation) as error:
-        save(conn, build, items, left_out, confirm)
+        save(conn, build, items, left_out)
     assert count_rows(conn) == before
     return str(error.value)
 
@@ -506,7 +508,7 @@ def test_retired_unexecuted_and_both_failing_test_cases_need_no_decision(conn, b
     save(conn, build, [], [])
 
 
-# The soft check: a project test case that the latest full run on the candidate did not report (mcp-tools.md,
+# The hard check: a project test case that the latest full run on the candidate did not report (mcp-tools.md,
 # save_suite). In a full run, a project test that the JUnit XML does not report has no execution.
 
 
@@ -515,8 +517,7 @@ def not_in_candidate(run_id: str, *test_case_ids: str) -> str:
         "invalid_state: test cases of the project suite have no execution in"
         f" {run_id}, the latest completed full run on the candidate v1.1: {', '.join(test_case_ids)}. Their tests do"
         " not exist in the candidate version, or their files could not be loaded there (see the error of"
-        f" {run_id}): selected, they would only be blocked. Leave each one out with that reason, or call again with"
-        " confirm true if the evidence shows otherwise"
+        f" {run_id}): selected, they would only be blocked. Leave each one out with that reason"
     )
 
 
@@ -529,11 +530,18 @@ def test_a_project_test_case_that_the_candidate_full_run_did_not_report_is_refus
     assert message == not_in_candidate(candidate, deleted, unloaded)
 
 
-def test_confirm_keeps_a_project_test_case_that_the_candidate_full_run_did_not_report(conn, build, impacted):
+def test_confirm_is_not_an_argument_of_save_suite(tmp_path, conn, build, impacted):
+    # No argument overrides the check: confirm is refused as any unknown argument, before the tool is called.
     deleted = build.project_test()
     full_run(conn, build, "candidate", {})
-    suite_id = save(conn, build, selected(deleted), [], confirm=True)
-    assert [row["test_case_id"] for row in design.suite_items(conn, suite_id)] == [deleted]
+    tool = next(t for t in memory_server.TOOLS if t.name == "save_suite")
+    assert "confirm" not in tool.parameters["properties"]
+    arguments = {"analysis_id": build.analysis_id, "items": selected(deleted), "left_out": [], "confirm": True}
+    before = count_rows(conn)
+    with pytest.raises(ToolError) as error:
+        serving.call(serving.Context(tmp_path, build.session_id), tool, arguments)
+    assert error.value.code == "invalid_argument" and "'confirm' was unexpected" in error.value.message
+    assert count_rows(conn) == before
 
 
 def test_the_same_test_case_left_out_with_that_reason_is_accepted(conn, build, impacted):
@@ -574,10 +582,9 @@ def test_only_the_latest_full_run_on_the_candidate_decides(conn, build, impacted
     assert refused(conn, build, selected(case), []) == not_in_candidate(latest, case)
 
 
-def test_the_hard_checks_come_first_and_confirm_does_not_pass_them(conn, build, impacted):
+def test_the_invalid_argument_checks_come_first(conn, build, impacted):
     deleted, forgotten = build.project_test(), build.test_case(requirement_ids=["REQ-004"])
     full_run(conn, build, "candidate", {})
-    for confirm in (False, True):
-        message = refused(conn, build, selected(deleted), [], confirm=confirm)
-        assert message.startswith("invalid_argument: ") and "invalid_state" not in message
-        assert f"neither items nor left_out: {forgotten} (REQ-004)" in message
+    message = refused(conn, build, selected(deleted), [])
+    assert message.startswith("invalid_argument: ") and "invalid_state" not in message
+    assert f"neither items nor left_out: {forgotten} (REQ-004)" in message

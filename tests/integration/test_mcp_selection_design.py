@@ -282,7 +282,7 @@ def test_save_suite_refuses_tc_020_left_in_neither_list_naming_both_full_runs(tm
             assert client.call("memory", "save_suite", arguments)["test_cases"] == len(changed)
 
 
-def test_save_suite_refuses_a_project_test_the_candidate_full_run_did_not_report_unless_confirmed(
+def test_save_suite_refuses_a_project_test_the_candidate_full_run_did_not_report(
     tmp_path_factory, shop_after_both_runs
 ):
     # The selection of the real model in cycle 2: a test case whose test the candidate does not have. Here the versions
@@ -324,17 +324,16 @@ def test_save_suite_refuses_a_project_test_the_candidate_full_run_did_not_report
                 "test cases of the project suite have no execution in RUN-0001, the latest completed full run on the"
                 f" candidate v1.0: {', '.join(history)}. Their tests do not exist in the candidate version, or their"
                 " files could not be loaded there (see the error of RUN-0001): selected, they would only be blocked."
-                " Leave each one out with that reason, or call again with confirm true if the evidence shows otherwise"
+                " Leave each one out with that reason"
             )
             assert dump(path) == before
-            # Left out with that reason, they are accepted; kept with confirm, too.
+            # Left out with that reason, they are accepted.
             left_out = {**arguments, "items": [], "left_out": [
                 *arguments["left_out"], *({"test_case_id": t, "reason": "Not in v1.0."} for t in history)]}  # fmt: skip
-            assert client.call("memory", "save_suite", left_out)["test_cases"] == 0
-            confirmed = client.call("memory", "save_suite", {**arguments, "confirm": True})
-            assert confirmed["test_cases"] == len(history)
-            suite = client.call("memory", "get_suite", {"suite_id": confirmed["suite_id"]})
-            assert sorted(i["test_case_id"] for i in suite["items"]) == history
+            saved = client.call("memory", "save_suite", left_out)
+            assert saved["test_cases"] == 0
+            suite = client.call("memory", "get_suite", {"suite_id": saved["suite_id"]})
+            assert sorted(e["test_case_id"] for e in suite["left_out"] if e["reason"] == "Not in v1.0.") == history
 
 
 def test_get_suite_returns_the_test_cases_left_out_with_their_reasons(shop):

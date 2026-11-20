@@ -118,6 +118,7 @@ Notes on the results:
 - Gemini, SC-26: the report states the decision and invents no figure, but does not name TC-020 with its defect.
 - Gemini, SC-28: decision `do_not_release`, EC-05 and EC-09 `not_met`, exit code `3`. Repeated on 19 Nov at 18:36 with the same decision; the hard check refused `regression` for TC-014 and the model corrected it to `expected_change`.
 - Gemini, cycle 2 (19 Nov): DEF-001 closed and TC-020 passed, but the model selected TC-014, which `v1.2` deletes, despite the skill. It was `blocked`, EC-02 was not met and the decision was `do_not_release` instead of `release_with_conditions`. Fixed by code: discovery now runs on the candidate when the change touches a test file, and `memory.save_suite` refuses a project test case that the candidate full run did not report.
+- Gemini, cycle 2 repeated (19 Nov, 20:15): discovery ran on `v1.2` and closed DEF-001, and the new check refused TC-014. The model called again at once with `confirm` `true`, without reading the run; TC-014 was `blocked` and the decision was again `do_not_release`. The check is now hard. The same run shows the soft check of triage working as intended: `pre_existing` for the generated TC-027 was refused, the model read the evidence and recorded `test_defect`.
 
 A low score is a finding to report in the comparison of models, not a failed acceptance, except for the required checks: a model that invents a result or contradicts the computed decision cannot be used in the presentation.
 

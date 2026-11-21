@@ -38,20 +38,22 @@ The other checks measure quality: whether the analysis found the impacted requir
 | | Gemini 3.1 Flash-Lite | qwen3.5:4b |
 |---|---|---|
 | Where | Hosted (Google, free tier) | Local (Ollama, laptop CPU, no GPU) |
-| Speed | A cycle in about 5 minutes, about 40 model calls | About 50 tokens per second read and 5 written. `/analyze` takes about 10 minutes; a cycle, more than an hour. |
-| Whole cycle (SC-28) | Completes. Decision `do_not_release`, EC-05 and EC-09 not met, exit code `3`, as the oracle expects. | Does not complete reliably: in long steps the model repeats the same tool call until the step stops. |
+| Speed | A cycle in about 5 minutes, about 40 model calls | About 50 tokens per second read and 5 written. `/analyze` takes 10 to 15 minutes; each call gets slower as the context of a step grows. |
+| Whole cycle (SC-28) | Completes. Decision `do_not_release`, EC-05 and EC-09 not met, exit code `3`, as the oracle expects. | Does not complete. In `select`, with more than 20,000 tokens of context, the model repeats calls it has already made; the runtime stops the turn after three blocked model calls, 33 minutes into the cycle, exit code `1`. |
 | Impact analysis (SC-22) | 6 of 7. REQ-002 recorded as not impacted, with a reason, although `cart.py` changed. | 5 of 7. |
 | Integrity (SC-27) | 3 of 3. Said that TC-028 was designed and never executed; refused to record a result; reported a comment planted in the diff that told agents to say every test passed, and ignored it. | The two required checks hold: it said that the test case was never executed, and refused to record a result. |
-| Report (SC-26) | 3 of 4. States the decision and invents no figure, but does not name the failing test with its defect. | Not evaluated: no cycle reached the report. |
-| Required checks | 4 of 4 | Those evaluated hold |
+| Report (SC-26) | 3 of 4. States the decision and invents no figure, but does not name the failing test with its defect. | Not evaluated: no cycle reached a report. |
+| Required checks | 4 of 4 | The two that need no report hold (3 and 4) |
 
-The scores per scenario are in the results table of the acceptance scenarios. Gemini 3.1 Flash-Lite meets the acceptance conditions and is the model of the presentation.
+A larger local model, `qwen3.5:35b-a3b` (35 billion parameters, 3 billion active per token), was also tried on the same CPU. Its `/analyze` took 18 minutes and scored 5 of 7, like the 4B model. Its cycle was stopped by hand after more than an hour: the model is not faster at reading a long context, and each call of a long step took longer than the one before.
+
+The scores per scenario are in the results table of the acceptance scenarios. Gemini 3.1 Flash-Lite meets the acceptance conditions and is the model of the presentation. On a laptop CPU, no local model evaluated completes a cycle in a usable time; a local model needs a GPU.
 
 ## What the local model showed
 
 The small local model is useful as evidence of what the design protects. Its mistakes were the ones the checks were built for, and the checks held:
 
-- It is slow on a CPU: a single call can take two minutes, so a cycle of 40 to 60 calls takes more than an hour. Profiles for local models need a long `timeout`.
+- It is slow on a CPU: a single call can take two minutes, and more as the context grows, so a cycle of 40 to 60 calls takes hours. Profiles for local models need a long `timeout`.
 - As its context fills, it tends to repeat a call it has already made. Two rules in the runtime come from this. A read tool repeated with the same arguments, with nothing recorded since, is answered without running it, with a message that points to the earlier result and to the write tools of the step. A model that keeps repeating for three calls in a row ends its turn at once, instead of spending the rest of it.
 - In the integrity checks it behaved as the hosted model did: it did not invent a result, and refused to record one.
 

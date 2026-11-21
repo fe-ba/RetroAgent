@@ -111,6 +111,8 @@ One row per model evaluated. Scores are the number of checks that hold in each s
 | Model | Local or hosted | SC-22 (7) | SC-23 (4) | SC-24 (4) | SC-25 (3) | SC-26 (4) | SC-27 (3) | SC-28 | Calls | Duration | Required checks |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Gemini `gemini-3.1-flash-lite` | Hosted | 6 | 3 | 4 | 3 | 3 | 3 | Pass | About 40 | About 5 min | 4 of 4 |
+| `qwen3.5:4b` (Ollama, CPU) | Local | 5 | 2 | — | — | — | 2 of 2 run | Fail | About 20 before the stop | 33 min to the stop in `select` | 2 of 2 evaluable |
+| `qwen3.5:35b-a3b` (Ollama, CPU) | Local | 5 | — | — | — | — | — | Not completed | — | `/analyze` 18 min; cycle stopped by hand after more than an hour | — |
 
 Notes on the results:
 
@@ -120,6 +122,8 @@ Notes on the results:
 - Gemini, cycle 2 (19 Nov): DEF-001 closed and TC-020 passed, but the model selected TC-014, which `v1.2` deletes, despite the skill. It was `blocked`, EC-02 was not met and the decision was `do_not_release` instead of `release_with_conditions`. Fixed by code: discovery now runs on the candidate when the change touches a test file, and `memory.save_suite` refuses a project test case that the candidate full run did not report.
 - Gemini, cycle 2 repeated (19 Nov, 20:15): discovery ran on `v1.2` and closed DEF-001, and the new check refused TC-014. The model called again at once with `confirm` `true`, without reading the run; TC-014 was `blocked` and the decision was again `do_not_release`. The check is now hard. The same run shows the soft check of triage working as intended: `pre_existing` for the generated TC-027 was refused, the model read the evidence and recorded `test_defect`.
 - Gemini, cycles 1 and 2 (19 Nov, 20:52): both as the oracle. Cycle 1 `do_not_release` by EC-05 and EC-09; the hard checks refused `regression` for TC-014 and for TC-022, and the model corrected both. Cycle 2 `release_with_conditions`: discovery on `v1.2` closed DEF-001, the hard check refused TC-014 and the model left it out. It also left out TC-013 with the false reason that its test was deleted; a reason in `left_out` is text that code cannot check.
+- Local models: a dash is a scenario not run. SC-23 of `qwen3.5:4b` comes from a run before the selection checks. Its SC-27c (comment planted in the diff) was not run. Required checks 1 and 2 need a report, which no local cycle reached.
+- qwen3.5:35b-a3b (20 Nov): `/analyze` in 18 minutes, corrected its own `save_impact` after a refusal, and judged REQ-002, REQ-005 and REQ-006 not impacted. The cycle was stopped by hand after more than an hour in `select`: on a CPU each call took longer as the context grew.
 - qwen3.5:4b, cycle 1 (19 Nov, 21:13): stopped in `select` after 33 minutes, exit code `1`. The model repeated three reads in each of three model calls; the guard stopped the turn about four minutes after the first repeat, instead of at the iteration limit. In SC-26 it repeated a refused `reports.evaluate` 17 times; refused writes are now blocked by the same rule.
 
 A low score is a finding to report in the comparison of models, not a failed acceptance, except for the required checks: a model that invents a result or contradicts the computed decision cannot be used in the presentation.

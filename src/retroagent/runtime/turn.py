@@ -3,9 +3,10 @@
 Every iteration builds the context (system context, tool definitions of the mode and tool set, the conversation,
 freed when the budget requires it, and the state message), calls the model, applies the truncation guard, and
 processes the tool calls one by one in the order given: each one is recorded in ``tool_call`` before dispatch,
-checked, asked about when needed, dispatched, and answered in the conversation. A read call that repeats an earlier
-one of the turn whose result is still in the conversation, with nothing recorded since, is answered with
-``invalid_argument`` instead of being dispatched (runtime.md, Repeated calls); in a turn with the tool set of a step,
+checked, asked about when needed, dispatched, and answered in the conversation. A call that repeats an earlier one of
+the turn whose result is still in the conversation, with nothing recorded since, is answered with ``invalid_argument``
+instead of being dispatched (runtime.md, Repeated calls): any earlier read call, and an earlier write call only when it
+was refused with ``invalid_argument``, ``invalid_state`` or ``not_found``. In a turn with the tool set of a step,
 the answer names the write tools of that step. When three model calls in a row get only blocked calls, the turn stops
 as at the iteration limit, with a message that names the repeated call.
 
@@ -65,6 +66,9 @@ NOT_COMPLETED = "not completed: interrupted by the user"
 SECRET = "***"
 POLL_SECONDS = 0.05
 BLOCKED_IN_A_ROW = 3  # model calls in a row with only blocked calls that stop the turn (Repeated calls)
+# The codes of a refused write that block the same call: its checks depend only on its arguments and on what is
+# recorded, so with nothing recorded since it is refused again (Repeated calls).
+WRITE_REFUSALS = ("invalid_argument", "invalid_state", "not_found")
 
 # Asks the user: a permission, answered with one of ``permissions.ANSWERS``, or the approval of the project commands,
 # answered with one of ``permissions.APPROVAL_ANSWERS``.
@@ -230,10 +234,11 @@ class _Turn:
         self.interrupt = interrupt
         self.by_user = False  # a direct command of the user, which may call the user-only tools
         self.calls = 0
-        # Repeated calls: the read calls of this turn that block a repeat, by normalized call, with the ID of the
-        # call and the message of its result; emptied when a write tool succeeds. ``dispatched`` tells whether the
-        # current call reached its tool, ``blocked`` that it was answered as a repeat. ``blocked_in_a_row`` counts the
-        # model calls in a row whose tool calls were all blocked; ``repeated`` is the last blocked call, as recorded.
+        # Repeated calls: the calls of this turn that block a repeat (reads, and writes refused with a code of
+        # WRITE_REFUSALS), by normalized call, with the ID of the call and the message of its result; emptied when a
+        # write tool succeeds. ``dispatched`` tells whether the current call reached its tool, ``blocked`` that it was
+        # answered as a repeat. ``blocked_in_a_row`` counts the model calls in a row whose tool calls were all
+        # blocked; ``repeated`` is the last blocked call, as recorded.
         self.answered: dict[str, tuple[str, Message]] = {}
         self.dispatched = False
         self.blocked = False
@@ -375,8 +380,10 @@ class _Turn:
         message = self._add_result(call, content)
         name = _names(call.name)[0]
         if name in tools.WRITE_TOOLS:
-            if outcome == "ok":  # something was recorded: every read may now answer differently
+            if outcome == "ok":  # something was recorded: every call may now answer differently
                 self.answered.clear()
+            elif self.dispatched and code in WRITE_REFUSALS:
+                self.answered[_call_key(name, call.arguments)] = (call.id, message)
         elif self.dispatched and code != "unavailable":  # a restarted server may answer an unavailable call
             self.answered[_call_key(name, call.arguments)] = (call.id, message)
         return content
@@ -466,8 +473,7 @@ class _Turn:
             raise ToolError(decision.code, decision.message)
         if commands is not None and commands.config_error is not None:
             raise ToolError("invalid_state", f"the configuration cannot be read: {commands.config_error}")
-        if name not in tools.WRITE_TOOLS:
-            self._check_repeated(name, call.arguments)
+        self._check_repeated(name, call.arguments)
         if decision.approve_commands:
             self._approve(commands)
         if decision.action == "ask":
@@ -482,8 +488,9 @@ class _Turn:
         )
 
     def _check_repeated(self, name: str, arguments: Mapping[str, object]) -> None:
-        """Repeated calls (runtime.md, Turn): raise ``invalid_argument`` when an earlier read call of this turn with
-        the same arguments was answered, its result is still in the conversation, and nothing was recorded since."""
+        """Repeated calls (runtime.md, Turn): raise ``invalid_argument`` when an earlier call of this turn with the
+        same arguments was answered, its result is still in the conversation, and nothing was recorded since. The
+        earlier call is a read, or a write refused with a code of ``WRITE_REFUSALS`` (see ``_tool_call``)."""
         earlier = self.answered.get(_call_key(name, arguments))
         if earlier is None:
             return

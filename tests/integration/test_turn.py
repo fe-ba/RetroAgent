@@ -380,6 +380,67 @@ def test_a_repeated_write_tool_is_dispatched(agent):
     assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["ok", "ok"]
 
 
+REFUSED_VERSIONS = {"base": "v1.0", "candidate": "no-such-ref"}  # refused with not_found by the runtime
+TRIAGE = {"execution_id": 1, "classification": "regression", "justification": "The total changed."}
+
+
+def test_a_refused_write_repeated_is_blocked_and_names_the_earlier_call(agent):
+    first, second = call("runtime__set_versions", REFUSED_VERSIONS), call("runtime__set_versions", REFUSED_VERSIONS)
+    run(agent, [calls(first), calls(second), answer()])
+    assert error_of(tool_results(agent.conversation)[first.id])["code"] == "not_found"
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["error", "error"]
+    assert_blocked(agent, second, first)
+
+
+def test_a_write_refused_with_invalid_state_is_blocked(agent, monkeypatch):
+    # The loop of the local model: reports__evaluate on the same run, refused with invalid_state every time.
+    refused = ToolError("invalid_state", "the execution has no failure to triage")
+    dispatched = counted(agent, monkeypatch, fail_once={"memory__save_triage": refused})
+    first, second = call("memory__save_triage", TRIAGE), call("memory__save_triage", TRIAGE)
+    run(agent, [calls(first), calls(second), answer()])
+    assert len(dispatched) == 1
+    assert_blocked(agent, second, first)
+
+
+def test_the_same_refused_write_after_a_successful_write_is_dispatched(agent):
+    first, again = call("runtime__set_versions", REFUSED_VERSIONS), call("runtime__set_versions", REFUSED_VERSIONS)
+    succeeded = call("runtime__set_versions", {"base": "v1.0", "candidate": "v1.1"})
+    run(agent, [calls(first), calls(succeeded), calls(again), answer()])
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["error", "ok", "error"]
+    error = error_of(tool_results(agent.conversation)[again.id])
+    assert error["code"] == "not_found" and f"call {first.id}" not in error["message"]
+
+
+@pytest.mark.parametrize("code", ["unavailable", "execution_failed"])
+def test_a_write_that_failed_with_another_code_is_retried(agent, monkeypatch, code):
+    dispatched = counted(agent, monkeypatch, fail_once={"memory__save_triage": ToolError(code, "it failed")})
+    first, second = call("memory__save_triage", TRIAGE), call("memory__save_triage", TRIAGE)
+    run(agent, [calls(first), calls(second), answer()])
+    assert len(dispatched) == 2
+    assert error_of(tool_results(agent.conversation)[first.id])["code"] == code
+    assert f"call {first.id}" not in tool_results(agent.conversation)[second.id]
+
+
+def test_a_refused_write_with_confirm_added_is_dispatched(agent, monkeypatch):
+    refused = ToolError("invalid_state", "a regression of a documented change needs confirm")
+    dispatched = counted(agent, monkeypatch, fail_once={"memory__save_triage": refused})
+    first, confirmed = call("memory__save_triage", TRIAGE), call("memory__save_triage", {**TRIAGE, "confirm": True})
+    run(agent, [calls(first), calls(confirmed), answer()])
+    assert len(dispatched) == 2 and dispatched[1][2]["confirm"] is True
+    assert f"call {first.id}" not in tool_results(agent.conversation)[confirmed.id]
+
+
+def test_three_model_calls_with_only_blocked_writes_stop_the_turn(agent):
+    repeated = [call("runtime__set_versions", REFUSED_VERSIONS) for _ in range(4)]
+    result, provider = run(agent, [*(calls(c) for c in repeated), answer("never reached")])
+    assert result.limit_reached
+    assert result.text == turn_module.repeat_message(f"runtime__set_versions {json.dumps(REFUSED_VERSIONS)}")
+    assert len(provider.requests) == 4 and provider.remaining == 1
+    assert [r["outcome"] for r in tool_rows(agent.conn, agent.id)] == ["error"] * 4
+    for later in repeated[1:]:
+        assert_blocked(agent, later, repeated[0])
+
+
 def test_arguments_in_another_order_are_the_same_call(agent, monkeypatch):
     dispatched = counted(agent, monkeypatch)
     first = call("git__read_file", {"path": "src/shop/pricing.py", "version": "base"})

@@ -35,7 +35,7 @@ Explain every failed or error execution of a run, so that the release decision c
    - `pre_existing` needs a baseline run that executed the test case. Without one, say that the baseline must be run, and classify as `regression`.
 5. **Record.** Call `memory__save_triage` with the execution, the classification and a justification of one to three sentences that cites the evidence: the failure message, the baseline result with its run, the requirement change, the line of the diff.
 6. **Defects** for each execution classified `regression`:
-   - If an open defect (`memory__get_defects` with status `open`) already describes the same failure of the same test case, call `memory__link_defect`.
+   - If the test case already has an open defect (`memory__get_defects` with status `open`), call `memory__link_defect` with it: `memory__register_defect` refuses a second defect for the same test case.
    - Otherwise call `memory__register_defect`, grouping the executions with the same cause. Steps come from the steps of the test case.
    - A `pre_existing` failure needs no defect. Register one only when the user asks for it.
 

@@ -241,7 +241,7 @@ Creates a test case with status `designed` and adds it to the current suite.
 | `requirement_ids` | list of strings | yes | Traced requirements. May be empty when the project has none. |
 | `selection_reason` | string | yes | Why it belongs to the suite. |
 
-Returns the new `TC` ID. Errors: `invalid_state` when there is no current suite.
+Returns the new `TC` ID. Errors: `invalid_state` when there is no current suite, and when `title` is the title of a test case that exists and is not `retired`, naming it: that test case already tests this, or, when the candidate does not have its test, the change deleted it on purpose. No argument overrides this check.
 
 ### `memory.update_test_case`
 
@@ -355,7 +355,7 @@ Errors: `invalid_state` when the execution did not fail, is already triaged and 
 
 Returns the new `DEF` ID. The expected and actual results are taken by code from the first execution.
 
-A defect describes a fault of the product, so every execution must already have a current triage `regression` or `pre_existing`: triage first, then the defect. Errors: `invalid_state` naming each execution without such a triage.
+A defect describes a fault of the product, so every execution must already have a current triage `regression` or `pre_existing`: triage first, then the defect. An execution of a test case that is already linked to an open defect is refused too: the same failure again goes to that defect with `memory.link_defect`, so that one fault is not counted twice by EC-04 to EC-06. Errors: `invalid_state` naming each execution without such a triage, and each execution whose test case has an open defect, with that defect. No argument overrides these checks.
 
 ### `memory.link_defect`
 

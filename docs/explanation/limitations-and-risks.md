@@ -29,7 +29,7 @@ Some requirements of priority Should or Could are specified, and described in th
 | FR-31 (Could) | User and project steering and skills. Only the bundled ones are loaded. |
 | FR-32 (Could) | Additional MCP servers declared in `mcp.json`. Only the four bundled servers start. |
 | FR-37 (Should) | The test plan, test status and defect reports. The test case specification and the completion report are generated. |
-| FR-39 (Should) | `retro config list`, `get` and `set`. Edit the configuration files instead. |
+| FR-39 (Should) | `retro config list`, `get` and `set`, and `retro defects close` outside a session. Edit the configuration files instead, and close a defect with `/defects close` in a session. |
 | NFR-17 (Should) | The JSON fallback mode for models without native tool calls. Such a model cannot start a session. |
 
 ## Technical limits

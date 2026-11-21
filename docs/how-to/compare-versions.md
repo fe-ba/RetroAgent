@@ -40,6 +40,8 @@ Between steps you can talk to the agent in plain language, for example to ask wh
 
 `retro --mode plan`, or `/mode plan` in a session, analyzes and designs but cannot run tests or write test code. `/cycle` in plan mode runs the analysis, the selection and the design, and stops before the implementation. Use it to review what the agent would test before anything runs.
 
+Plan mode cannot discover the tests of a project, because discovery runs them. On a project whose tests were never run, run `/run all --on base` and `/run all --on candidate` in mode `default` first; otherwise the selection has no test cases to choose from and the step stops.
+
 ## Continue a cycle that stopped
 
 A cycle stops when a step does not reach its outcome after one retry, when a tool call is refused, when a run ends in error, when the agent asks you a question, or when the model's quota runs out. Everything done so far is in project memory. Fix the cause or answer the question, then run `/cycle` again in the same session: steps whose outcome is already in project memory for the session versions are not repeated.

@@ -45,6 +45,8 @@ The first run asks you to approve the commands of the project: the setup, the te
 
 Each run happens in a temporary git worktree outside the project, so your working copy is never touched. Expect RUN-0001: 22 tests, 20 passed and 2 failed. Every test becomes a test case, TC-001 to TC-022, linked to its requirement by the number in its name.
 
+Test case IDs are given in the order in which tests are first seen. If you run the candidate first, or a step runs again, the same test can have another number than the ones in this tutorial; that is why the tests are named below by what they check.
+
 The change adds tests in `v1.1`, so run the whole suite on the candidate too:
 
 ```
@@ -89,7 +91,7 @@ The agent asks for permission once for each version. The suite runs on `v1.0`, t
 
 On the baseline, the four tests added in `v1.1` do not exist yet: their executions are `blocked`, with the reason that the test command did not report them. That is expected, and they count only on the candidate.
 
-Expect, on the candidate, four failures among the tests of the project. Your new REQ-002 test passes on both versions.
+Expect, on the candidate, three or four failures among the tests of the project: the search test is flaky, and fails only in some runs. A correct generated test for REQ-002 passes on both versions. One that fails on both, for example because it imports a name that does not exist, is a defect of the test, and the triage says so.
 
 ```
 /status
@@ -109,12 +111,13 @@ The agent loads `failure-triage`, reads the evidence of each failure (the JUnit 
 |---|---|---|
 | Shipping charged when a discount drops below the threshold | `regression` | It passed on `v1.0` and fails on `v1.1`. `pricing.py` now computes shipping on the subtotal before discounts, against REQ-005. |
 | Second coupon is rejected | `expected_change` | REQ-004 changed in `v1.1`: two coupons can now be combined. The test still asserts the old rule. |
-| Search results are sorted by name | `flaky` | It failed at the first attempt and passed in both reruns. |
+| Search results are sorted by name | `flaky` | Only if it failed in this run: it failed at the first attempt and passed in the reruns. |
+| A generated test that fails on both versions | `test_defect` | The test is wrong, not the product, for example an import of a name that does not exist. |
 | Tax rounds half up | `pre_existing` | It also fails on `v1.0`. |
 
 Each classification is checked against the evidence. Had the agent classified the shipping failure as an expected change, the `memory` server would have refused it, because REQ-005 has no documented change for this version. You can try it: ask the agent to reclassify that failure as `expected_change`. The agent cannot excuse a regression by saying so.
 
-For the regression, the agent registers a defect, DEF-001, with a title, a severity and the steps to reproduce. `/defects` lists it.
+For the regression, the agent registers a defect, DEF-001, with a title, a severity and the steps to reproduce. `/defects` lists it. If you triage again, the same failure is linked to DEF-001: a second defect for the same test case is refused.
 
 ## 7. Read the decision and the report
 
@@ -148,7 +151,7 @@ retro --base v1.1 --candidate v1.2
 
 `/cycle` runs the same steps you ran by hand, in the same order, and checks the outcome of each one before the next. The shipping test now passes: it is `fixed`, and the run closes DEF-001, because every test linked to it passed. The decision is **`release_with_conditions`**: the tax rounding test still fails, but it already failed on the baseline.
 
-`v1.2` also deletes the obsolete second-coupon test, TC-014. Because the change touches a test file, discovery runs the whole suite on `v1.2`, and TC-014 has no result there. When the agent selects it anyway, `memory__save_suite` refuses: its test does not exist in the candidate. The agent leaves it out with that reason. Selected, it would have been `blocked`, and since TC-014 is a high-priority test case, EC-02 would have made the decision `do_not_release`.
+`v1.2` also deletes the obsolete second-coupon test (TC-014 in this tutorial). Because the change touches a test file, discovery runs the whole suite on `v1.2`, and TC-014 has no result there. When the agent selects it anyway, `memory__save_suite` refuses: its test does not exist in the candidate. The agent leaves it out with that reason. Selected, it would have been `blocked`, and since TC-014 is a high-priority test case, EC-02 would have made the decision `do_not_release`. For the same reason the design step cannot bring it back: `memory__design_test_case` refuses a title that an existing test case already has.
 
 ## What you learned
 

@@ -1,6 +1,6 @@
 ---
 name: test-reporting
-description: "Generate a test plan, test case specification, test status report, defect report or test completion report: prepare it, write its agent sections from the computed data, and render it. Use for /report, or when asked for a report, metrics or the release decision."
+description: "Generate the test case specification or the test completion report: prepare it, write its agent sections from the computed data, and render it. Use for /report, or when asked for a report, metrics or the release decision."
 ---
 
 # Test reporting

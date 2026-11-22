@@ -4,7 +4,7 @@ RetroAgent is an AI agent for software regression testing. It runs in the termin
 
 The model does the work that needs judgment: which requirements a change affects, which tests to select, what new tests to write, why a test failed. Everything that can be computed is computed by code: test results come only from the JUnit XML that the test run produced, and metrics, exit criteria and the release decision are calculated from stored records. The model cannot record a result, change a metric or contradict the decision.
 
-RetroAgent has its own runtime and does not depend on any model vendor. It works with hosted models (Google, Anthropic, OpenAI, xAI) and with local models served by Ollama.
+RetroAgent has its own runtime and does not depend on any model vendor. It has adapters for hosted models (Google, Anthropic, OpenAI, xAI) and for local models served by Ollama; Google Gemini and Ollama are the ones evaluated with real models.
 
 ## How it works
 
@@ -123,7 +123,7 @@ Automated tests never call a real model: the model is replaced by `FakeProvider`
 
 ## Status
 
-RetroAgent was built as the project of the course Seminario de Ingeniería de Software. The whole cycle works with a hosted model (Gemini 3.1 Flash-Lite: about 40 model calls and 5 minutes for the example). A small local model on a CPU (`qwen3.5:4b`) gets the integrity checks right but is slow, about an hour per cycle, and may stop in a step by repeating a call. See [Limitations and risks](docs/explanation/limitations-and-risks.md).
+RetroAgent was built as the project of the course Seminario de Ingeniería de Software. This is version 0.1.0, a first version: it was evaluated on one example project, with two model providers. The whole cycle works with a hosted model (Gemini 3.1 Flash-Lite: about 40 model calls and 5 minutes for the example). A small local model on a CPU (`qwen3.5:4b`) gets the integrity checks right but is slow, about an hour per cycle, and may stop in a step by repeating a call. See [Limitations and risks](docs/explanation/limitations-and-risks.md).
 
 ## License
 

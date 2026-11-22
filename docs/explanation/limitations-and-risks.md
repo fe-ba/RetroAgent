@@ -53,3 +53,5 @@ Some requirements of priority Should or Could are specified, and described in th
 - **The runtime is the schedule risk.** RetroAgent has no supported mode without its own runtime (ADR-0026). The core requirements are built first, as a thin path through every component (`spec/requirements.md`).
 - **PDF export needs a system library.** Markdown is always produced; the PDF fails with a message that says what to install (ADR-0018).
 - **One example project.** Behavior on other languages, frameworks and project sizes is not verified.
+- **Two providers evaluated.** Only Google Gemini and Ollama were run with real models. The adapters for Anthropic, OpenAI, xAI and OpenAI-compatible servers pass the contract tests with a fake provider, but no real model of those providers was evaluated.
+- **No command completion.** The session does not complete slash commands, their arguments or test case IDs with the Tab key.

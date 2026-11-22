@@ -8,7 +8,8 @@ Two soft checks refuse a likely mistake, a ``regression`` in a requirement with 
 ``pre_existing`` failure of a generated test, unless the call confirms it; the triage records ``confirmed``.
 
 A defect describes a fault of the product: an execution is linked to it only while its current triage is
-``regression`` or ``pre_existing`` (mcp-tools.md, ``memory.register_defect``). A defect is closed only by the user
+``regression`` or ``pre_existing`` (mcp-tools.md, ``memory.register_defect``), and a test case with an open defect
+gets no second one: the same failure is linked to that defect. A defect is closed only by the user
 (``close_defect``) or by a completed run against the candidate in which every linked test case passed
 (``close_defects_verified_by``, INV-14).
 """
@@ -297,19 +298,49 @@ def triage_count(conn: sqlite3.Connection, execution_id: int) -> int:
 PRODUCT_FAULTS = ("regression", "pre_existing")
 
 
-def _require_product_faults(conn: sqlite3.Connection, executions: list[sqlite3.Row]) -> None:
-    """Refuse, naming every one, the executions whose current triage is not ``regression`` or ``pre_existing``."""
+def _not_product_faults(conn: sqlite3.Connection, executions: list[sqlite3.Row]) -> str | None:
+    """The executions whose current triage is not ``regression`` or ``pre_existing``, every one named, or None."""
     missing = []
     for execution in executions:
         current = current_triage(conn, execution["id"])
         if current is None or current["classification"] not in PRODUCT_FAULTS:
             found = "not triaged" if current is None else current["classification"]
             missing.append(f"execution {execution['id']} of {execution['test_case_id']} ({found})")
-    if missing:
-        raise InvariantViolation(
-            "invalid_state: a defect describes a fault of the product, so every execution needs a current triage"
-            f" regression or pre_existing: {', '.join(missing)}; triage each one first"
-        )
+    if not missing:
+        return None
+    return (
+        "a defect describes a fault of the product, so every execution needs a current triage regression or"
+        f" pre_existing: {', '.join(missing)}; triage each one first"
+    )
+
+
+def _require_product_faults(conn: sqlite3.Connection, executions: list[sqlite3.Row]) -> None:
+    problem = _not_product_faults(conn, executions)
+    if problem:
+        raise InvariantViolation("invalid_state: " + problem)
+
+
+def _with_open_defect(conn: sqlite3.Connection, executions: list[sqlite3.Row]) -> str | None:
+    """The executions whose test case is already linked to an open defect, each with that defect, or None. The same
+    failure goes to that defect, so that one fault is not counted twice (mcp-tools.md, ``memory.register_defect``)."""
+    refused = []
+    for execution in executions:
+        open_defects = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT d.id FROM defect d JOIN defect_execution de ON de.defect_id = d.id"
+                " JOIN test_execution e ON e.id = de.execution_id WHERE d.status = 'open' AND e.test_case_id = ?"
+                " ORDER BY d.id",
+                (execution["test_case_id"],),
+            )
+        ]
+        if open_defects:
+            refused.append(f"execution {execution['id']} of {execution['test_case_id']} ({', '.join(open_defects)})")
+    if not refused:
+        return None
+    return (
+        f"a test case with an open defect gets no second one: {', '.join(refused)}; link each one to its defect instead"
+    )
 
 
 def add_defect(
@@ -321,13 +352,16 @@ def add_defect(
     steps: list | None = None,
 ) -> str:
     """Register an open defect linked to failed executions, each with a current triage ``regression`` or
-    ``pre_existing``. The first one gives run, expected and actual."""
+    ``pre_existing`` and a test case without an open defect. One message names every refused execution. The first
+    execution gives run, expected and actual."""
     if not execution_ids:
         raise InvariantViolation("invalid_argument: a defect is linked to at least one execution")
     _unique(execution_ids)
     with transaction(conn):
         executions = [_failed_execution(conn, execution_id) for execution_id in execution_ids]
-        _require_product_faults(conn, executions)
+        problems = [p for p in (_not_product_faults(conn, executions), _with_open_defect(conn, executions)) if p]
+        if problems:
+            raise InvariantViolation("invalid_state: " + "; ".join(problems))
         first = executions[0]
         expected = conn.execute(
             "SELECT expected_result FROM test_case WHERE id = ?", (first["test_case_id"],)

@@ -373,6 +373,22 @@ def test_register_defect_errors(shop):
     assert dump(project.path) == before
 
 
+def test_register_defect_refuses_a_test_case_with_an_open_defect_and_link_defect_takes_it(shop):
+    project, client = shop
+    s1, _ = product_faults(shop)
+    earlier = execution_of(project, project.scenario.full_candidate_run, S1)  # RUN-0002, the same failure of TC-020
+    triage(client, earlier, "regression")
+    client.call("memory", "register_defect", {"title": "t", "severity": "high", "execution_ids": [s1], "steps": []})
+    arguments = {"title": "Again", "severity": "high", "execution_ids": [earlier], "steps": []}
+    message = refused(shop, lambda: client.call("memory", "register_defect", arguments))
+    assert message == (
+        f"a test case with an open defect gets no second one: execution {earlier} of TC-020 (DEF-001); link each one"
+        " to its defect instead"
+    )
+    linked = client.call("memory", "link_defect", {"defect_id": "DEF-001", "execution_ids": [earlier]})
+    assert linked == {"defect_id": "DEF-001", "execution_ids": [earlier, s1]}
+
+
 def test_link_defect_adds_executions_of_a_later_failure(shop):
     project, client = shop
     s1, s4 = product_faults(shop)

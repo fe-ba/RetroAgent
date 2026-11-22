@@ -2,6 +2,7 @@
 and the real client, on shop-api after ``/run all --on both`` (RUN-0001 against v1.0, RUN-0002 against v1.1) and an
 impact analysis: the result of each tool, and one test for each error code it can return (mcp-tools.md)."""
 
+import itertools
 from types import SimpleNamespace
 
 import pytest
@@ -119,11 +120,20 @@ def save_arguments(shop, items, reason="Not selected.") -> dict:
     return {"analysis_id": shop.analysis_id, "items": items, "left_out": left_out}
 
 
+_TITLES = itertools.count(1)
+
+
+def new_title() -> str:
+    """A title no test case of the module's shared project has: design_test_case refuses an existing one."""
+    return f"{FIELDS['title']} ({next(_TITLES)})"
+
+
 def designed(shop, **changes) -> str:
     """A new designed test case in the current suite, saving an empty suite first when there is none."""
     if failure_or_none(shop, "get_suite") is not None:
         call(shop, "save_suite", save_arguments(shop, []))
-    return call(shop, "design_test_case", {**FIELDS, "selection_reason": "Gap of REQ-002.", **changes})["test_case_id"]
+    arguments = {**FIELDS, "title": new_title(), "selection_reason": "Gap of REQ-002.", **changes}
+    return call(shop, "design_test_case", arguments)["test_case_id"]
 
 
 def failure_or_none(shop, tool, arguments=None):
@@ -187,7 +197,7 @@ def test_uncovered_requirements_follow_the_traces_and_a_designed_test_case_remov
     items = [item(tc(shop, name), position) for position, name in enumerate(names, start=1)]
     saved = call(shop, "save_suite", save_arguments(shop, items))
     assert saved["uncovered_requirements"] == ["REQ-002"]
-    call(shop, "design_test_case", {**FIELDS, "selection_reason": "Gap of REQ-002."})
+    call(shop, "design_test_case", {**FIELDS, "title": new_title(), "selection_reason": "Gap of REQ-002."})
     suite = call(shop, "get_suite")  # computed when read
     assert suite["suite_id"] == saved["suite_id"] and suite["uncovered_requirements"] == []
 
@@ -373,11 +383,12 @@ def test_get_suite_errors(shop):
 def test_design_test_case_stores_every_field_and_adds_it_to_the_end_of_the_current_suite(shop):
     items = [item(tc(shop, SECOND_COUPON), 1), item(tc(shop, SHIPPING), 3)]  # the last position is 3
     suite = call(shop, "save_suite", save_arguments(shop, items))
-    created = call(shop, "design_test_case", {**FIELDS, "selection_reason": "Gap of REQ-002: no test."})
+    fields = {**FIELDS, "title": new_title()}
+    created = call(shop, "design_test_case", {**fields, "selection_reason": "Gap of REQ-002: no test."})
     assert created == {"test_case_id": created["test_case_id"], "suite_id": suite["suite_id"], "position": 4}
     (stored,) = call(shop, "get_test_cases", {"ids": [created["test_case_id"]]})["test_cases"]
-    assert {key: stored[key] for key in FIELDS if key != "requirement_ids"} == {
-        key: value for key, value in FIELDS.items() if key != "requirement_ids"
+    assert {key: stored[key] for key in fields if key != "requirement_ids"} == {
+        key: value for key, value in fields.items() if key != "requirement_ids"
     }
     assert stored["requirements"] == [{"requirement_id": "REQ-002", "link": "design"}]
     assert (stored["status"], stored["origin"], stored["designed_by"]) == ("designed", "designed", "fake/model")
@@ -390,7 +401,7 @@ def test_design_test_case_stores_every_field_and_adds_it_to_the_end_of_the_curre
 
 def test_design_test_case_errors(shop):
     call(shop, "save_suite", save_arguments(shop, []))
-    arguments = {**FIELDS, "selection_reason": "Gap."}
+    arguments = {**FIELDS, "title": new_title(), "selection_reason": "Gap."}
     before = dump(shop.path)
     assert code(shop, "design_test_case", {**arguments, "requirement_ids": ["REQ-099"]}) == "not_found"
     empty = failure(shop, "design_test_case", {**arguments, "requirement_ids": []})
@@ -403,6 +414,19 @@ def test_design_test_case_errors(shop):
     assert code(shop, "design_test_case", {**arguments, "status": "implemented"}) == "invalid_argument"
     no_suite = failure(shop, "design_test_case", arguments, base="v1.1", candidate="v1.2")
     assert no_suite.code == "invalid_state" and "no current suite" in no_suite.message
+    assert dump(shop.path) == before
+
+
+def test_design_test_case_refuses_the_title_of_an_existing_test_case_and_names_it(shop):
+    title = new_title()
+    first = designed(shop, title=title)
+    before = dump(shop.path)
+    error = failure(shop, "design_test_case", {**FIELDS, "title": title, "selection_reason": "Gap of REQ-002."})
+    assert error.code == "invalid_state"
+    assert error.message == (
+        f"{first} already has the title {title!r}: that test case already tests this, or, when the"
+        " candidate does not have its test, the change deleted it on purpose"
+    )
     assert dump(shop.path) == before
 
 

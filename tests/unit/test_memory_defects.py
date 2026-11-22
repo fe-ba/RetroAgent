@@ -184,3 +184,60 @@ def test_list_defects_by_status(conn, build):
     assert [row["id"] for row in interpretation.list_defects(conn)] == [open_defect, closed_defect]
     assert [row["id"] for row in interpretation.list_defects(conn, "open")] == [open_defect]
     assert [row["id"] for row in interpretation.list_defects(conn, "closed")] == [closed_defect]
+
+
+# A test case with an open defect gets no second one: the same failure is linked to that defect (mcp-tools.md,
+# register_defect). No argument overrides it.
+
+
+def has_open_defect(*named: str) -> str:
+    return (
+        f"a test case with an open defect gets no second one: {', '.join(named)}; link each one to its defect instead"
+    )
+
+
+def test_a_second_defect_for_a_test_case_with_an_open_defect_is_refused_and_names_it(conn, build):
+    _, case, failed = build.failed_execution()
+    open_defect = defect(conn, failed)
+    again = build.execute(build.run(), case, "failed")
+    regression(conn, again)
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        defect(conn, again)
+    assert str(error.value) == "invalid_state: " + has_open_defect(f"execution {again} of {case} ({open_defect})")
+    assert count_rows(conn) == before
+    interpretation.link_executions(conn, open_defect, [again])  # the same failure goes to the open defect
+    assert [row["execution_id"] for row in interpretation.linked_executions(conn, open_defect)] == [failed, again]
+
+
+def test_after_the_open_defect_is_closed_a_new_defect_is_accepted(conn, build):
+    _, case, failed = build.failed_execution()
+    closed = defect(conn, failed)
+    interpretation.close_defect(conn, closed, closed_by="user", close_reason="fixed outside the tested scope")
+    again = build.execute(build.run(), case, "failed")
+    new = defect(conn, again)
+    assert new != closed and interpretation.get_defect(conn, new)["status"] == "open"
+
+
+def test_a_call_with_one_refused_execution_is_refused_as_a_whole_and_names_every_refused_one(conn, build):
+    _, case, failed = build.failed_execution()
+    open_defect = defect(conn, failed)
+    run_id = build.run()
+    again = build.execute(run_id, case, "failed")
+    allowed = build.execute(run_id, build.test_case(), "failed")
+    untriaged = build.execute(run_id, build.test_case(), "error")
+    regression(conn, again, allowed)
+    untriaged_case = conn.execute("SELECT test_case_id FROM test_execution WHERE id = ?", (untriaged,)).fetchone()[0]
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        interpretation.add_defect(conn, title="t", severity="high", execution_ids=[allowed, again])
+    assert str(error.value) == "invalid_state: " + has_open_defect(f"execution {again} of {case} ({open_defect})")
+    with pytest.raises(InvariantViolation) as error:
+        interpretation.add_defect(conn, title="t", severity="high", execution_ids=[allowed, again, untriaged])
+    assert str(error.value) == (
+        "invalid_state: a defect describes a fault of the product, so every execution needs a current triage"
+        f" regression or pre_existing: execution {untriaged} of {untriaged_case} (not triaged); triage each one"
+        f" first; {has_open_defect(f'execution {again} of {case} ({open_defect})')}"
+    )
+    assert count_rows(conn) == before
+    assert interpretation.linked_test_cases(conn, open_defect) == [case]

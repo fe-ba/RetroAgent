@@ -575,7 +575,8 @@ def design_test_case(
     """Create a ``designed`` test case and add it to the suite after its last position, in one transaction.
 
     ``fields`` are the design fields of ``add_test_case``. ``requirement_ids`` may be empty only when memory holds no
-    requirement. Returns the test case ID and its position.
+    requirement. The title of a test case that is not retired is refused (mcp-tools.md, ``memory.design_test_case``).
+    Returns the test case ID and its position.
     """
     with transaction(conn):
         require_exists(conn, "suite", "id", suite_id, "suite")
@@ -584,6 +585,19 @@ def design_test_case(
             raise InvariantViolation(
                 "invalid_argument: requirement_ids is empty, but the project has requirements: trace the test case"
                 " to every requirement it verifies"
+            )
+        for requirement_id in fields.get("requirement_ids") or []:  # not_found comes before the state check
+            require_exists(conn, "requirement", "id", requirement_id, "requirement")
+        same = [
+            row[0]
+            for row in conn.execute(
+                "SELECT id FROM test_case WHERE title = ? AND retired_at IS NULL ORDER BY id", (fields["title"],)
+            )
+        ]
+        if same:
+            raise InvariantViolation(
+                f"invalid_state: {', '.join(same)} already has the title {fields['title']!r}: that test case already"
+                " tests this, or, when the candidate does not have its test, the change deleted it on purpose"
             )
         test_case_id = add_test_case(conn, designed_by=designed_by, **fields)
         position = conn.execute(

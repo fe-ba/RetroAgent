@@ -588,3 +588,58 @@ def test_the_invalid_argument_checks_come_first(conn, build, impacted):
     message = refused(conn, build, selected(deleted), [])
     assert message.startswith("invalid_argument: ") and "invalid_state" not in message
     assert f"neither items nor left_out: {forgotten} (REQ-004)" in message
+
+
+# design_test_case: a title that an existing test case has (mcp-tools.md, design_test_case). No argument overrides it.
+
+
+def design_titled(conn, suite_id, title) -> str:
+    test_case_id, _ = design.design_test_case(
+        conn, suite_id=suite_id, selection_reason="Gap.", designed_by="fake/model", title=title,
+        priority="high", steps=["s"], requirement_ids=[],
+    )  # fmt: skip
+    return test_case_id
+
+
+def same_title(title, *test_case_ids) -> str:
+    return (
+        f"invalid_state: {', '.join(test_case_ids)} already has the title {title!r}: that test case already tests"
+        " this, or, when the candidate does not have its test, the change deleted it on purpose"
+    )
+
+
+def test_the_title_of_an_active_test_case_is_refused_and_named(conn, build):
+    existing = build.test_case()  # title "case 1"
+    suite_id = build.suite()
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        design_titled(conn, suite_id, "case 1")
+    assert str(error.value) == same_title("case 1", existing)
+    assert count_rows(conn) == before
+
+
+def test_the_title_of_a_retired_test_case_is_accepted(conn, build):
+    retired = build.test_case()
+    design.retire_test_case(conn, retired, reason="Obsolete.", retired_by="fake/model")
+    designed = design_titled(conn, build.suite(), "case 1")
+    assert designed != retired and design.list_test_cases(conn, ids=[designed])[0]["title"] == "case 1"
+
+
+def test_a_new_title_is_accepted(conn, build):
+    build.test_case()
+    designed = design_titled(conn, build.suite(), "case 1, with a coupon")
+    assert design.list_test_cases(conn, ids=[designed])[0]["status"] == "designed"
+
+
+def test_the_title_of_a_project_test_case_whose_test_the_candidate_deleted_is_refused(conn, build):
+    # Cycle 2 of the Gemini final review: the second-coupon test, deleted by v1.2, designed again under its old title.
+    deleted = build.project_test()
+    full_run(conn, build, "base", {deleted: "passed"})
+    full_run(conn, build, "candidate", {})
+    title = design.list_test_cases(conn, ids=[deleted])[0]["title"]
+    suite_id = build.suite()
+    before = count_rows(conn)
+    with pytest.raises(InvariantViolation) as error:
+        design_titled(conn, suite_id, title)
+    assert str(error.value) == same_title(title, deleted)
+    assert count_rows(conn) == before

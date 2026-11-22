@@ -37,7 +37,8 @@ def test_a_candidate_run_closes_a_defect_whose_test_cases_passed_and_keeps_the_o
                     triaged_by="none", **versions,
                 )  # fmt: skip
             fixed = interpretation.add_defect(conn, title="Shipping", severity="high", execution_ids=[shipping])
-            not_fixed = interpretation.add_defect(conn, title="Totals", severity="high", execution_ids=[shipping, tax])
+            # TC-020 has DEF-001 open, so DEF-002 cannot link it too (mcp-tools.md, memory.register_defect).
+            not_fixed = interpretation.add_defect(conn, title="Totals", severity="high", execution_ids=[tax])
         finally:
             conn.close()
         assert (fixed, not_fixed) == ("DEF-001", "DEF-002")

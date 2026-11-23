@@ -112,7 +112,7 @@ def test_every_skill_of_the_index_is_on_one_line():
     available = skills.discover([skills.bundled_location()])
     index = skills.skills_index(available).splitlines()
     assert [line.split(":", 1)[0] for line in index] == [f"- {name}" for name in available.available]
-    assert index[3].startswith("- test-reporting: Generate a test plan,")
+    assert index[3].startswith("- test-reporting: Generate the test case specification or")
     assert index[3].endswith("or the release decision.")
     assert '"' not in index[3]
 

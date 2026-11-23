@@ -27,21 +27,6 @@ htmlcov/
 /.retro/
 /RETRO.md
 
-# AI coding tools (local only, not part of the project)
-.claude/
-CLAUDE.md
-CLAUDE.local.md
-AGENTS.md
-.cursor/
-.cursorrules
-.kiro/
-.codex/
-.gemini/
-GEMINI.md
-.aider*
-.continue/
-.windsurf/
-
 # Generated documentation output
 docs/_build/
 

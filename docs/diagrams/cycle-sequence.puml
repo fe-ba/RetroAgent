@@ -18,9 +18,11 @@ group analyze (model step)
   Cycle -> Data : check: analysis has an impact
 end
 
-group discover (direct step, only when no project test is known)
-  Cycle -> Runner : run_tests base, scope all
-  Cycle -> Data : check: run completed
+group discover (direct step, one full run per commit)
+  Cycle -> Runner : run_tests base, scope all, when that commit has no full run
+  Cycle -> Runner : run_tests candidate, scope all, when the change touches a test file
+  Runner -> Data : test cases discovered, defects closed
+  Cycle -> Data : check: the full runs completed
 end
 
 group select, design, implement (model steps)

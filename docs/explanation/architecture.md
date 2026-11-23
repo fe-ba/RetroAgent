@@ -4,13 +4,31 @@ How RetroAgent is built: its components, the processes they run in, who owns eac
 
 ## Diagrams
 
-The diagrams are PlantUML sources in `docs/diagrams/`:
+The diagrams are PlantUML sources in `docs/diagrams/`. After changing one, regenerate its SVG with `plantuml -tsvg docs/diagrams/<name>.puml`.
 
-| Diagram | File | Shows |
-|---|---|---|
-| Components | `components.puml` | Components, interfaces, artifacts and their dependencies. |
-| One turn | `tool-call-sequence.puml` | A turn of the agent loop with a tool call. |
-| Cycle | `cycle-sequence.puml` | The steps of `/cycle` and the checks between them. |
+### Overview
+
+The main parts and how they connect.
+
+![Overview of RetroAgent](../diagrams/overview.svg)
+
+### Components
+
+Components, interfaces, artifacts and their dependencies. The diagram is wide: open [`components.svg`](../diagrams/components.svg) to read it at full size.
+
+![Component diagram](../diagrams/components.svg)
+
+### One turn with a tool call
+
+A turn of the agent loop: the context, the model call, and the checks and records around each tool call.
+
+![Sequence of a turn with a tool call](../diagrams/tool-call-sequence.svg)
+
+### A regression cycle
+
+The steps of `/cycle` and the check that code makes after each one.
+
+![Sequence of a regression cycle](../diagrams/cycle-sequence.svg)
 
 ## Components
 

@@ -1,23 +1,20 @@
 # RetroAgent
 
+[![CI](https://github.com/fe-ba/RetroAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/fe-ba/RetroAgent/actions/workflows/ci.yml)
+
 RetroAgent is an AI agent for software regression testing. It runs in the terminal, on a git project of your own, and takes a change between two versions through the whole regression cycle: impact analysis, test selection, test design and implementation, execution, failure triage and a completion report with a release decision.
 
 The model does the work that needs judgment: which requirements a change affects, which tests to select, what new tests to write, why a test failed. Everything that can be computed is computed by code: test results come only from the JUnit XML that the test run produced, and metrics, exit criteria and the release decision are calculated from stored records. The model cannot record a result, change a metric or contradict the decision.
 
 RetroAgent has its own runtime and does not depend on any model vendor. It has adapters for hosted models (Google, Anthropic, OpenAI, xAI) and for local models served by Ollama; Google Gemini and Ollama are the ones evaluated with real models.
 
+![A regression cycle on the example project, sped up](docs/assets/demo.gif)
+
+*`/cycle` on the example project, sped up. At the end the user asks the agent to reclassify the shipping regression as an expected change, and the server refuses: the requirement has no documented change.*
+
 ## How it works
 
-```
-retro ──> runtime ──> model (hosted or local)
-             │
-             ├── steering: rules that are always in context
-             ├── skills: procedures loaded for each step
-             └── MCP servers: git, memory, test_runner, reports
-                    │
-                    ├── project memory (.retro/retro.db, SQLite)
-                    └── test runs in git worktrees, outside the project
-```
+![Overview of RetroAgent](docs/diagrams/overview.svg)
 
 - **Steering** (6 files) states who the agent is, the workflow, the test states, the quality rules, the safety rules and the output format.
 - **Skills** (5) hold the procedure of each step: `impact-analysis`, `test-selection`, `test-design`, `failure-triage` and `test-reporting`.
@@ -25,6 +22,21 @@ retro ──> runtime ──> model (hosted or local)
 - **Project memory** keeps requirements, test cases, runs, executions, triage, defects and reports between sessions, in the project's `.retro/` folder.
 
 `/cycle` runs the eight steps in order: `analyze`, `discover`, `select`, `design`, `implement`, `run`, `triage` and `report`. Each step gets an empty conversation and only the tools it needs, and code checks its outcome before the next step starts.
+
+## Results
+
+Both cycles of the example project with Gemini 3.1 Flash-Lite, on 22 November 2026. The decisions are the ones the oracle of the example expects.
+
+| | Cycle 1: `v1.0` to `v1.1` | Cycle 2: `v1.1` to `v1.2` |
+|---|---|---|
+| Decision | `do_not_release`: EC-05 (open high defect) and EC-09 (new failure) | `release_with_conditions`: a failure the baseline already had |
+| Exit code | `3` | `0` |
+| Suite on the candidate | 23 executed: 19 passed, 4 failed | 15 executed: 14 passed, 1 failed |
+| Triage | A regression with its defect, an expected change, a pre-existing failure, and a generated test that was wrong | The pre-existing failure; the defect of cycle 1 closed by code |
+| Refused by code | `regression` for the coupon test, whose requirement changed on purpose: the model corrected it to `expected_change` | Selecting the test that `v1.2` deleted: the model left it out |
+| Cost | About 40 model calls and 5 minutes per cycle, on the free tier | |
+
+Local models on a laptop CPU respect the same checks but are too slow for a whole cycle. Every scenario and model is in the [acceptance scenarios](spec/acceptance-scenarios.md#model-results) and in [Model compatibility](docs/explanation/model-compatibility.md).
 
 ## Requirements
 

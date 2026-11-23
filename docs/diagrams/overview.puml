@@ -1,0 +1,44 @@
+@startuml overview
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam shadowing false
+skinparam ArrowColor #5B6B79
+skinparam ArrowFontColor #5B6B79
+skinparam ArrowFontSize 13
+skinparam rectangle {
+  BackgroundColor #EAF3F3
+  BorderColor #0F8B8D
+  RoundCorner 14
+}
+skinparam database {
+  BackgroundColor #EAF3F3
+  BorderColor #0E3B43
+}
+skinparam cloud {
+  BackgroundColor #FFFFFF
+  BorderColor #5B6B79
+}
+skinparam actor {
+  BackgroundColor #EAF3F3
+  BorderColor #0E3B43
+}
+left to right direction
+
+actor "User" as User
+rectangle "**Runtime**\nruns the 8 steps of a cycle\ngives each step only its tools\nchecks the outcome of each step" as Runtime #0F8B8D;text:white;line:0E3B43
+cloud "**Model**\nhosted or local" as Model
+rectangle "**Steering**\n6 rule files\nalways in context" as Steering
+rectangle "**Skills**\n5 procedures\none per step" as Skills
+rectangle "**MCP servers**\ngit · memory · test_runner · reports\n32 tools that check what the model records" as Servers
+database "**Project memory**\nSQLite in .retro/" as Memory
+rectangle "**Test runs**\nin git worktrees,\noutside the project" as Runs
+
+User --> Runtime : retro, /cycle
+Runtime --> Model : context and tools
+Runtime --> Steering : loads
+Runtime --> Skills : loads one per step
+Runtime --> Servers : tool calls
+Servers --> Memory : records, checked
+Servers --> Runs : JUnit XML only
+@enduml

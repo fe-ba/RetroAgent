@@ -33,6 +33,8 @@ loop until the model answers without tool calls
     alt refused
       Permissions --> Turn : denied
       Turn -> Data : record outcome denied
+    else same call repeated, nothing recorded since
+      Turn -> Data : record outcome invalid_argument, not dispatched
     else allowed
       opt permission is ask
         Permissions -> User : prompt with code or commands
@@ -47,6 +49,7 @@ loop until the model answers without tool calls
       Turn -> Data : record outcome
     end
   end
+  note over Turn : three model calls in a row with only\nblocked calls stop the turn
 end
 
 Turn --> CLI : final answer
